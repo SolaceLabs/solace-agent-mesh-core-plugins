@@ -295,51 +295,6 @@ Ensure that all SQL queries are compatible with {db_type}.
             inline_files=inline_files if inline_files else None,
         )
 
-    def _create_response(
-        self,
-        results: List[Dict[str, Any]],
-        response_format: str,
-        inline_result: bool,
-        meta: Dict[str, Any],
-        use_file: bool,
-        query: Dict[str, Any],
-    ) -> ActionResponse:
-        """Create a response with the query results as a file or inline file."""
-        file_service = FileService()
-        session_id = meta.get("session_id")
-        updated_results = self._stringify_non_standard_objects(results)
-
-        if response_format == "yaml":
-            content = yaml.dump(updated_results)
-            file_extension = "yaml"
-        elif response_format == "markdown":
-            content = self._format_markdown_table(updated_results)
-            file_extension = "md"
-        elif response_format == "json":
-            content = json.dumps(updated_results, indent=2, default=str)
-            file_extension = "json"
-        else:  # CSV
-            content = self._format_csv(updated_results)
-            file_extension = "csv"
-
-        file_name = f"query_results_{random.randint(100000, 999999)}.{file_extension}"
-
-        if inline_result and not use_file:
-            inline_file = InlineFile(content, file_name)
-            return ActionResponse(
-                message=f"Query results are available in the attached inline {response_format.upper()} file.",
-                inline_files=[inline_file],
-            )
-        else:
-            data_source = f"SQL Agent - Search Query Action - Query: {json.dumps(query)}"
-            file_meta = file_service.upload_from_buffer(
-                content.encode(), file_name, session_id, data_source=data_source
-            )
-            return ActionResponse(
-                message=f"Query results are available in the attached {response_format.upper()} file.",
-                files=[file_meta],
-            )
-
     def _format_markdown_table(self, results: List[Dict[str, Any]]) -> str:
         """Format results as a Markdown table."""
         if not results:
