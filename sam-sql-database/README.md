@@ -100,13 +100,16 @@ The SQL Database agent supports importing CSV files to initialize or populate yo
 You can directly edit your agent's YAML configuration file:
 
 ```yaml
-component_config:
   # Other configuration...
-  csv_files:
-    - /path/to/file1.csv
-    - /path/to/file2.csv
-  csv_directories:
-    - /path/to/csv/directory
+  - component_name: action_request_processor
+    # Other configuration...
+    component_config:
+      # Other configuration...
+      csv_files:
+        - /path/to/file1.csv
+        - /path/to/file2.csv
+      csv_directories:
+        - /path/to/csv/directory
 ```
 
 ### CSV File Format Requirements
