@@ -1,0 +1,51 @@
+CustomerID,Name,Address,City,State,ZipCode,Country,Size,CustomerType,SalesRepresentativeID
+1,Bean Lovers Cafe,123 Coffee St,Seattle,WA,98101,USA,Small,Retailer,8
+2,Grocery Galore,456 Market Ave,Chicago,IL,60601,USA,Large,Grocery Store,9
+3,Sunrise Cafe,789 Main St,Los Angeles,CA,90001,USA,Small,Retailer,10
+4,Mountain Brews,101 Peak Rd,Denver,CO,80201,USA,Medium,Retailer,11
+5,Coastal Coffee Co.,202 Beach Blvd,Miami,FL,33101,USA,Medium,Retailer,12
+6,Midtown Roasters,303 Central Ave,New York,NY,10001,USA,Small,Retailer,13
+7,Heartland Grocers,404 Prairie Ln,Kansas City,MO,64101,USA,Large,Grocery Store,14
+8,Capitol Cafe,505 State St,Washington,DC,20001,USA,Small,Retailer,15
+9,Golden Gate Grind,606 Bay St,San Francisco,CA,94101,USA,Medium,Retailer,16
+10,Lone Star Coffee,707 Rodeo Dr,Houston,TX,77001,USA,Small,Retailer,17
+11,Big Sky Beans,808 Mountain View Rd,Bozeman,MT,59715,USA,Small,Retailer,18
+12,Bayou Brew,909 Canal St,New Orleans,LA,70112,USA,Medium,Retailer,19
+13,Desert Sun Coffee,1010 Cactus Rd,Phoenix,AZ,85001,USA,Small,Retailer,20
+14,Great Lakes Grind,1111 Lakeshore Dr,Chicago,IL,60601,USA,Medium,Retailer,8
+15,Music City Roasters,1212 Broadway,Nashville,TN,37201,USA,Small,Retailer,9
+16,Liberty Bell Beans,1313 Independence Ave,Philadelphia,PA,19101,USA,Medium,Retailer,10
+17,Evergreen Espresso,1414 Pine St,Portland,OR,97201,USA,Small,Retailer,11
+18,Windy City Cafe,1515 Michigan Ave,Chicago,IL,60601,USA,Medium,Retailer,12
+19,Sunshine State Sips,1616 Orange Ave,Orlando,FL,32801,USA,Small,Retailer,13
+20,Motor City Coffee,1717 Woodward Ave,Detroit,MI,48201,USA,Medium,Retailer,14
+21,Alamo Alehouse,1818 River Walk,San Antonio,TX,78201,USA,Small,Retailer,15
+22,Garden State Grind,1919 Turnpike Rd,Newark,NJ,07101,USA,Medium,Retailer,16
+23,Rocky Mountain Roast,2020 Aspen Ln,Boulder,CO,80301,USA,Small,Retailer,17
+24,Peach State Perks,2121 Peachtree St,Atlanta,GA,30301,USA,Medium,Retailer,18
+25,Aloha Brews,2222 Waikiki Rd,Honolulu,HI,96801,USA,Small,Retailer,19
+26,Mega Mart,2323 Superstore Blvd,Dallas,TX,75201,USA,Large,Grocery Store,20
+27,Urban Grind,2424 Downtown Ave,Boston,MA,02101,USA,Medium,Retailer,8
+28,Palmetto Perk,2525 Charleston Rd,Columbia,SC,29201,USA,Small,Retailer,9
+29,Copper State Coffee,2626 Desert Rd,Tucson,AZ,85701,USA,Medium,Retailer,10
+30,Bluegrass Beans,2727 Derby Ln,Louisville,KY,40201,USA,Small,Retailer,11
+31,Silicon Valley Sips,2828 Tech Blvd,San Jose,CA,95101,USA,Medium,Retailer,12
+32,Chesapeake Cafe,2929 Harbor Dr,Baltimore,MD,21201,USA,Small,Retailer,13
+33,Midwest Mercantile,3030 Heartland Hwy,Indianapolis,IN,46201,USA,Large,Grocery Store,14
+34,Buckeye Brew,3131 Scarlet Rd,Columbus,OH,43201,USA,Medium,Retailer,15
+35,Volunteer Vittles,3232 Smoky Mountain Rd,Knoxville,TN,37901,USA,Small,Retailer,16
+36,Keystone Koffee,3333 Liberty Ave,Pittsburgh,PA,15201,USA,Medium,Retailer,17
+37,Cornhusker Cafe,3434 Prairie Path,Omaha,NE,68101,USA,Small,Retailer,18
+38,Beehive Beans,3535 Salt Lake St,Salt Lake City,UT,84101,USA,Medium,Retailer,19
+39,Sooner Sips,3636 Tornado Alley,Oklahoma City,OK,73101,USA,Small,Retailer,20
+40,Razorback Roast,3737 Ozark Ave,Little Rock,AR,72201,USA,Medium,Retailer,8
+41,Magnolia Mornings,3838 Antebellum Rd,Jackson,MS,39201,USA,Small,Retailer,9
+42,Pelican State Perk,3939 Bayou Blvd,Baton Rouge,LA,70801,USA,Medium,Retailer,10
+43,Last Frontier Latte,4040 Glacier Hwy,Anchorage,AK,99501,USA,Small,Retailer,11
+44,Dairy State Drip,4141 Cheese Rd,Milwaukee,WI,53201,USA,Medium,Retailer,12
+45,Granite State Grind,4242 White Mountain Way,Manchester,NH,03101,USA,Small,Retailer,13
+46,Green Mountain Brew,4343 Vermont Ave,Burlington,VT,05401,USA,Medium,Retailer,14
+47,Ocean State Oasis,4444 Nautical Mile,Providence,RI,02901,USA,Small,Retailer,15
+48,North Star Roast,4545 Lake Superior Dr,Duluth,MN,55801,USA,Medium,Retailer,16
+49,Gem State Java,4646 Potato Rd,Boise,ID,83701,USA,Small,Retailer,17
+50,Super Savers,4747 Discount Dr,Las Vegas,NV,89101,USA,Large,Grocery Store,18
