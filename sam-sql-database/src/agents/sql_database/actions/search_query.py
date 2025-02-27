@@ -1,6 +1,6 @@
 """Action for executing search queries based on natural language prompts."""
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 import yaml
 import json
 import random
@@ -25,13 +25,16 @@ class SearchQuery(Action):
             {
                 "name": "search_query",
                 "prompt_directive": (
-                    "Execute a search query on the SQL database. "
-                    "Converts natural language to SQL and returns results. NOTE that there is no history stored for previous queries, so it is essential to provide all required context in the query."
+                    "Execute one or more search queries on the SQL database. "
+                    "Converts natural language to SQL and returns results. "
+                    "You can include multiple related questions in a single query for more efficient processing. "
+                    "Each query will be returned as a separate file. "
+                    "NOTE that there is no history stored for previous queries, so it is essential to provide all required context in the query."
                 ),
                 "params": [
                     {
                         "name": "query",
-                        "desc": "Natural language description of the search query, including any data required for context. Note that amfs links with resolve=true may be embedded in this parameter.",
+                        "desc": "Natural language description of the search query or queries, including any data required for context. Multiple related questions can be included for more efficient processing. Note that amfs links with resolve=true may be embedded in this parameter.",
                         "type": "string",
                         "required": True,
                     },
@@ -74,19 +77,28 @@ class SearchQuery(Action):
             if response_format not in ["yaml", "markdown", "json", "csv"]:
                 raise ValueError("Invalid response format. Choose 'yaml', 'markdown', 'json', or 'csv'")
 
-            # Get the SQL query from the natural language query
-            sql_query = self._generate_sql_query(query)
+            # Get the SQL queries from the natural language query
+            sql_queries = self._generate_sql_queries(query)
             
-            # Execute the query
+            # Execute each query and collect results
             db_handler = self.get_agent().get_db_handler()
-            results = db_handler.execute_query(sql_query)
-
-            return self._create_response(
-                results=results,
+            query_results = []
+            failed_queries = []
+            
+            for purpose, sql_query in sql_queries:
+                try:
+                    results = db_handler.execute_query(sql_query)
+                    query_results.append((purpose, sql_query, results))
+                except Exception as e:
+                    failed_queries.append((purpose, sql_query, str(e)))
+            
+            # Create response with files for each successful query
+            return self._create_multi_query_response(
+                query_results=query_results,
+                failed_queries=failed_queries,
                 response_format=response_format,
                 inline_result=params.get("inline_result", True),
                 meta=meta,
-                use_file=False,
                 query={"query": query},
             )
 
@@ -96,14 +108,14 @@ class SearchQuery(Action):
                 error_info=ErrorInfo(str(e))
             )
 
-    def _generate_sql_query(self, natural_language_query: str) -> str:
-        """Generate SQL query from natural language prompt.
+    def _generate_sql_queries(self, natural_language_query: str) -> List[Tuple[str, str]]:
+        """Generate SQL queries from natural language prompt.
         
         Args:
             natural_language_query: Natural language description of the query
             
         Returns:
-            Generated SQL query string
+            List of tuples containing (query_purpose, sql_query)
             
         Raises:
             ValueError: If query generation fails
@@ -115,9 +127,10 @@ class SearchQuery(Action):
         db_schema_yaml = yaml.dump(db_schema)
 
         system_prompt = f"""
-You are an SQL expert and will convert the provided natural language query to a SQL query for {db_type}. 
+You are an SQL expert and will convert the provided natural language query to one or more SQL queries for {db_type}.
+If the user's request requires multiple SQL queries to fully answer, generate all necessary queries.
 Requests should have a clear context to identify the person or entity or use the word "all" to avoid ambiguity.
-It is acceptable to raise an error if the context is missing or ambiguous.
+It is required to raise an error if the context is missing or ambiguous.
 
 The database schema is as follows:
 <db_schema_yaml>
@@ -129,7 +142,7 @@ Additional information about the data:
 {data_description}
 </data_description>
 
-Respond with the {db_type} query in the following format:
+For each query needed to answer the user's request, respond with the following format:
 
 <query_purpose>
 ...Purpose of the query...
@@ -138,13 +151,15 @@ Respond with the {db_type} query in the following format:
 ...SQL query...
 </sql_query>
 
+If multiple queries are needed, repeat the above format for each query.
+
 Or if the request is invalid, respond with an error message:
 
 <error>
 ...Error message...
 </error>
 
-Ensure that the SQL query is compatible with {db_type}.
+Ensure that all SQL queries are compatible with {db_type}.
 """
 
         messages = [
@@ -161,10 +176,17 @@ Ensure that the SQL query is compatible with {db_type}.
                 raise ValueError(errors[0])
 
             sql_queries = self._get_all_tags(content, "sql_query")
+            purposes = self._get_all_tags(content, "query_purpose")
+            
             if not sql_queries:
                 raise ValueError("Failed to generate SQL query")
-
-            return sql_queries[0]
+                
+            # Match purposes with queries
+            if len(purposes) != len(sql_queries):
+                # If counts don't match, use generic purposes
+                purposes = [f"Query {i+1}" for i in range(len(sql_queries))]
+                
+            return list(zip(purposes, sql_queries))
 
         except Exception as e:
             raise ValueError(f"Failed to generate SQL query: {str(e)}")
@@ -182,6 +204,96 @@ Ensure that the SQL query is compatible with {db_type}.
         pattern = f"<{tag_name}>(.*?)</{tag_name}>"
         return re.findall(pattern, result_text, re.DOTALL)
 
+    def _create_multi_query_response(
+        self,
+        query_results: List[Tuple[str, str, List[Dict[str, Any]]]],
+        failed_queries: List[Tuple[str, str, str]],
+        response_format: str,
+        inline_result: bool,
+        meta: Dict[str, Any],
+        query: Dict[str, Any],
+    ) -> ActionResponse:
+        """Create a response with multiple query results as files.
+        
+        Args:
+            query_results: List of tuples (purpose, sql_query, results)
+            failed_queries: List of tuples (purpose, sql_query, error_message)
+            response_format: Format for the result files
+            inline_result: Whether to return inline files
+            meta: Metadata including session_id
+            query: Original query for file metadata
+            
+        Returns:
+            ActionResponse with files or inline files for each query result
+        """
+        file_service = FileService()
+        session_id = meta.get("session_id")
+        
+        # Build message with query summary
+        message_parts = []
+        
+        if not query_results and not failed_queries:
+            return ActionResponse(
+                message="No SQL queries were generated from your request. Please try again with a more specific query.",
+            )
+        
+        # Add summary of successful queries
+        if query_results:
+            message_parts.append(f"Successfully executed {len(query_results)} SQL queries:")
+            for i, (purpose, sql_query, _) in enumerate(query_results, 1):
+                message_parts.append(f"\n{i}. {purpose}\nSQL: ```{sql_query}```")
+        
+        # Add summary of failed queries
+        if failed_queries:
+            message_parts.append(f"\n\nFailed to execute {len(failed_queries)} SQL queries:")
+            for i, (purpose, sql_query, error) in enumerate(failed_queries, 1):
+                message_parts.append(f"\n{i}. {purpose}\nSQL: ```{sql_query}```\nError: {error}")
+        
+        # Create files for each successful query
+        files = []
+        inline_files = []
+        
+        for i, (purpose, sql_query, results) in enumerate(query_results, 1):
+            updated_results = self._stringify_non_standard_objects(results)
+            
+            # Format the results based on the requested format
+            if response_format == "yaml":
+                content = yaml.dump(updated_results)
+                file_extension = "yaml"
+            elif response_format == "markdown":
+                content = self._format_markdown_table(updated_results)
+                file_extension = "md"
+            elif response_format == "json":
+                content = json.dumps(updated_results, indent=2, default=str)
+                file_extension = "json"
+            else:  # CSV
+                content = self._format_csv(updated_results)
+                file_extension = "csv"
+            
+            # Create a unique filename for each query
+            file_name = f"query_{i}_results_{random.randint(100000, 999999)}.{file_extension}"
+            
+            if inline_result:
+                inline_files.append(InlineFile(content, file_name))
+            else:
+                data_source = f"SQL Agent - Search Query {i} - {purpose}"
+                file_meta = file_service.upload_from_buffer(
+                    content.encode(), file_name, session_id, data_source=data_source
+                )
+                files.append(file_meta)
+        
+        # Add file summary to message
+        if query_results:
+            if inline_result:
+                message_parts.append(f"\n\nResults are available in {len(query_results)} attached inline {response_format.upper()} files.")
+            else:
+                message_parts.append(f"\n\nResults are available in {len(query_results)} attached {response_format.upper()} files.")
+        
+        return ActionResponse(
+            message="\n".join(message_parts),
+            files=files if files else None,
+            inline_files=inline_files if inline_files else None,
+        )
 
     def _create_response(
         self,

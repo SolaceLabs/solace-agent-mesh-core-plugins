@@ -97,20 +97,7 @@ The SQL Database agent supports importing CSV files to initialize or populate yo
 
 ### How to Import CSV Files
 
-There are two ways to configure CSV file imports:
-
-#### 1. Using Environment Variables
-
-You can set these environment variables to specify CSV files to import:
-
-```
-<AGENT_NAME>_CSV_FILES=/path/to/file1.csv,/path/to/file2.csv
-<AGENT_NAME>_CSV_DIRECTORIES=/path/to/csv/directory
-```
-
-#### 2. Editing the Agent Configuration
-
-Alternatively, you can directly edit your agent's YAML configuration file:
+You can directly edit your agent's YAML configuration file:
 
 ```yaml
 component_config:
@@ -146,8 +133,8 @@ This will create or populate a table named `employees` with the columns `id`, `n
 The CSV import happens automatically when the agent starts up. The process:
 
 1. Reads each CSV file
-2. Creates tables if they don't exist. Move to next file if table already exists.
-3. Inserts data in batches for efficiency
+2. Creates tables if they don't exist
+3. Inserts data only for newly created tables
 4. Handles data type conversion
 
-If a table already exists, the agent will not attempt to insert any data.
+If a table already exists, the agent will skip importing data for that table. This prevents accidental data modification of existing tables.
