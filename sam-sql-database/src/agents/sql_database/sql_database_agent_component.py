@@ -162,6 +162,19 @@ class SQLDatabaseAgentComponent(BaseAgentComponent):
             self.detailed_schema = self._detect_schema()
         else:
             self.detailed_schema = self.get_config("database_schema")
+            
+        # Generate schema summary for action description
+        self.schema_summary = self._get_schema_summary()
+        
+        # Update the search_query action with schema information
+        for action in self.action_list.actions:
+            if action.name == "search_query":
+                # Access the action's configuration dictionary instead of the prompt_directive attribute
+                current_directive = action._prompt_directive
+                schema_info = f"\n\nDatabase Schema:\n{self.schema_summary}"
+                # Update the prompt_directive in the action's configuration
+                action._prompt_directive = current_directive + schema_info
+                break
 
     def _create_db_handler(self) -> DatabaseService:
         """Create appropriate database handler based on configuration.
@@ -237,41 +250,23 @@ class SQLDatabaseAgentComponent(BaseAgentComponent):
 
         return schema
 
-    def _get_schema_summary(self) -> Dict[str, List[str]]:
-        """Gets a terse summary of the database schema.
+    def _get_schema_summary(self) -> str:
+        """Gets a terse formatted summary of the database schema.
 
         Returns:
-            A dictionary where keys are table names and values are lists of column
-            descriptions in the format 'column_name(type, constraints)'.
+            A string containing a one-line summary of each table and its columns.
         """
-        summary = {}
         if not self.detailed_schema:
-            self._detect_schema()
-
-        for table_name, table_info in self.detailed_schema.items():
-            columns = []
-            for col_name, col_info in table_info["columns"].items():
-                # Build column description
-                desc = [col_name, f"{col_info['type']}"]
-                
-                # Add constraints
-                constraints = []
-                if col_name in table_info.get("primary_keys", []):
-                    constraints.append("pk")
-                if any(idx.get("column_names", []) == [col_name] 
-                      for idx in table_info.get("indexes", [])):
-                    constraints.append("index")
-                
-                # Format as name(type[, constraints])
-                if constraints:
-                    desc.append(", ".join(constraints))
-                    
-                columns.append(f"{desc[0]}({', '.join(desc[1:])})")
-                
-            summary[table_name] = columns
+            return "Schema information not available."
             
-        return summary
-
+        summary_lines = []
+        
+        for table_name, table_info in self.detailed_schema.items():
+            # Get all column names
+            columns = list(table_info["columns"].keys())
+            summary_lines.append(f"{table_name}: {', '.join(columns)}")
+            
+        return "\n".join(summary_lines)
 
     def get_db_handler(self) -> DatabaseService:
         """Get the database handler instance."""
@@ -286,9 +281,13 @@ class SQLDatabaseAgentComponent(BaseAgentComponent):
 
         if self.data_description:
             description += f"Data Description:\n{self.data_description}\n"
-        else: 
-            summary = self._get_schema_summary()
-            description += f"Data Description (Tables and columns): \n{summary}\n"
+        else:
+            # Just mention the tables without the full schema
+            tables = list(self.detailed_schema.keys()) if self.detailed_schema else []
+            if tables:
+                description += f"Contains {len(tables)} tables: {', '.join(tables)}\n"
+            else:
+                description += "No tables found in database.\n"
 
         return {
             "agent_name": self.agent_name,
