@@ -180,14 +180,172 @@ The queues will be managed as follows:
 
 ### Software Architecture
 
-This section describes all the files that make up the MCP Server Gateway and what there purpose is.
+This section describes all the files that make up the MCP Server Gateway and their purposes within the overall architecture.
 
-<inst>
-Fill in this section with details about what each file does and how it fits into the overall architecture.
-- Use sequence diagrams to show how the components interact with each other.
-- Describe how it is configured
-- Add an area that talks about things to be careful of that might trip you up
-</inst>
+#### Core Components
+
+1. **MCP Server Implementation**
+   - `mcp_server.py`: Implements the core MCP server functionality, handling client connections, tool/resource/prompt registration, and request processing. It supports both stdio and SSE transports.
+   - `mcp_server_factory.py`: Factory pattern implementation that manages MCP server instances, ensuring only one server exists per configuration.
+
+2. **Gateway Components**
+   - `mcp_server_gateway_input.py`: Handles incoming requests from MCP clients, adds MCP-specific properties, and forwards them to the appropriate handlers.
+   - `mcp_server_gateway_output.py`: Processes agent responses, transforms them to MCP format, and routes them back to the appropriate MCP clients.
+
+3. **Agent Management**
+   - `agent_registry.py`: Maintains a catalog of available agents and their capabilities, with filtering by scopes.
+   - `agent_registration_listener.py`: Listens for agent registration messages and updates the registry accordingly.
+
+4. **Request Handling**
+   - `mcp_server_manager.py`: Manages MCP server operations, including server initialization, tool registration, and request handling.
+   - `session_manager.py`: Handles client sessions, authentication, and authorization.
+
+5. **Agent Integration**
+   - `mcp_server_agent_component.py`: Agent component that exposes MCP servers as solace-agent-mesh agents.
+   - `actions/mcp_server_action.py`: Action implementation for invoking MCP server operations.
+   - `async_server.py`: Handles asynchronous MCP server communication in a dedicated thread.
+
+#### Component Interactions
+
+Here are key interaction flows within the MCP Server Gateway:
+
+##### 1. Client Connection and Tool Discovery
+
+```mermaid
+sequenceDiagram
+    participant Client as MCP Client
+    participant Gateway as MCPServerGatewayInput
+    participant Manager as MCPServerManager
+    participant Registry as AgentRegistry
+    participant Server as MCPServer
+
+    Client->>Gateway: Connect
+    Gateway->>Manager: Initialize
+    Manager->>Registry: Get filtered agents
+    Registry-->>Manager: Filtered agents
+    Manager->>Server: Register tools from agents
+    Server-->>Manager: Tools registered
+    Manager-->>Gateway: Initialization complete
+    Gateway-->>Client: Connection established
+
+    Client->>Gateway: List tools request
+    Gateway->>Manager: Forward request
+    Manager->>Server: Get tools
+    Server-->>Manager: Available tools
+    Manager-->>Gateway: Tool list
+    Gateway-->>Client: Tool list response
+```
+
+##### 2. Tool Execution Flow
+
+```mermaid
+sequenceDiagram
+    participant Client as MCP Client
+    participant Gateway as MCPServerGatewayInput
+    participant Manager as MCPServerManager
+    participant Agent as Agent
+    participant Output as MCPServerGatewayOutput
+
+    Client->>Gateway: Tool call request
+    Gateway->>Manager: Forward request
+    Manager->>Manager: Generate correlation ID
+    Manager->>Agent: Send action request
+    Note over Manager: Store pending request
+
+    Agent->>Output: Action response
+    Output->>Manager: Forward response with correlation ID
+    Manager->>Manager: Match with pending request
+    Manager-->>Gateway: Tool call result
+    Gateway-->>Client: Tool call response
+```
+
+##### 3. Agent Registration Flow
+
+```mermaid
+sequenceDiagram
+    participant Agent as Agent
+    participant Output as MCPServerGatewayOutput
+    participant Listener as AgentRegistrationListener
+    participant Registry as AgentRegistry
+    participant Manager as MCPServerManager
+
+    Agent->>Output: Registration message
+    Output->>Listener: Process registration
+    Listener->>Registry: Register agent
+    Registry-->>Listener: Registration complete
+    Listener-->>Output: Registration processed
+
+    Note over Output,Manager: Later, when MCP client connects
+    Manager->>Registry: Get filtered agents
+    Registry-->>Manager: Filtered agents
+    Manager->>Manager: Convert to MCP tools
+```
+
+#### Configuration
+
+The MCP Server Gateway is configured through several mechanisms:
+
+1. **Environment Variables**
+   - `GATEWAY_ID`: Identifier for the gateway (default: "mcp-server")
+   - `SYSTEM_PURPOSE`: System purpose for the gateway (default: "You are a helpful assistant that can use tools to accomplish tasks.")
+   - `MCP_SERVER_SCOPES`: Scopes to filter agents by (default: "*:*:*")
+   - `MCP_SERVER_PORT`: Port for the MCP server (default: 8080)
+   - `MCP_SERVER_HOST`: Host for the MCP server (default: "0.0.0.0")
+   - `MCP_SERVER_TRANSPORT`: Transport type ("stdio" or "sse", default: "sse")
+
+2. **Interface Configuration Files**
+   - `interface-default-config.yaml`: Default configuration values
+   - `interface-flows.yaml`: Flow definitions for the gateway
+
+3. **Component Configuration**
+   - Each component can be configured with specific parameters:
+     - `mcp_server_scopes`: Scopes to filter agents by
+     - `agent_ttl_ms`: Time-to-live for agent registrations in milliseconds
+     - `agent_cleanup_interval_ms`: Interval for cleaning up expired agents
+
+#### Potential Pitfalls and Considerations
+
+1. **Transport Configuration**
+   - **Issue**: Mismatched transport types between client and server
+   - **Solution**: Ensure the `MCP_SERVER_TRANSPORT` setting matches the client's expected transport
+
+2. **Scope Management**
+   - **Issue**: Overly restrictive scopes preventing access to needed agents
+   - **Solution**: Start with wildcard scopes (*:*:*) and restrict gradually
+   - **Issue**: Overly permissive scopes exposing sensitive operations
+   - **Solution**: Use specific scopes for production environments
+
+3. **Correlation ID Handling**
+   - **Issue**: Lost correlation IDs causing orphaned requests
+   - **Solution**: Implement proper timeout handling and cleanup
+   - **Issue**: Duplicate correlation IDs causing response confusion
+   - **Solution**: Use UUIDs and verify uniqueness
+
+4. **Resource Management**
+   - **Issue**: Memory leaks from uncleaned pending requests
+   - **Solution**: Regular cleanup of timed-out requests
+   - **Issue**: Thread safety issues with shared resources
+   - **Solution**: Proper use of locks for thread-safe operations
+
+5. **Error Handling**
+   - **Issue**: Unhandled exceptions causing gateway crashes
+   - **Solution**: Comprehensive try-except blocks and error logging
+   - **Issue**: Error responses not properly formatted for MCP clients
+   - **Solution**: Consistent error transformation in `_transform_response_to_mcp_format`
+
+6. **Performance Considerations**
+   - **Issue**: Slow response times with many agents or complex tools
+   - **Solution**: Implement request batching and response caching
+   - **Issue**: High memory usage with many concurrent clients
+   - **Solution**: Configure appropriate queue depths and timeouts
+
+7. **Security Considerations**
+   - **Issue**: Unauthorized access to sensitive operations
+   - **Solution**: Proper session authentication and scope-based authorization
+   - **Issue**: Exposure of internal system details in error messages
+   - **Solution**: Sanitize error messages before sending to clients
+
+By being aware of these potential issues and following the recommended solutions, you can ensure a robust and secure MCP Server Gateway implementation.
 
 
 ### Implementation Plan
