@@ -76,7 +76,7 @@ class MCPServerGatewayOutput(GatewayOutput):
             
         # Set up timer for periodic cleanup of expired agents
         cleanup_interval_ms = self.get_config("agent_cleanup_interval_ms", 60000)
-        if hasattr(self, 'add_timer'):
+        if hasattr(self, 'add_timer') and hasattr(self, 'timer_manager') and self.timer_manager:
             self.add_timer(cleanup_interval_ms, "agent_registry_cleanup", cleanup_interval_ms)
 
     def invoke(self, message: Message, data: Dict[str, Any]) -> Dict[str, Any]:

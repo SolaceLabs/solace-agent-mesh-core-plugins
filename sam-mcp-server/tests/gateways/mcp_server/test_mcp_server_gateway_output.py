@@ -32,6 +32,8 @@ class TestMCPServerGatewayOutput(unittest.TestCase):
         self.gateway_output.log_identifier = "[TestGateway]"
         self.gateway_output.discard_current_message = MagicMock()
         self.gateway_output.gateway_id = "test-gateway"
+        self.gateway_output.timer_manager = MagicMock()
+        self.gateway_output.add_timer = MagicMock()
 
     @patch("src.gateways.mcp_server.agent_registry.AgentRegistry.register_agent")
     def test_handle_agent_registration(self, mock_register_agent):
