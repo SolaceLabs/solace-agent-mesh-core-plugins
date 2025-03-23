@@ -15,7 +15,8 @@ class TestMCPServerGatewayOutput(unittest.TestCase):
     @patch(
         "solace_agent_mesh.gateway.components.gateway_output.GatewayOutput.get_config"
     )
-    def setUp(self, mock_get_config, mock_init):
+    @patch("src.gateways.mcp_server.agent_registration_listener.AgentRegistrationListener")
+    def setUp(self, mock_listener_class, mock_get_config, mock_init):
         """Set up test fixtures."""
         # Mock parent class initialization
         mock_init.return_value = None
@@ -24,6 +25,10 @@ class TestMCPServerGatewayOutput(unittest.TestCase):
         mock_get_config.side_effect = lambda key, default=None: {
             "mcp_server_scopes": "test:*:*"
         }.get(key, default)
+        
+        # Mock the AgentRegistrationListener
+        self.mock_listener = MagicMock()
+        mock_listener_class.return_value = self.mock_listener
 
         # Create instance
         self.gateway_output = MCPServerGatewayOutput()
@@ -32,11 +37,8 @@ class TestMCPServerGatewayOutput(unittest.TestCase):
         self.gateway_output.log_identifier = "[TestGateway]"
         self.gateway_output.discard_current_message = MagicMock()
         self.gateway_output.gateway_id = "test-gateway"
-        self.gateway_output.timer_manager = MagicMock()
-        self.gateway_output.add_timer = MagicMock()
 
-    @patch("src.gateways.mcp_server.agent_registry.AgentRegistry.register_agent")
-    def test_handle_agent_registration(self, mock_register_agent):
+    def test_handle_agent_registration(self):
         """Test handling agent registration."""
         # Create test agent data
         agent_data = {
@@ -50,22 +52,16 @@ class TestMCPServerGatewayOutput(unittest.TestCase):
         # Call _handle_agent_registration method
         self.gateway_output._handle_agent_registration(agent_data)
 
-        # Verify agent was registered
-        mock_register_agent.assert_called_once_with(agent_data)
+        # Verify process_registration was called on the listener
+        self.mock_listener.process_registration.assert_called_once_with(agent_data)
 
-    def test_handle_agent_registration_no_name(self):
-        """Test handling agent registration without a name."""
-        # Create test agent data without name
-        agent_data = {"description": "Test agent", "actions": []}
-
-        # Mock the registry's register_agent method
-        self.gateway_output.agent_registry.register_agent = MagicMock()
-
-        # Call _handle_agent_registration method
-        self.gateway_output._handle_agent_registration(agent_data)
-
-        # Verify register_agent was not called
-        self.gateway_output.agent_registry.register_agent.assert_not_called()
+    def test_stop_component(self):
+        """Test stopping the component."""
+        # Call stop_component method
+        self.gateway_output.stop_component()
+        
+        # Verify listener was stopped
+        self.mock_listener.stop.assert_called_once()
 
     @patch("solace_agent_mesh.gateway.components.gateway_output.GatewayOutput.invoke")
     def test_handle_agent_response(self, mock_super_invoke):
@@ -215,18 +211,15 @@ class TestMCPServerGatewayOutput(unittest.TestCase):
         # Verify result
         self.assertEqual(result, {"test_agent": {"name": "test_agent"}})
 
-    def test_handle_timer_event(self):
-        """Test handling timer events."""
-        # Mock the registry's cleanup_expired_agents method
-        self.gateway_output.agent_registry.cleanup_expired_agents = MagicMock(
-            return_value=["expired_agent"]
-        )
-
-        # Call handle_timer_event method
-        self.gateway_output.handle_timer_event("agent_registry_cleanup")
-
-        # Verify cleanup_expired_agents was called
-        self.gateway_output.agent_registry.cleanup_expired_agents.assert_called_once()
+    def test_callbacks(self):
+        """Test agent added/removed callbacks."""
+        # Call _on_agent_added method
+        self.gateway_output._on_agent_added("test_agent", {"name": "test_agent"})
+        
+        # Call _on_agent_removed method
+        self.gateway_output._on_agent_removed("test_agent")
+        
+        # No assertions needed, just verifying no exceptions are raised
 
 
 if __name__ == "__main__":

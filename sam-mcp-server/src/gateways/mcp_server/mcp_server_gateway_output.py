@@ -11,6 +11,7 @@ from solace_ai_connector.common.message import Message
 from solace_ai_connector.common.log import log
 from solace_agent_mesh.gateway.components.gateway_output import GatewayOutput
 from .agent_registry import AgentRegistry
+from .agent_registration_listener import AgentRegistrationListener
 
 # Component configuration
 info = {
@@ -67,17 +68,22 @@ class MCPServerGatewayOutput(GatewayOutput):
         ttl_ms = self.get_config("agent_ttl_ms", 60000)
         self.agent_registry = AgentRegistry(ttl_ms=ttl_ms)
         
+        # Initialize agent registration listener
+        cleanup_interval_ms = self.get_config("agent_cleanup_interval_ms", 60000)
+        self.registration_listener = AgentRegistrationListener(
+            self.agent_registry,
+            cleanup_interval_ms,
+            on_agent_added=self._on_agent_added,
+            on_agent_removed=self._on_agent_removed
+        )
+        self.registration_listener.start()
+        
         # Only log if log_identifier is available (it may not be during testing)
         if hasattr(self, 'log_identifier'):
             log.info(
                 f"{self.log_identifier} Initialized MCP Server Gateway output component "
                 f"with scopes={self.scopes}"
             )
-            
-        # Set up timer for periodic cleanup of expired agents
-        cleanup_interval_ms = self.get_config("agent_cleanup_interval_ms", 60000)
-        if hasattr(self, 'add_timer') and hasattr(self, 'timer_manager') and self.timer_manager:
-            self.add_timer(cleanup_interval_ms, "agent_registry_cleanup", cleanup_interval_ms)
 
     def invoke(self, message: Message, data: Dict[str, Any]) -> Dict[str, Any]:
         """Process responses from agents.
@@ -120,24 +126,8 @@ class MCPServerGatewayOutput(GatewayOutput):
         Args:
             data: The agent registration data.
         """
-        try:
-            agent_name = data.get("agent_name")
-            if not agent_name:
-                log.warning(f"{self.log_identifier} Received agent registration without name")
-                return
-            
-            # Register agent in the registry
-            self.agent_registry.register_agent(data)
-            
-            log.info(f"{self.log_identifier} Registered agent: {agent_name}")
-            
-            # Periodically clean up expired agents
-            expired_agents = self.agent_registry.cleanup_expired_agents()
-            if expired_agents:
-                log.info(f"{self.log_identifier} Removed expired agents: {', '.join(expired_agents)}")
-                
-        except Exception as e:
-            log.error(f"{self.log_identifier} Error handling agent registration: {str(e)}")
+        # Process the registration using the listener
+        self.registration_listener.process_registration(data)
 
     def _handle_agent_response(self, message: Message, data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle agent response messages.
@@ -174,16 +164,24 @@ class MCPServerGatewayOutput(GatewayOutput):
         
         return result
 
-    def handle_timer_event(self, timer_data):
-        """Handle timer events for the component.
+    def _on_agent_added(self, agent_name: str, agent_data: Dict[str, Any]):
+        """Callback when an agent is added to the registry.
         
         Args:
-            timer_data: Data associated with the timer event.
+            agent_name: Name of the agent that was added.
+            agent_data: Data for the agent that was added.
         """
-        if timer_data == "agent_registry_cleanup":
-            expired_agents = self.agent_registry.cleanup_expired_agents()
-            if expired_agents and hasattr(self, 'log_identifier'):
-                log.info(f"{self.log_identifier} Timer cleanup removed expired agents: {', '.join(expired_agents)}")
+        if hasattr(self, 'log_identifier'):
+            log.info(f"{self.log_identifier} Agent added to registry: {agent_name}")
+    
+    def _on_agent_removed(self, agent_name: str):
+        """Callback when an agent is removed from the registry.
+        
+        Args:
+            agent_name: Name of the agent that was removed.
+        """
+        if hasattr(self, 'log_identifier'):
+            log.info(f"{self.log_identifier} Agent removed from registry: {agent_name}")
     def get_filtered_agents(self) -> Dict[str, Dict[str, Any]]:
         """Get agents filtered by configured scopes.
         
@@ -191,3 +189,8 @@ class MCPServerGatewayOutput(GatewayOutput):
             Dictionary of agents matching the scope pattern.
         """
         return self.agent_registry.get_filtered_agents(self.scopes)
+    def stop_component(self):
+        """Stop the component and clean up resources."""
+        if hasattr(self, 'registration_listener'):
+            self.registration_listener.stop()
+        super().stop_component()

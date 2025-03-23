@@ -194,11 +194,11 @@ The queues will be managed as follows:
    - Add filtering by scopes [DONE]
    - Test: Verify registry can store and retrieve agent information [DONE]
 
-3. **Task 1.3: Agent Registration Listener**
-   - Subscribe to agent registration topics
-   - Process registration messages and update registry
-   - Handle agent expiration and cleanup
-   - Test: Verify registration messages are processed correctly
+3. **Task 1.3: Agent Registration Listener** [DONE]
+   - Subscribe to agent registration topics [DONE]
+   - Process registration messages and update registry [DONE]
+   - Handle agent expiration and cleanup [DONE]
+   - Test: Verify registration messages are processed correctly [DONE]
 
 #### Phase 2: MCP Server Implementation
 
