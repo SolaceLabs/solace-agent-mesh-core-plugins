@@ -88,6 +88,64 @@ class MCPServerGatewayOutput(GatewayOutput):
                 f"with scopes={self.scopes}"
             )
 
+    def _handle_timeout_response(
+        self, message: Message, data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Handle timeout response messages.
+
+        Args:
+            message: The input message.
+            data: The timeout response data.
+
+        Returns:
+            The processed response data.
+        """
+        # Process the message using the parent class
+        result = super().invoke(message, data)
+
+        # Add MCP server specific properties
+        user_properties = message.get_user_properties()
+        correlation_id = user_properties.get("mcp_correlation_id")
+        if correlation_id:
+            result["mcp_correlation_id"] = correlation_id
+            
+            # Forward the timeout to the MCP server manager if it exists
+            server_name = user_properties.get("gateway_id")
+            if server_name:
+                # Get the server instance
+                server_manager = self._get_server_manager(server_name)
+                if server_manager:
+                    # Forward the timeout to the server manager
+                    success = server_manager.handle_action_response(
+                        correlation_id, 
+                        {
+                            "error": "Request timed out",
+                            "message": f"The request timed out: {data.get('message', 'No details available')}"
+                        }
+                    )
+                    if success:
+                        log.info(
+                            f"{self.log_identifier} Successfully forwarded timeout for "
+                            f"correlation ID {correlation_id} to MCP server {server_name}"
+                        )
+                    else:
+                        log.warning(
+                            f"{self.log_identifier} Failed to forward timeout for "
+                            f"correlation ID {correlation_id} to MCP server {server_name}"
+                        )
+
+        # Extract agent name from topic
+        topic = message.get_topic()
+        parts = topic.split("/")
+        if len(parts) >= 5:
+            agent_name = parts[4]
+            result["agent_info"] = {
+                "name": agent_name,
+                "description": "Request timed out",
+            }
+
+        return result
+
     def invoke(self, message: Message, data: Dict[str, Any]) -> Dict[str, Any]:
         """Process responses from agents.
 
@@ -110,7 +168,13 @@ class MCPServerGatewayOutput(GatewayOutput):
 
             # Handle agent responses
             if "actionResponse/agent" in topic:
+                # Check if it's a timeout response
+                if "/timeout" in topic:
+                    return self._handle_timeout_response(message, data)
                 return self._handle_agent_response(message, data)
+
+            # Periodically clean up server managers and their pending requests
+            self._cleanup_server_managers()
 
             # Process other messages using the parent class
             return super().invoke(message, data)
