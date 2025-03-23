@@ -309,9 +309,12 @@ class TestMCPServerManager(unittest.TestCase):
         
         # Verify result
         self.assertEqual(len(result.contents), 1)
-        self.assertEqual(result.contents[0]["uri"], "agent://agent1/resource1")
-        self.assertEqual(result.contents[0]["mimeType"], "text/plain")
-        self.assertTrue("Resource content for agent1/resource1" in result.contents[0]["text"])
+        
+        # Access the TextResourceContents object's attributes directly
+        resource_content = result.contents[0]
+        self.assertEqual(resource_content.uri, "agent://agent1/resource1")
+        self.assertEqual(resource_content.mimeType, "text/plain")
+        self.assertTrue("Resource content for agent1/resource1" in resource_content.text)
         
         # Test with non-existent agent
         self.agent_registry.get_agent.return_value = None
