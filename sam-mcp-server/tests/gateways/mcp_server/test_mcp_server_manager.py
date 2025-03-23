@@ -484,9 +484,9 @@ class TestMCPServerManager(unittest.TestCase):
         
         # Access message properties directly instead of using dictionary access
         message = result.messages[0]
-        self.assertEqual(message.get("role"), "user")
-        self.assertEqual(message.get("content").get("type"), "text")
-        self.assertEqual(message.get("content").get("text"), "Hello, World!")
+        self.assertEqual(message.role, "user")
+        self.assertEqual(message.content.type, "text")
+        self.assertEqual(message.content.text, "Hello, World!")
         
         # Test with missing required parameter
         result = self.manager._handle_prompt_get("agent1", "greeting", {})
