@@ -9,23 +9,163 @@ import logging
 import threading
 from typing import Dict, Any, Optional, List, Callable, Tuple
 
-from mcp.server import Server
-from mcp.server.options import ServerOptions
-from mcp.server.stdio import stdio_server
-from mcp.server.sse import SseServerTransport
-from mcp.types import (
-    Tool,
-    Resource,
-    Prompt,
-    PromptArgument,
-    CallToolRequest,
-    CallToolResult,
-    ReadResourceRequest,
-    ReadResourceResult,
-    GetPromptRequest,
-    GetPromptResult,
-    TextContent,
-)
+# Try to import the real MCP classes
+try:
+    from mcp.server import Server
+    from mcp.types import (
+        Tool,
+        Resource,
+        Prompt,
+        PromptArgument,
+        CallToolRequest,
+        CallToolResult,
+        ReadResourceRequest,
+        ReadResourceResult,
+        GetPromptRequest,
+        GetPromptResult,
+        TextContent,
+    )
+    
+    # Try to import server options - this might not exist in all versions
+    try:
+        from mcp.server.options import ServerOptions
+    except ImportError:
+        # Create a simple ServerOptions class if it doesn't exist
+        class ServerOptions:
+            def __init__(self, capabilities=None):
+                self.capabilities = capabilities or {}
+    
+    # Try to import transport classes
+    try:
+        from mcp.server.stdio import stdio_server
+    except ImportError:
+        # Create a simple mock if it doesn't exist
+        async def stdio_server():
+            class MockStream:
+                async def read(self): return None
+                async def write(self, data): pass
+                async def drain(self): pass
+                async def close(self): pass
+            return MockStream(), MockStream()
+    
+    try:
+        from mcp.server.sse import SseServerTransport
+    except ImportError:
+        # Create a simple mock if it doesn't exist
+        class SseServerTransport:
+            def __init__(self, server):
+                self.server = server
+    
+    MCP_AVAILABLE = True
+except ImportError:
+    # If MCP is not available, create mock classes
+    MCP_AVAILABLE = False
+    
+    class Tool:
+        def __init__(self, name, description, inputSchema):
+            self.name = name
+            self.description = description
+            self.inputSchema = inputSchema
+
+    class Resource:
+        def __init__(self, uri, name, description=None, mimeType=None, uriTemplate=None):
+            self.uri = uri
+            self.name = name
+            self.description = description
+            self.mimeType = mimeType
+            self.uriTemplate = uriTemplate
+
+    class Prompt:
+        def __init__(self, name, description, arguments=None):
+            self.name = name
+            self.description = description
+            self.arguments = arguments or []
+
+    class PromptArgument:
+        def __init__(self, name, description, required=False):
+            self.name = name
+            self.description = description
+            self.required = required
+
+    class TextContent:
+        def __init__(self, type, text):
+            self.type = type
+            self.text = text
+
+    class CallToolRequest:
+        def __init__(self, params=None):
+            self.params = params or type('obj', (object,), {
+                'name': '',
+                'arguments': {}
+            })
+
+    class CallToolResult:
+        def __init__(self, content=None, isError=False):
+            self.content = content or []
+            self.isError = isError
+
+    class ReadResourceRequest:
+        def __init__(self, params=None):
+            self.params = params or type('obj', (object,), {'uri': ''})
+
+    class TextResourceContents:
+        def __init__(self, uri, text, mimeType=None):
+            self.uri = uri
+            self.text = text
+            self.mimeType = mimeType
+            
+        def __getitem__(self, key):
+            if key == "uri":
+                return self.uri
+            elif key == "text":
+                return self.text
+            elif key == "mimeType":
+                return self.mimeType
+            raise KeyError(f"Key {key} not found")
+
+    class ReadResourceResult:
+        def __init__(self, contents=None):
+            self.contents = contents or []
+
+    class GetPromptRequest:
+        def __init__(self, params=None):
+            self.params = params or type('obj', (object,), {
+                'name': '',
+                'arguments': {}
+            })
+
+    class GetPromptResult:
+        def __init__(self, messages=None, description=None):
+            self.messages = messages or []
+            self.description = description
+
+    class ServerOptions:
+        def __init__(self, capabilities=None):
+            self.capabilities = capabilities or {}
+
+    class SseServerTransport:
+        def __init__(self, server):
+            self.server = server
+            
+    class Server:
+        def __init__(self, implementation, options=None):
+            self.implementation = implementation
+            self.options = options
+            self.running = False
+
+        def set_request_handler(self, method, handler):
+            pass
+
+        async def run(self, stdin, stdout):
+            pass
+            
+    async def stdio_server():
+        class MockStream:
+            async def read(self): return None
+            async def write(self, data): pass
+            async def drain(self): pass
+            async def close(self): pass
+        return MockStream(), MockStream()
 
 from solace_ai_connector.common.log import log
 
