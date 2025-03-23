@@ -206,7 +206,9 @@ class TestMCPServerManager(unittest.TestCase):
         resource1 = mock_server.register_resource.call_args_list[0][0][0]
         
         # Verify resource1 properties
-        self.assertEqual(resource1.uri, "agent://agent1/resource1")
+        # Convert to string for comparison if it's an AnyUrl object
+        uri = str(resource1.uri) if hasattr(resource1.uri, "__str__") else resource1.uri
+        self.assertEqual(uri, "agent://agent1/resource1")
         self.assertEqual(resource1.name, "resource1")
         self.assertEqual(resource1.description, "Resource 1 (from agent agent1)")
         self.assertEqual(resource1.mimeType, "text/plain")
@@ -215,7 +217,9 @@ class TestMCPServerManager(unittest.TestCase):
         resource2 = mock_server.register_resource.call_args_list[1][0][0]
         
         # Verify resource2 properties
-        self.assertEqual(resource2.uri, "agent://agent1/resource2")
+        # Convert to string for comparison if it's an AnyUrl object
+        uri = str(resource2.uri) if hasattr(resource2.uri, "__str__") else resource2.uri
+        self.assertEqual(uri, "agent://agent1/resource2")
         self.assertEqual(resource2.name, "resource2")
         self.assertEqual(resource2.description, "Resource 2 (from agent agent1)")
         self.assertEqual(resource2.mimeType, "application/json")
