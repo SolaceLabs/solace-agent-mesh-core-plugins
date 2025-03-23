@@ -234,11 +234,11 @@ The queues will be managed as follows:
    - Add request timeout handling [DONE]
    - Test: Verify requests are sent to correct agents [DONE]
 
-9. **Task 3.2: Response Listener**
-   - Subscribe to action response topics
-   - Implement response correlation and routing
-   - Handle timeout notifications
-   - Test: Verify responses are correctly matched to requests
+9. **Task 3.2: Response Listener** [DONE]
+   - Subscribe to action response topics [DONE]
+   - Implement response correlation and routing [DONE]
+   - Handle timeout notifications [DONE]
+   - Test: Verify responses are correctly matched to requests [DONE]
 
 10. **Task 3.3: Response Transformation**
     - Convert agent responses to MCP format
