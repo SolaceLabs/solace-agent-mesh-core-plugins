@@ -180,8 +180,116 @@ The queues will be managed as follows:
 
 ### Implementation Plan
 
-<inst>
-Create a detailed implementation plan with task numbers. Later we will be implmenting this plan step by step.
-Do the plan in a way that we implement a small piece, then test it, then move to the next piece. This way we can
-make sure that we are building the gateway correctly and that it works as expected.
-</inst>
+#### Phase 1: Foundation and Agent Registry
+
+1. **Task 1.1: Create Gateway Interface Structure**
+   - Create basic gateway interface files and directory structure
+   - Implement minimal configuration handling
+   - Set up logging and error handling
+   - Test: Verify gateway loads without errors
+
+2. **Task 1.2: Implement Agent Registry**
+   - Create `AgentRegistry` class to store agent information
+   - Implement methods to add, update, and remove agents
+   - Add filtering by scopes
+   - Test: Verify registry can store and retrieve agent information
+
+3. **Task 1.3: Agent Registration Listener**
+   - Subscribe to agent registration topics
+   - Process registration messages and update registry
+   - Handle agent expiration and cleanup
+   - Test: Verify registration messages are processed correctly
+
+#### Phase 2: MCP Server Implementation
+
+4. **Task 2.1: Basic MCP Server Setup**
+   - Implement MCP server initialization
+   - Set up transport handling (stdio/SSE)
+   - Implement basic request/response handling
+   - Test: Verify server starts and responds to basic requests
+
+5. **Task 2.2: Tool Exposure**
+   - Convert agent actions to MCP tools
+   - Implement tool listing and discovery
+   - Add parameter validation
+   - Test: Verify tools are correctly exposed to MCP clients
+
+6. **Task 2.3: Resource Handling**
+   - Implement resource listing and retrieval
+   - Add file service integration
+   - Handle binary and text resources
+   - Test: Verify resources can be listed and retrieved
+
+7. **Task 2.4: Prompt Support**
+   - Implement prompt template handling
+   - Add prompt listing and retrieval
+   - Support parameter substitution
+   - Test: Verify prompts are correctly exposed and usable
+
+#### Phase 3: Direct Agent Invocation
+
+8. **Task 3.1: Action Request Sender**
+   - Implement direct agent action invocation
+   - Create correlation ID tracking
+   - Add request timeout handling
+   - Test: Verify requests are sent to correct agents
+
+9. **Task 3.2: Response Listener**
+   - Subscribe to action response topics
+   - Implement response correlation and routing
+   - Handle timeout notifications
+   - Test: Verify responses are correctly matched to requests
+
+10. **Task 3.3: Response Transformation**
+    - Convert agent responses to MCP format
+    - Handle different response types (text, files)
+    - Implement error handling and status codes
+    - Test: Verify responses are correctly transformed
+
+#### Phase 4: Advanced Features and Optimization
+
+11. **Task 4.1: Sampling Support**
+    - Implement LLM sampling capability
+    - Add model preference handling
+    - Support system prompts and context inclusion
+    - Test: Verify sampling requests work correctly
+
+12. **Task 4.2: Session Management**
+    - Implement client session tracking
+    - Add authentication and authorization
+    - Support multiple concurrent clients
+    - Test: Verify multiple clients can connect simultaneously
+
+13. **Task 4.3: Performance Optimization**
+    - Implement request batching
+    - Add response caching
+    - Optimize message serialization/deserialization
+    - Test: Verify performance improvements
+
+14. **Task 4.4: Monitoring and Diagnostics**
+    - Add metrics collection
+    - Implement health checks
+    - Create diagnostic endpoints
+    - Test: Verify monitoring provides useful information
+
+#### Phase 5: Integration and Documentation
+
+15. **Task 5.1: Integration Testing**
+    - Test with multiple agent types
+    - Verify interoperability with different MCP clients
+    - Test error handling and recovery
+    - Test: Verify end-to-end functionality
+
+16. **Task 5.2: Documentation**
+    - Create user documentation
+    - Add configuration examples
+    - Document API and interfaces
+    - Test: Verify documentation accuracy
+
+17. **Task 5.3: Deployment and Packaging**
+    - Finalize packaging
+    - Create deployment scripts
+    - Add configuration templates
+    - Test: Verify deployment in different environments
+
+This implementation plan breaks down the development into logical phases with specific, testable tasks. Each task builds on previous work and can be tested independently to ensure the gateway is built correctly and functions as expected.
