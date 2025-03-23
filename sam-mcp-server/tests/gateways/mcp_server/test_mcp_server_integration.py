@@ -422,7 +422,7 @@ class TestMCPServerIntegration(unittest.TestCase):
         self.assertIn("content", response)
         self.assertTrue(response.get("isError", False))
         self.assertEqual(response["content"][0]["type"], "text")
-        self.assertEqual(response["content"][0]["text"], "City not found in database")
+        self.assertEqual(response["content"][0]["text"], "Error: City not found in database")
         
     def test_session_management(self):
         """Test session management functionality."""
