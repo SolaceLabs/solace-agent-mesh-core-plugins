@@ -497,7 +497,9 @@ class TestMCPServerIntegration(unittest.TestCase):
         
         # Verify result
         self.assertEqual(len(result.contents), 1)
-        self.assertEqual(result.contents[0].uri, "agent://geo_information/cities")
+        # Convert to string for comparison if it's an AnyUrl object
+        uri = str(result.contents[0].uri) if hasattr(result.contents[0].uri, "__str__") else result.contents[0].uri
+        self.assertEqual(uri, "agent://geo_information/cities")
         self.assertEqual(result.contents[0].mimeType, "application/json")
         self.assertIn("Resource content for geo_information/cities", result.contents[0].text)
         
