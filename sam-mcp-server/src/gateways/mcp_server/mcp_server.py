@@ -247,11 +247,14 @@ class MCPServer:
             The resource read result.
         """
         resource_uri = request.params.uri
-        if resource_uri not in self.resource_callbacks:
+        # Convert AnyUrl to string if needed
+        uri_key = str(resource_uri) if hasattr(resource_uri, "__str__") else resource_uri
+        
+        if uri_key not in self.resource_callbacks:
             return ReadResourceResult(contents=[])
 
         try:
-            callback = self.resource_callbacks[resource_uri]
+            callback = self.resource_callbacks[uri_key]
             result = callback()
 
             # Convert result to ReadResourceResult if it's not already
@@ -397,7 +400,9 @@ class MCPServer:
             callback: The callback to execute when the resource is read.
         """
         self.resources.append(resource)
-        self.resource_callbacks[resource.uri] = callback
+        # Convert AnyUrl to string if needed
+        uri_key = str(resource.uri) if hasattr(resource.uri, "__str__") else resource.uri
+        self.resource_callbacks[uri_key] = callback
         log.info(f"{self.log_identifier}Registered resource: {resource.uri}")
 
     def register_prompt(self, prompt: Prompt, callback: Callable) -> None:
