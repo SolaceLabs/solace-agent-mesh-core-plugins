@@ -60,26 +60,26 @@ class MCPServerGatewayOutput(GatewayOutput):
             **kwargs: Additional keyword arguments passed to parent.
         """
         super().__init__(**kwargs)
-        
+
         # Get configuration
         self.scopes = self.get_config("mcp_server_scopes", "*:*:*")
-        
+
         # Initialize agent registry with TTL from config
         ttl_ms = self.get_config("agent_ttl_ms", 60000)
         self.agent_registry = AgentRegistry(ttl_ms=ttl_ms)
-        
+
         # Initialize agent registration listener
         cleanup_interval_ms = self.get_config("agent_cleanup_interval_ms", 60000)
         self.registration_listener = AgentRegistrationListener(
             self.agent_registry,
             cleanup_interval_ms,
             on_agent_added=self._on_agent_added,
-            on_agent_removed=self._on_agent_removed
+            on_agent_removed=self._on_agent_removed,
         )
         self.registration_listener.start()
-        
+
         # Only log if log_identifier is available (it may not be during testing)
-        if hasattr(self, 'log_identifier'):
+        if hasattr(self, "log_identifier"):
             log.info(
                 f"{self.log_identifier} Initialized MCP Server Gateway output component "
                 f"with scopes={self.scopes}"
@@ -98,17 +98,17 @@ class MCPServerGatewayOutput(GatewayOutput):
         try:
             # Get message topic to determine message type
             topic = message.get_topic()
-            
+
             # Handle agent registration
             if "register/agent" in topic:
                 self._handle_agent_registration(data)
                 self.discard_current_message()
                 return None
-            
+
             # Handle agent responses
             if "actionResponse/agent" in topic:
                 return self._handle_agent_response(message, data)
-            
+
             # Process other messages using the parent class
             return super().invoke(message, data)
         except Exception as e:
@@ -129,7 +129,9 @@ class MCPServerGatewayOutput(GatewayOutput):
         # Process the registration using the listener
         self.registration_listener.process_registration(data)
 
-    def _handle_agent_response(self, message: Message, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _handle_agent_response(
+        self, message: Message, data: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle agent response messages.
 
         Args:
@@ -141,56 +143,58 @@ class MCPServerGatewayOutput(GatewayOutput):
         """
         # Process the message using the parent class
         result = super().invoke(message, data)
-        
+
         # Add MCP server specific properties
         user_properties = message.get_user_properties()
         correlation_id = user_properties.get("mcp_correlation_id")
         if correlation_id:
             result["mcp_correlation_id"] = correlation_id
-            
+
         # Add agent information if available
         topic = message.get_topic()
         if "actionResponse/agent" in topic:
             # Extract agent name from topic
             parts = topic.split("/")
-            if len(parts) >= 4:
-                agent_name = parts[3]
+            if len(parts) >= 5:
+                agent_name = parts[4]
                 agent = self.agent_registry.get_agent(agent_name)
                 if agent:
                     result["agent_info"] = {
                         "name": agent_name,
-                        "description": agent.get("description", "")
+                        "description": agent.get("description", ""),
                     }
-        
+
         return result
 
     def _on_agent_added(self, agent_name: str, agent_data: Dict[str, Any]):
         """Callback when an agent is added to the registry.
-        
+
         Args:
             agent_name: Name of the agent that was added.
             agent_data: Data for the agent that was added.
         """
-        if hasattr(self, 'log_identifier'):
+        if hasattr(self, "log_identifier"):
             log.info(f"{self.log_identifier} Agent added to registry: {agent_name}")
-    
+
     def _on_agent_removed(self, agent_name: str):
         """Callback when an agent is removed from the registry.
-        
+
         Args:
             agent_name: Name of the agent that was removed.
         """
-        if hasattr(self, 'log_identifier'):
+        if hasattr(self, "log_identifier"):
             log.info(f"{self.log_identifier} Agent removed from registry: {agent_name}")
+
     def get_filtered_agents(self) -> Dict[str, Dict[str, Any]]:
         """Get agents filtered by configured scopes.
-        
+
         Returns:
             Dictionary of agents matching the scope pattern.
         """
         return self.agent_registry.get_filtered_agents(self.scopes)
+
     def stop_component(self):
         """Stop the component and clean up resources."""
-        if hasattr(self, 'registration_listener') and self.registration_listener:
+        if hasattr(self, "registration_listener") and self.registration_listener:
             self.registration_listener.stop()
         super().stop_component()

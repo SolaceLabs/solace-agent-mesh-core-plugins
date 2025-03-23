@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 sam-sql-database-old/*
 *.db
+*.aider
 
 # C extensions
 *.so
