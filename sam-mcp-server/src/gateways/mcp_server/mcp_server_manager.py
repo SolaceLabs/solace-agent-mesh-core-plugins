@@ -371,12 +371,15 @@ class MCPServerManager:
             content = f"Resource content for {agent_name}/{resource_uri}"
             mime_type = resource.get("mime_type", "text/plain")
             
+            from .mcp_server import TextResourceContents
             return ReadResourceResult(
-                contents=[{
-                    "uri": f"agent://{agent_name}/{resource_uri}",
-                    "text": content,
-                    "mimeType": mime_type
-                }]
+                contents=[
+                    TextResourceContents(
+                        uri=f"agent://{agent_name}/{resource_uri}",
+                        text=content,
+                        mimeType=mime_type
+                    )
+                ]
             )
         except Exception as e:
             log.error(

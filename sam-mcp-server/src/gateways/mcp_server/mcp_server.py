@@ -57,6 +57,21 @@ class ReadResourceRequest:
     def __init__(self, params=None):
         self.params = params or type('obj', (object,), {'uri': ''})
 
+class TextResourceContents:
+    def __init__(self, uri, text, mimeType=None):
+        self.uri = uri
+        self.text = text
+        self.mimeType = mimeType
+        
+    def __getitem__(self, key):
+        if key == "uri":
+            return self.uri
+        elif key == "text":
+            return self.text
+        elif key == "mimeType":
+            return self.mimeType
+        raise KeyError(f"Key {key} not found")
+
 class ReadResourceResult:
     def __init__(self, contents=None):
         self.contents = contents or []
