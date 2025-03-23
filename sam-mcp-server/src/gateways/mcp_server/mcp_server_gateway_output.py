@@ -159,6 +159,7 @@ class MCPServerGatewayOutput(GatewayOutput):
                 if agent:
                     result["agent_info"] = {
                         "name": agent_name,
+                        "agent": agent_name,
                         "description": agent.get("description", "")
                     }
         
