@@ -129,7 +129,9 @@ class AgentRegistry:
 
         return expired_agents
 
-    def _agent_matches_scopes(self, agent_data: Dict[str, Any], scope_patterns: List[str]) -> bool:
+    def _agent_matches_scopes(
+        self, agent_data: Dict[str, Any], scope_patterns: List[str]
+    ) -> bool:
         """Check if an agent matches any of the scope patterns.
 
         Args:
@@ -161,15 +163,15 @@ class AgentRegistry:
             # Check actions
             for action in actions:
                 action_name = action.get("name", "")
-                
+
                 # Check action name match
                 if action_pattern != "*" and action_pattern != action_name:
                     continue
-                
+
                 # If permission is wildcard, we have a match
                 if permission_pattern == "*":
                     return True
-                
+
                 # Check specific permissions (not implemented yet)
                 # This would check action.get("required_scopes") against permission_pattern
 

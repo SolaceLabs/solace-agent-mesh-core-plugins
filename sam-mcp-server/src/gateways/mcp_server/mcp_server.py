@@ -10,6 +10,7 @@ from typing import Dict, Any, List, Callable
 
 from mcp.server import Server
 from mcp.server.sse import SseServerTransport
+from mcp.server.stdio import stdio_server
 from mcp.types import (
     Tool,
     Resource,
@@ -340,8 +341,6 @@ class MCPServer:
 
             # Use a try-except block to handle the case where stdio_server is not available
             try:
-                # Try to import and use the real stdio_server
-                from mcp.server.stdio import stdio_server
 
                 async with stdio_server() as streams:
                     # The API has changed - stdio_server now returns a tuple of streams

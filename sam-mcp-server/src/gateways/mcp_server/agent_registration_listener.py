@@ -6,7 +6,7 @@ and updates the agent registry accordingly.
 
 import threading
 import time
-from typing import Dict, Any, Optional, List, Callable
+from typing import Dict, Any, Optional, Callable
 
 from solace_ai_connector.common.log import log
 from .agent_registry import AgentRegistry
@@ -26,11 +26,11 @@ class AgentRegistrationListener:
     """
 
     def __init__(
-        self, 
-        agent_registry: AgentRegistry, 
+        self,
+        agent_registry: AgentRegistry,
         cleanup_interval_ms: int = 60000,
         on_agent_added: Optional[Callable[[str, Dict[str, Any]], None]] = None,
-        on_agent_removed: Optional[Callable[[str], None]] = None
+        on_agent_removed: Optional[Callable[[str], None]] = None,
     ):
         """Initialize the agent registration listener.
 
@@ -87,24 +87,28 @@ class AgentRegistrationListener:
         try:
             agent_name = data.get("agent_name")
             if not agent_name:
-                log.warning(f"{self.log_identifier}Received agent registration without name")
+                log.warning(
+                    f"{self.log_identifier}Received agent registration without name"
+                )
                 return False
 
             # Check if this is a new agent
             is_new = self.agent_registry.get_agent(agent_name) is None
-            
+
             # Register agent in the registry
             self.agent_registry.register_agent(data)
-            
+
             # Call the callback if this is a new agent
             if is_new and self.on_agent_added:
                 self.on_agent_added(agent_name, data)
-                
+
             log.info(f"{self.log_identifier}Registered agent: {agent_name}")
             return True
-                
+
         except Exception as e:
-            log.error(f"{self.log_identifier}Error handling agent registration: {str(e)}")
+            log.error(
+                f"{self.log_identifier}Error handling agent registration: {str(e)}"
+            )
             return False
 
     def _cleanup_loop(self):
@@ -113,16 +117,18 @@ class AgentRegistrationListener:
             try:
                 # Sleep for the cleanup interval
                 time.sleep(self.cleanup_interval_ms / 1000)
-                
+
                 # Clean up expired agents
                 expired_agents = self.agent_registry.cleanup_expired_agents()
                 if expired_agents:
-                    log.info(f"{self.log_identifier}Removed expired agents: {', '.join(expired_agents)}")
-                    
+                    log.info(
+                        f"{self.log_identifier}Removed expired agents: {', '.join(expired_agents)}"
+                    )
+
                     # Call the callback for each removed agent
                     if self.on_agent_removed:
                         for agent_name in expired_agents:
                             self.on_agent_removed(agent_name)
-                            
+
             except Exception as e:
                 log.error(f"{self.log_identifier}Error in cleanup loop: {str(e)}")

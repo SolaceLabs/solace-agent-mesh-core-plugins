@@ -5,8 +5,7 @@ handles incoming requests from MCP clients and forwards them to the appropriate
 agents.
 """
 
-import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 from solace_ai_connector.common.message import Message
 from solace_ai_connector.common.log import log
@@ -69,15 +68,15 @@ class MCPServerGatewayInput(GatewayInput):
             **kwargs: Additional keyword arguments passed to parent.
         """
         super().__init__(**kwargs)
-        
+
         # Get configuration
         self.scopes = self.get_config("mcp_server_scopes", "*:*:*")
         self.port = self.get_config("mcp_server_port", 8080)
         self.host = self.get_config("mcp_server_host", "0.0.0.0")
         self.transport = self.get_config("mcp_server_transport", "sse")
-        
+
         # Only log if log_identifier is available (it may not be during testing)
-        if hasattr(self, 'log_identifier'):
+        if hasattr(self, "log_identifier"):
             log.info(
                 f"{self.log_identifier} Initialized MCP Server Gateway input component "
                 f"with scopes={self.scopes}, port={self.port}, host={self.host}, "
@@ -97,12 +96,12 @@ class MCPServerGatewayInput(GatewayInput):
         try:
             # Process the message using the parent class
             result = super().invoke(message, data)
-            
+
             # Add MCP server specific properties
             user_properties = message.get_user_properties()
             user_properties["mcp_server_scopes"] = self.scopes
             message.set_user_properties(user_properties)
-            
+
             return result
         except Exception as e:
             log.error(f"{self.log_identifier} Error processing MCP request: {str(e)}")

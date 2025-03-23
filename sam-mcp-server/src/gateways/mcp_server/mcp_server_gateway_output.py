@@ -4,8 +4,7 @@ This module provides the output component for the MCP Server Gateway, which
 handles responses from agents and forwards them to MCP clients.
 """
 
-import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any
 
 from solace_ai_connector.common.message import Message
 from solace_ai_connector.common.log import log
@@ -77,7 +76,7 @@ class MCPServerGatewayOutput(GatewayOutput):
             on_agent_removed=self._on_agent_removed,
         )
         self.registration_listener.start()
-        
+
         # Cache for server managers
         self.server_managers = {}
 
@@ -108,16 +107,16 @@ class MCPServerGatewayOutput(GatewayOutput):
         correlation_id = user_properties.get("mcp_correlation_id")
         if correlation_id:
             result["mcp_correlation_id"] = correlation_id
-            
+
             # Create timeout error data
             timeout_data = {
                 "error_info": "Request timed out",
-                "message": f"The request timed out: {data.get('message', 'No details available')}"
+                "message": f"The request timed out: {data.get('message', 'No details available')}",
             }
-            
+
             # Transform to MCP format
             transformed_data = self._transform_response_to_mcp_format(timeout_data)
-            
+
             # Forward the timeout to the MCP server manager if it exists
             server_name = user_properties.get("gateway_id")
             if server_name:
@@ -126,8 +125,7 @@ class MCPServerGatewayOutput(GatewayOutput):
                 if server_manager:
                     # Forward the timeout to the server manager
                     success = server_manager.handle_action_response(
-                        correlation_id, 
-                        transformed_data
+                        correlation_id, transformed_data
                     )
                     if success:
                         log.info(
@@ -167,13 +165,13 @@ class MCPServerGatewayOutput(GatewayOutput):
             topic = message.get_topic()
 
             # Handle agent registration
-            if "register/agent" in topic:
+            if "/register/agent" in topic:
                 self._handle_agent_registration(data)
                 self.discard_current_message()
                 return None
 
             # Handle agent responses
-            if "actionResponse/agent" in topic:
+            if "/actionResponse/agent" in topic:
                 # Check if it's a timeout response
                 if "/timeout" in topic:
                     return self._handle_timeout_response(message, data)
@@ -204,27 +202,27 @@ class MCPServerGatewayOutput(GatewayOutput):
 
     def _get_server_manager(self, server_name: str):
         """Get or create a server manager for the given server name.
-        
+
         Args:
             server_name: Name of the MCP server.
-            
+
         Returns:
             The server manager instance, or None if it couldn't be created.
         """
         if server_name in self.server_managers:
             return self.server_managers[server_name]
-            
+
         try:
             # Import here to avoid circular imports
             from .mcp_server_manager import MCPServerManager
-            
+
             # Create a new server manager
             manager = MCPServerManager(
                 agent_registry=self.agent_registry,
                 server_name=server_name,
-                scopes=self.scopes
+                scopes=self.scopes,
             )
-            
+
             # Initialize the manager
             if manager.initialize():
                 self.server_managers[server_name] = manager
@@ -237,10 +235,10 @@ class MCPServerGatewayOutput(GatewayOutput):
         except Exception as e:
             log.error(
                 f"{self.log_identifier} Error creating MCP server manager for {server_name}: {str(e)}",
-                exc_info=True
+                exc_info=True,
             )
             return None
-            
+
     def _handle_agent_response(
         self, message: Message, data: Dict[str, Any]
     ) -> Dict[str, Any]:
@@ -261,10 +259,10 @@ class MCPServerGatewayOutput(GatewayOutput):
         correlation_id = user_properties.get("mcp_correlation_id")
         if correlation_id:
             result["mcp_correlation_id"] = correlation_id
-            
+
             # Transform the response data to MCP format
             transformed_data = self._transform_response_to_mcp_format(data)
-            
+
             # Forward the transformed response to the MCP server manager if it exists
             server_name = user_properties.get("gateway_id")
             if server_name:
@@ -272,7 +270,9 @@ class MCPServerGatewayOutput(GatewayOutput):
                 server_manager = self._get_server_manager(server_name)
                 if server_manager:
                     # Forward the response to the server manager
-                    success = server_manager.handle_action_response(correlation_id, transformed_data)
+                    success = server_manager.handle_action_response(
+                        correlation_id, transformed_data
+                    )
                     if success:
                         log.info(
                             f"{self.log_identifier} Successfully forwarded response for "
@@ -299,75 +299,88 @@ class MCPServerGatewayOutput(GatewayOutput):
                     }
 
         return result
-        
+
     def _transform_response_to_mcp_format(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Transform agent response data to MCP format.
-        
+
         Args:
             data: The agent response data.
-            
+
         Returns:
             The transformed data in MCP format.
         """
         transformed_data = {}
-        
+
         # Handle text response
         if "message" in data:
             transformed_data["content"] = [{"type": "text", "text": data["message"]}]
-        
+
         # Handle file responses
         if "files" in data and isinstance(data["files"], list):
             if "content" not in transformed_data:
                 transformed_data["content"] = []
-                
+
             for file in data["files"]:
                 if "content" in file and "mime_type" in file:
                     # Add file content as base64-encoded data
-                    transformed_data["content"].append({
-                        "type": "file",
-                        "name": file.get("name", "file"),
-                        "data": file["content"],
-                        "mimeType": file["mime_type"]
-                    })
+                    transformed_data["content"].append(
+                        {
+                            "type": "file",
+                            "name": file.get("name", "file"),
+                            "data": file["content"],
+                            "mimeType": file["mime_type"],
+                        }
+                    )
                 elif "url" in file:
                     # Add file reference
-                    transformed_data["content"].append({
-                        "type": "file",
-                        "name": file.get("name", "file"),
-                        "url": file["url"],
-                        "mimeType": file.get("mime_type", "application/octet-stream")
-                    })
-        
+                    transformed_data["content"].append(
+                        {
+                            "type": "file",
+                            "name": file.get("name", "file"),
+                            "url": file["url"],
+                            "mimeType": file.get(
+                                "mime_type", "application/octet-stream"
+                            ),
+                        }
+                    )
+
         # Handle error responses
         if "error_info" in data:
             transformed_data["isError"] = True
             error_message = "Error occurred"
-            
+
             if isinstance(data["error_info"], dict):
                 error_message = data["error_info"].get("error_message", error_message)
             elif isinstance(data["error_info"], str):
                 error_message = data["error_info"]
-            
+
             # Remove "Error: " prefix if present
             if error_message.startswith("Error: "):
                 error_message = error_message[7:]
-                
+
             # Add error message if not already in content
             if "content" not in transformed_data:
                 transformed_data["content"] = [{"type": "text", "text": error_message}]
-            elif not any(c.get("text") == error_message for c in transformed_data["content"] 
-                         if c.get("type") == "text"):
-                transformed_data["content"].append({"type": "text", "text": error_message})
-        
+            elif not any(
+                c.get("text") == error_message
+                for c in transformed_data["content"]
+                if c.get("type") == "text"
+            ):
+                transformed_data["content"].append(
+                    {"type": "text", "text": error_message}
+                )
+
         # Ensure we always have content
         if "content" not in transformed_data or not transformed_data["content"]:
-            transformed_data["content"] = [{"type": "text", "text": "No content available"}]
-            
+            transformed_data["content"] = [
+                {"type": "text", "text": "No content available"}
+            ]
+
         return transformed_data
-        
+
     def _cleanup_server_managers(self):
         """Clean up server managers and their pending requests.
-        
+
         This method iterates through all server managers and calls
         cleanup_pending_requests on each one to remove timed out requests.
         """
@@ -383,7 +396,7 @@ class MCPServerGatewayOutput(GatewayOutput):
                 except Exception as e:
                     log.error(
                         f"{self.log_identifier} Error cleaning up server manager {server_name}: {str(e)}",
-                        exc_info=True
+                        exc_info=True,
                     )
 
     def _on_agent_added(self, agent_name: str, agent_data: Dict[str, Any]):
@@ -417,11 +430,11 @@ class MCPServerGatewayOutput(GatewayOutput):
         """Stop the component and clean up resources."""
         if hasattr(self, "registration_listener") and self.registration_listener:
             self.registration_listener.stop()
-            
+
         # Shut down all server managers
         if hasattr(self, "server_managers"):
             for manager in list(self.server_managers.values()):
                 manager.shutdown()
             self.server_managers.clear()
-            
+
         super().stop_component()

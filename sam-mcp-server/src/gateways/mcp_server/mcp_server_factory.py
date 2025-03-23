@@ -5,7 +5,7 @@ instances, ensuring that only one instance exists per configuration.
 """
 
 import threading
-from typing import Dict, Any, Optional
+from typing import Dict, Optional
 
 from .mcp_server import MCPServer
 

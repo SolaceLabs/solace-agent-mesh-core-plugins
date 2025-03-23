@@ -172,7 +172,7 @@ class SessionManager:
             session_id = self.clients.get(client_id)
             if not session_id:
                 return None
-            
+
             # Get the session directly from the sessions dictionary
             # instead of calling get_session to avoid deadlock
             session = self.sessions.get(session_id)
@@ -236,12 +236,12 @@ class SessionManager:
         # In a real implementation, this would validate credentials against
         # a user database or other authentication system
         username = credentials.get("username", "anonymous")
-        
+
         # Default to all scopes for now
         # In a real implementation, scopes would be determined based on
         # the authenticated user's permissions
         scopes = set(["*:*:*"])
-        
+
         # Create and return the session
         return self.create_session(client_id, username, scopes)
 
