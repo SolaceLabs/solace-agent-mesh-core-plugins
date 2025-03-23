@@ -478,13 +478,17 @@ class TestMCPServerIntegration(unittest.TestCase):
         
         # Verify geo_information resource
         geo_resource = resource_calls[0][0][0]
-        self.assertEqual(geo_resource.uri, "agent://geo_information/cities")
+        # Convert to string for comparison if it's an AnyUrl object
+        uri = str(geo_resource.uri) if hasattr(geo_resource.uri, "__str__") else geo_resource.uri
+        self.assertEqual(uri, "agent://geo_information/cities")
         self.assertEqual(geo_resource.name, "supported_cities")
         self.assertEqual(geo_resource.mimeType, "application/json")
         
         # Verify sql_database resource
         db_resource = resource_calls[1][0][0]
-        self.assertEqual(db_resource.uri, "agent://sql_database/schema")
+        # Convert to string for comparison if it's an AnyUrl object
+        uri = str(db_resource.uri) if hasattr(db_resource.uri, "__str__") else db_resource.uri
+        self.assertEqual(uri, "agent://sql_database/schema")
         self.assertEqual(db_resource.name, "schema")
         self.assertEqual(db_resource.mimeType, "text/plain")
         
