@@ -41,6 +41,7 @@ class MCPServerManager:
         port: int = 8080,
         transport_type: str = "stdio",
         scopes: str = "*:*:*",
+        session_ttl_seconds: int = 3600,
     ):
         """Initialize the MCP server manager.
 
@@ -51,6 +52,7 @@ class MCPServerManager:
             port: Port for the server (for SSE transport).
             transport_type: Type of transport to use ('stdio' or 'sse').
             scopes: Scopes to filter agents by.
+            session_ttl_seconds: Time-to-live for sessions in seconds.
         """
         self.agent_registry = agent_registry
         self.server_name = server_name
@@ -66,6 +68,10 @@ class MCPServerManager:
         
         # Flag to track initialization
         self.initialized = False
+        
+        # Initialize session manager
+        from .session_manager import SessionManager
+        self.session_manager = SessionManager(session_ttl_seconds=session_ttl_seconds)
         
     def initialize(self) -> bool:
         """Initialize the MCP server.
@@ -112,6 +118,11 @@ class MCPServerManager:
             self.server = None
             self.initialized = False
             log.info(f"{self.log_identifier}Shut down MCP server")
+            
+            # Clear all sessions
+            if hasattr(self, 'session_manager'):
+                for session_id in list(self.session_manager.sessions.keys()):
+                    self.session_manager.remove_session(session_id)
             
     def _register_agent_tools(self) -> None:
         """Register agent actions as MCP tools."""
@@ -678,6 +689,66 @@ class MCPServerManager:
             
             return True
             
+    def authenticate_client(self, client_id: str, credentials: Dict[str, Any]) -> Optional[str]:
+        """Authenticate a client and create a session.
+        
+        Args:
+            client_id: Identifier for the client.
+            credentials: Authentication credentials.
+            
+        Returns:
+            Session ID if authentication was successful, None otherwise.
+        """
+        try:
+            session = self.session_manager.authenticate(client_id, credentials)
+            if session:
+                log.info(f"{self.log_identifier}Client {client_id} authenticated successfully")
+                return session.session_id
+            else:
+                log.warning(f"{self.log_identifier}Authentication failed for client {client_id}")
+                return None
+        except Exception as e:
+            log.error(
+                f"{self.log_identifier}Error authenticating client {client_id}: {str(e)}",
+                exc_info=True
+            )
+            return None
+            
+    def authorize_request(self, session_id: str, scope: str) -> bool:
+        """Check if a session is authorized for a specific scope.
+        
+        Args:
+            session_id: The session ID to check.
+            scope: The scope to check.
+            
+        Returns:
+            True if the session is authorized, False otherwise.
+        """
+        try:
+            authorized = self.session_manager.authorize(session_id, scope)
+            if not authorized:
+                log.warning(
+                    f"{self.log_identifier}Session {session_id} not authorized for scope {scope}"
+                )
+            return authorized
+        except Exception as e:
+            log.error(
+                f"{self.log_identifier}Error authorizing session {session_id} for scope {scope}: {str(e)}",
+                exc_info=True
+            )
+            return False
+            
+    def get_session(self, session_id: str):
+        """Get a session by ID.
+        
+        Args:
+            session_id: The session ID to retrieve.
+            
+        Returns:
+            The session if found, None otherwise.
+        """
+        return self.session_manager.get_session(session_id)
+            
     def cleanup_pending_requests(self, max_age_seconds: int = 60) -> List[str]:
         """Clean up pending requests that have timed out.
         
@@ -711,5 +782,10 @@ class MCPServerManager:
                     cleaned_up.append(correlation_id)
                     
                     log.warning(f"{self.log_identifier}Request to {agent_name}.{action_name} timed out after {max_age_seconds} seconds")
+            
+            # Also clean up expired sessions
+            expired_sessions = self.session_manager.cleanup_expired_sessions()
+            if expired_sessions:
+                log.info(f"{self.log_identifier}Cleaned up {len(expired_sessions)} expired sessions")
             
             return cleaned_up
