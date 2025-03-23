@@ -14,11 +14,17 @@ from mcp.server.options import ServerOptions
 from mcp.server.stdio import stdio_server
 from mcp.server.sse import SseServerTransport
 from mcp.types import (
-    Tool, Resource, Prompt, PromptArgument, 
-    CallToolRequest, CallToolResult, 
-    ReadResourceRequest, ReadResourceResult,
-    GetPromptRequest, GetPromptResult,
-    TextContent
+    Tool,
+    Resource,
+    Prompt,
+    PromptArgument,
+    CallToolRequest,
+    CallToolResult,
+    ReadResourceRequest,
+    ReadResourceResult,
+    GetPromptRequest,
+    GetPromptResult,
+    TextContent,
 )
 
 from solace_ai_connector.common.log import log
@@ -62,29 +68,29 @@ class MCPServer:
         self.server = None
         self.running = False
         self.server_thread = None
-        
+
         # Callback registries
         self.tool_callbacks: Dict[str, Callable] = {}
         self.resource_callbacks: Dict[str, Callable] = {}
         self.prompt_callbacks: Dict[str, Callable] = {}
-        
+
         # Tool, resource, and prompt registries
         self.tools: List[Tool] = []
         self.resources: List[Resource] = []
         self.prompts: List[Prompt] = []
-        
+
         self.log_identifier = f"[MCPServer:{name}] "
-        
+
     def start(self):
         """Start the MCP server.
-        
+
         This method starts the server in a separate thread for stdio transport,
         or directly for SSE transport.
         """
         if self.running:
             log.warning(f"{self.log_identifier}Server already running")
             return
-            
+
         if self.transport_type == "stdio":
             self.server_thread = threading.Thread(target=self._run_stdio_server)
             self.server_thread.daemon = True
@@ -104,22 +110,22 @@ class MCPServer:
             raise ValueError(
                 f"{self.log_identifier}Unsupported transport type: {self.transport_type}"
             )
-            
+
     def stop(self):
         """Stop the MCP server."""
         if not self.running:
             return
-            
+
         self.running = False
         if self.server_thread:
             self.server_thread.join(timeout=1.0)
             self.server_thread = None
-            
+
         log.info(f"{self.log_identifier}Stopped MCP server")
-        
+
     def _create_server(self) -> Server:
         """Create the MCP server instance.
-        
+
         Returns:
             The MCP server instance.
         """
@@ -133,47 +139,37 @@ class MCPServer:
                 }
             ),
         )
-        
+
         # Register handlers for tools, resources, and prompts
         server.set_request_handler(
-            "tools/list", 
-            lambda request, extra: {"tools": self.tools}
+            "tools/list", lambda request, extra: {"tools": self.tools}
         )
-        
+
+        server.set_request_handler("tools/call", self._handle_tool_call)
+
         server.set_request_handler(
-            "tools/call",
-            self._handle_tool_call
+            "resources/list", lambda request, extra: {"resources": self.resources}
         )
-        
+
+        server.set_request_handler("resources/read", self._handle_resource_read)
+
         server.set_request_handler(
-            "resources/list",
-            lambda request, extra: {"resources": self.resources}
+            "prompts/list", lambda request, extra: {"prompts": self.prompts}
         )
-        
-        server.set_request_handler(
-            "resources/read",
-            self._handle_resource_read
-        )
-        
-        server.set_request_handler(
-            "prompts/list",
-            lambda request, extra: {"prompts": self.prompts}
-        )
-        
-        server.set_request_handler(
-            "prompts/get",
-            self._handle_prompt_get
-        )
-        
+
+        server.set_request_handler("prompts/get", self._handle_prompt_get)
+
         return server
-        
-    async def _handle_tool_call(self, request: CallToolRequest, extra: Any) -> CallToolResult:
+
+    async def _handle_tool_call(
+        self, request: CallToolRequest, extra: Any
+    ) -> CallToolResult:
         """Handle a tool call request.
-        
+
         Args:
             request: The tool call request.
             extra: Extra request information.
-            
+
         Returns:
             The tool call result.
         """
@@ -181,13 +177,13 @@ class MCPServer:
         if tool_name not in self.tool_callbacks:
             return CallToolResult(
                 content=[TextContent(type="text", text=f"Tool not found: {tool_name}")],
-                isError=True
+                isError=True,
             )
-            
+
         try:
             callback = self.tool_callbacks[tool_name]
             result = callback(request.params.arguments)
-            
+
             # Convert result to CallToolResult if it's not already
             if not isinstance(result, CallToolResult):
                 if isinstance(result, str):
@@ -202,142 +198,141 @@ class MCPServer:
                     result = CallToolResult(
                         content=[TextContent(type="text", text=str(result))]
                     )
-                    
+
             return result
         except Exception as e:
             log.error(
                 f"{self.log_identifier}Error executing tool {tool_name}: {str(e)}",
-                exc_info=True
+                exc_info=True,
             )
             return CallToolResult(
-                content=[TextContent(type="text", text=f"Error executing tool: {str(e)}")],
-                isError=True
+                content=[
+                    TextContent(type="text", text=f"Error executing tool: {str(e)}")
+                ],
+                isError=True,
             )
-            
-    async def _handle_resource_read(self, request: ReadResourceRequest, extra: Any) -> ReadResourceResult:
+
+    async def _handle_resource_read(
+        self, request: ReadResourceRequest, extra: Any
+    ) -> ReadResourceResult:
         """Handle a resource read request.
-        
+
         Args:
             request: The resource read request.
             extra: Extra request information.
-            
+
         Returns:
             The resource read result.
         """
         resource_uri = request.params.uri
         if resource_uri not in self.resource_callbacks:
-            return ReadResourceResult(
-                contents=[]
-            )
-            
+            return ReadResourceResult(contents=[])
+
         try:
             callback = self.resource_callbacks[resource_uri]
             result = callback()
-            
+
             # Convert result to ReadResourceResult if it's not already
             if not isinstance(result, ReadResourceResult):
                 if isinstance(result, str):
                     result = ReadResourceResult(
-                        contents=[{
-                            "uri": resource_uri,
-                            "text": result
-                        }]
+                        contents=[{"uri": resource_uri, "text": result}]
                     )
                 else:
                     result = ReadResourceResult(
-                        contents=[{
-                            "uri": resource_uri,
-                            "text": str(result)
-                        }]
+                        contents=[{"uri": resource_uri, "text": str(result)}]
                     )
-                    
+
             return result
         except Exception as e:
             log.error(
                 f"{self.log_identifier}Error reading resource {resource_uri}: {str(e)}",
-                exc_info=True
+                exc_info=True,
             )
-            return ReadResourceResult(
-                contents=[]
-            )
-            
-    async def _handle_prompt_get(self, request: GetPromptRequest, extra: Any) -> GetPromptResult:
+            return ReadResourceResult(contents=[])
+
+    async def _handle_prompt_get(
+        self, request: GetPromptRequest, extra: Any
+    ) -> GetPromptResult:
         """Handle a prompt get request.
-        
+
         Args:
             request: The prompt get request.
             extra: Extra request information.
-            
+
         Returns:
             The prompt get result.
         """
         prompt_name = request.params.name
         if prompt_name not in self.prompt_callbacks:
-            return GetPromptResult(
-                messages=[]
-            )
-            
+            return GetPromptResult(messages=[])
+
         try:
             callback = self.prompt_callbacks[prompt_name]
             result = callback(request.params.arguments)
-            
+
             # Convert result to GetPromptResult if it's not already
             if not isinstance(result, GetPromptResult):
                 if isinstance(result, str):
                     result = GetPromptResult(
-                        messages=[{
-                            "role": "user",
-                            "content": {
-                                "type": "text",
-                                "text": result
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": {"type": "text", "text": result},
                             }
-                        }]
+                        ]
                     )
-                    
+
             return result
         except Exception as e:
             log.error(
                 f"{self.log_identifier}Error getting prompt {prompt_name}: {str(e)}",
-                exc_info=True
+                exc_info=True,
             )
-            return GetPromptResult(
-                messages=[]
-            )
-            
+            return GetPromptResult(messages=[])
+
     def _run_stdio_server(self):
         """Run the MCP server with stdio transport."""
+
         async def run_server():
             server = self._create_server()
-            
+
             # Use a try-except block to handle the case where stdio_server is not available
             try:
                 # Try to import and use the real stdio_server
                 from mcp.server.stdio import stdio_server
+
                 async with stdio_server() as (stdin, stdout):
                     await server.run(stdin, stdout)
             except (ImportError, NameError):
                 # If that fails, use a mock implementation
-                log.warning(f"{self.log_identifier}Using mock stdio server implementation")
+                log.warning(
+                    f"{self.log_identifier}Using mock stdio server implementation"
+                )
+
                 # Create simple stdin/stdout streams for testing
                 class MockStream:
                     async def read(self):
                         return None  # Return None to simulate end of stream
+
                     async def write(self, data):
                         pass  # Do nothing with the data
+
                     async def drain(self):
                         pass  # No-op
+
                     async def close(self):
                         pass  # No-op
-                
+
                 stdin = MockStream()
                 stdout = MockStream()
                 await server.run(stdin, stdout)
-                
+
         asyncio.run(run_server())
-        
+
     def get_sse_transport(self) -> SseServerTransport:
         """Get the SSE transport for the server.
-        
+
         Returns:
             The SSE transport instance.
         """
@@ -345,15 +340,15 @@ class MCPServer:
             raise ValueError(
                 f"{self.log_identifier}SSE transport not available for {self.transport_type} transport"
             )
-            
+
         if not self.server:
             self.server = self._create_server()
-            
+
         return SseServerTransport(self.server)
-        
+
     def register_tool(self, tool: Tool, callback: Callable) -> None:
         """Register a tool with the server.
-        
+
         Args:
             tool: The tool to register.
             callback: The callback to execute when the tool is called.
@@ -361,10 +356,10 @@ class MCPServer:
         self.tools.append(tool)
         self.tool_callbacks[tool.name] = callback
         log.info(f"{self.log_identifier}Registered tool: {tool.name}")
-        
+
     def register_resource(self, resource: Resource, callback: Callable) -> None:
         """Register a resource with the server.
-        
+
         Args:
             resource: The resource to register.
             callback: The callback to execute when the resource is read.
@@ -372,10 +367,10 @@ class MCPServer:
         self.resources.append(resource)
         self.resource_callbacks[resource.uri] = callback
         log.info(f"{self.log_identifier}Registered resource: {resource.uri}")
-        
+
     def register_prompt(self, prompt: Prompt, callback: Callable) -> None:
         """Register a prompt with the server.
-        
+
         Args:
             prompt: The prompt to register.
             callback: The callback to execute when the prompt is requested.
