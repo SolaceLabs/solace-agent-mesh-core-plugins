@@ -93,7 +93,8 @@ info.update(
                 "type": "integer",
                 "default": 30,
             },
-            # Sampling support removed as it's not needed in Solace Agent Mesh context
+            # Sampling support is not needed in Solace Agent Mesh context
+            # Agents handle their own LLM requests directly
         ],
     }
 )
@@ -281,18 +282,24 @@ class McpServerAgentComponent(BaseAgentComponent):
         """Handle a request from the MCP server.
 
         Args:
-            request: The request from the MCP server.
+            responder: The request responder object containing the request.
 
         Returns:
-            The response to the server.
+            None: The response is sent through the responder.
         """
         request = responder.request.root
         log.debug("handle_server_request %s", responder.request)
         try:
-            # In Solace Agent Mesh context, we don't support sampling
-            # as agents handle their own LLM requests
-            raise ValueError(f"Unsupported method: {request.method}")
+            # In Solace Agent Mesh context, we explicitly reject all sampling requests
+            # Agents handle their own LLM requests directly through the Agent Mesh
+            # infrastructure, not through MCP sampling
+            err_msg = (
+                f"Sampling is not supported in Solace Agent Mesh. "
+                f"Method '{request.method}' is not allowed."
+            )
+            log.warning(err_msg)
+            await responder.respond(types.ErrorData(code=400, message=err_msg))
         except Exception as e:
             err_msg = f"Error handling server request: {str(e)}"
             log.error(err_msg)
-            await responder.respond(types.ErrorData(code=400, message=err_msg))
+            await responder.respond(types.ErrorData(code=500, message=err_msg))

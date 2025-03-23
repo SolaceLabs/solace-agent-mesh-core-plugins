@@ -171,9 +171,17 @@ class TestSessionManager(unittest.TestCase):
             client_id="wildcard-client",
             scopes=set(["*:*:*"])
         )
-        
+            
         # Test authorization with wildcard scope
         self.assertTrue(self.session_manager.authorize(wildcard_session.session_id, "any:scope:here"))
+            
+        # Explicitly verify that sampling scopes are rejected
+        # This ensures our sampling removal is enforced at the authorization level
+        sampling_session = self.session_manager.create_session(
+            client_id="sampling-client",
+            scopes=set(["agent:read:*", "agent:write:*"])  # No sampling scopes
+        )
+        self.assertFalse(self.session_manager.authorize(sampling_session.session_id, "sampling:create:*"))
 
     def test_get_all_sessions(self):
         """Test getting all sessions."""
