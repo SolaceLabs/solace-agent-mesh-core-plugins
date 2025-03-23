@@ -32,15 +32,15 @@ shared_config:
       broker_vpn: ${SOLACE_BROKER_VPN}
 
   - mcp_server_info: 
-      server_name: &mcp_server_name ${MCP_SERVER_NAME} # you can also hard-code the values instead of using environment variables
-      server_description: &mcp_server_description Provides access to the ${MCP_SERVER_NAME}  # Update to better describe the server
-      server_command: &mcp_server_command ${MCP_SERVER_COMMAND}
-      server_subscription_topic: &mcp_sub_topic ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/actionRequest/*/*/${MCP_SERVER_NAME}/>
+      server_name: &mcp_server_name {{SNAKE_CASE_NAME}} # you can also hard-code the values instead of using environment variables
+      server_description: &mcp_server_description Provides access to the {{SNAKE_CASE_NAME}}  # Update to better describe the server
+      server_command: &mcp_server_command ${{{SNAKE_UPPER_CASE_NAME}}_SERVER_COMMAND}
+      server_subscription_topic: &mcp_sub_topic ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/actionRequest/*/*/{{SNAKE_CASE_NAME}}/>
 
 flows:
 
   # Flow to handle action requests
-  - name: mcp_server_action_request_processor
+  - name: {{SNAKE_CASE_NAME}}_action_request_processor
     components:
       # Input from a Solace broker
       - component_name: broker_input
@@ -49,7 +49,7 @@ flows:
           <<: *broker_connection
           payload_encoding: utf-8
           payload_format: json
-          broker_queue_name: ${SOLACE_AGENT_MESH_NAMESPACE}agent_mcp_server_action_request
+          broker_queue_name: ${SOLACE_AGENT_MESH_NAMESPACE}agent_{{SNAKE_CASE_NAME}}_action_request
           broker_subscriptions:
             # Subscribe to all mcp_server actions - note that if we
             # wanted to handle some mcp_server actions elsewhere, we would

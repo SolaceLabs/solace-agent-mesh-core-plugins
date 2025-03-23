@@ -176,7 +176,7 @@ The MCP Server Gateway and Agent log to the standard Solace Agent Mesh log files
 # After creating the agent with:
 # solace-agent-mesh add agent mcp_filesystem --copy-from sam_mcp_server:mcp_server
 
-FILESYSTEM_SERVER_COMMAND=npx -y @modelcontextprotocol/server-filesystem /home/user/documents
+MCP_FILESYSTEM_SERVER_COMMAND=npx -y @modelcontextprotocol/server-filesystem /home/user/documents
 ```
 
 This exposes the filesystem server's capabilities as agent actions, allowing access to files in the specified directory.
@@ -187,7 +187,7 @@ This exposes the filesystem server's capabilities as agent actions, allowing acc
 # After creating the agent with:
 # solace-agent-mesh add agent mcp_github --copy-from sam_mcp_server:mcp_server
 
-GITHUB_SERVER_COMMAND=npx -y @modelcontextprotocol/server-github
+MCP_GITHUB_SERVER_COMMAND=npx -y @modelcontextprotocol/server-github
 ```
 
 This exposes GitHub repository operations as agent actions, enabling repository management through the agent.
