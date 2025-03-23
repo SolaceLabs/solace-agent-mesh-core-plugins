@@ -240,10 +240,10 @@ The queues will be managed as follows:
    - Handle timeout notifications [DONE]
    - Test: Verify responses are correctly matched to requests [DONE]
 
-10. **Task 3.3: Response Transformation**
-    - Convert agent responses to MCP format
-    - Handle different response types (text, files)
-    - Implement error handling and status codes
+10. **Task 3.3: Response Transformation** [DONE]
+    - Convert agent responses to MCP format [DONE]
+    - Handle different response types (text, files) [DONE]
+    - Implement error handling and status codes [DONE]
     - Test: Verify responses are correctly transformed
 
 #### Phase 4: Advanced Features and Optimization

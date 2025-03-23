@@ -109,6 +109,15 @@ class MCPServerGatewayOutput(GatewayOutput):
         if correlation_id:
             result["mcp_correlation_id"] = correlation_id
             
+            # Create timeout error data
+            timeout_data = {
+                "error_info": "Request timed out",
+                "message": f"The request timed out: {data.get('message', 'No details available')}"
+            }
+            
+            # Transform to MCP format
+            transformed_data = self._transform_response_to_mcp_format(timeout_data)
+            
             # Forward the timeout to the MCP server manager if it exists
             server_name = user_properties.get("gateway_id")
             if server_name:
@@ -118,10 +127,7 @@ class MCPServerGatewayOutput(GatewayOutput):
                     # Forward the timeout to the server manager
                     success = server_manager.handle_action_response(
                         correlation_id, 
-                        {
-                            "error": "Request timed out",
-                            "message": f"The request timed out: {data.get('message', 'No details available')}"
-                        }
+                        transformed_data
                     )
                     if success:
                         log.info(
@@ -256,17 +262,17 @@ class MCPServerGatewayOutput(GatewayOutput):
         if correlation_id:
             result["mcp_correlation_id"] = correlation_id
             
-            # Forward the response to the MCP server manager if it exists
-            from .mcp_server_factory import MCPServerFactory
+            # Transform the response data to MCP format
+            transformed_data = self._transform_response_to_mcp_format(data)
             
-            # Extract server name from user properties
+            # Forward the transformed response to the MCP server manager if it exists
             server_name = user_properties.get("gateway_id")
             if server_name:
                 # Get the server instance
                 server_manager = self._get_server_manager(server_name)
                 if server_manager:
                     # Forward the response to the server manager
-                    success = server_manager.handle_action_response(correlation_id, data)
+                    success = server_manager.handle_action_response(correlation_id, transformed_data)
                     if success:
                         log.info(
                             f"{self.log_identifier} Successfully forwarded response for "
@@ -293,6 +299,67 @@ class MCPServerGatewayOutput(GatewayOutput):
                     }
 
         return result
+        
+    def _transform_response_to_mcp_format(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Transform agent response data to MCP format.
+        
+        Args:
+            data: The agent response data.
+            
+        Returns:
+            The transformed data in MCP format.
+        """
+        transformed_data = {}
+        
+        # Handle text response
+        if "message" in data:
+            transformed_data["content"] = [{"type": "text", "text": data["message"]}]
+        
+        # Handle file responses
+        if "files" in data and isinstance(data["files"], list):
+            if "content" not in transformed_data:
+                transformed_data["content"] = []
+                
+            for file in data["files"]:
+                if "content" in file and "mime_type" in file:
+                    # Add file content as base64-encoded data
+                    transformed_data["content"].append({
+                        "type": "file",
+                        "name": file.get("name", "file"),
+                        "data": file["content"],
+                        "mimeType": file["mime_type"]
+                    })
+                elif "url" in file:
+                    # Add file reference
+                    transformed_data["content"].append({
+                        "type": "file",
+                        "name": file.get("name", "file"),
+                        "url": file["url"],
+                        "mimeType": file.get("mime_type", "application/octet-stream")
+                    })
+        
+        # Handle error responses
+        if "error_info" in data:
+            transformed_data["isError"] = True
+            error_message = "Error occurred"
+            
+            if isinstance(data["error_info"], dict):
+                error_message = data["error_info"].get("error_message", error_message)
+            elif isinstance(data["error_info"], str):
+                error_message = data["error_info"]
+                
+            # Add error message if not already in content
+            if "content" not in transformed_data:
+                transformed_data["content"] = [{"type": "text", "text": error_message}]
+            elif not any(c.get("text") == error_message for c in transformed_data["content"] 
+                         if c.get("type") == "text"):
+                transformed_data["content"].append({"type": "text", "text": error_message})
+        
+        # Ensure we always have content
+        if "content" not in transformed_data or not transformed_data["content"]:
+            transformed_data["content"] = [{"type": "text", "text": "No content available"}]
+            
+        return transformed_data
         
     def _cleanup_server_managers(self):
         """Clean up server managers and their pending requests.
