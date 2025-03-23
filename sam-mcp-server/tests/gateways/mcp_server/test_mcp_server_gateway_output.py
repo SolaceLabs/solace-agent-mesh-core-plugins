@@ -165,11 +165,16 @@ class TestMCPServerGatewayOutput(unittest.TestCase):
     @patch("solace_agent_mesh.gateway.components.gateway_output.GatewayOutput.invoke")
     def test_invoke_error(self, mock_super_invoke):
         """Test invoke with error."""
-        # Mock parent invoke method to raise exception
-        mock_super_invoke.side_effect = Exception("Test error")
+        # Create a specific exception with a clear message
+        test_exception = Exception("Test error")
+        # Mock parent invoke method to raise the specific exception
+        mock_super_invoke.side_effect = test_exception
 
-        # Create test message
-        message = Message(payload={"text": "Test message"})
+        # Create test message with a topic that doesn't match any special cases
+        message = Message(
+            payload={"text": "Test message"}, 
+            topic="solace-agent-mesh/v1/other/topic"
+        )
         data = {"text": "Test message"}
 
         # Call invoke method
@@ -178,7 +183,7 @@ class TestMCPServerGatewayOutput(unittest.TestCase):
         # Verify error response
         self.assertIn("Error processing agent response", result["text"])
         self.assertEqual(len(result["errors"]), 1)
-        self.assertIn("Test error", result["errors"][0])
+        self.assertEqual(result["errors"][0], "Test error")
 
 
 if __name__ == "__main__":
