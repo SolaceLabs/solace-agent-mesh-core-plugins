@@ -37,6 +37,9 @@ class TestMCPServerGatewayOutput(unittest.TestCase):
         self.gateway_output.log_identifier = "[TestGateway]"
         self.gateway_output.discard_current_message = MagicMock()
         self.gateway_output.gateway_id = "test-gateway"
+        
+        # Set the registration_listener attribute directly
+        self.gateway_output.registration_listener = self.mock_listener
 
     def test_handle_agent_registration(self):
         """Test handling agent registration."""

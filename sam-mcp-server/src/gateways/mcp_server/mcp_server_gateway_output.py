@@ -191,6 +191,6 @@ class MCPServerGatewayOutput(GatewayOutput):
         return self.agent_registry.get_filtered_agents(self.scopes)
     def stop_component(self):
         """Stop the component and clean up resources."""
-        if hasattr(self, 'registration_listener'):
+        if hasattr(self, 'registration_listener') and self.registration_listener:
             self.registration_listener.stop()
         super().stop_component()
