@@ -62,6 +62,7 @@ class TestMCPServerIntegration(unittest.TestCase):
         with patch("solace_agent_mesh.gateway.components.gateway_output.GatewayOutput.__init__") as mock_init:
             mock_init.return_value = None
             
+            # Create the gateway output instance
             gateway_output = MCPServerGatewayOutput()
             
             # Set required attributes
@@ -72,15 +73,20 @@ class TestMCPServerIntegration(unittest.TestCase):
             gateway_output.registration_listener = self.registration_listener
             gateway_output.server_managers = {}
             
-            # Add component_config attribute that's needed by get_config
+            # Set component_config before any get_config calls
             gateway_output.component_config = {}
             
-            # Mock the get_config method to return test values
-            gateway_output.get_config = MagicMock(side_effect=lambda key, default=None: {
-                "mcp_server_scopes": "*:*:*",
-                "agent_ttl_ms": 1000,
-                "agent_cleanup_interval_ms": 500
-            }.get(key, default))
+            # Create a mock for get_config that doesn't rely on component_config
+            def mock_get_config(key, default=None):
+                config_values = {
+                    "mcp_server_scopes": "*:*:*",
+                    "agent_ttl_ms": 1000,
+                    "agent_cleanup_interval_ms": 500
+                }
+                return config_values.get(key, default)
+            
+            # Replace the get_config method
+            gateway_output.get_config = mock_get_config
             
             return gateway_output
             
