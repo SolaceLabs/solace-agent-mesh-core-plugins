@@ -49,6 +49,45 @@ The MCP Server Gateway supports the following configuration options:
 
 You can set these options in your environment or in the gateway configuration file.
 
+#### Understanding Scopes
+
+Scopes are a powerful mechanism to control which agents and actions are exposed to MCP clients. They follow a three-part format:
+
+```
+agent:action:permission
+```
+
+Where:
+- `agent`: The name of the agent (e.g., `geo_information`, `sql_database`)
+- `action`: The name of the action (e.g., `get_weather`, `search_query`)
+- `permission`: The type of permission (typically `execute`)
+
+Wildcards (`*`) can be used in any position to match multiple values:
+
+- `*:*:*` - Expose all agents and all their actions (default)
+- `geo_information:*:*` - Expose all actions from the `geo_information` agent only
+- `*:get_weather:*` - Expose the `get_weather` action from any agent that has it
+- `sql_database:search_query:execute` - Expose only the specific `search_query` action from the `sql_database` agent
+
+To specify multiple scopes, use a comma-separated list:
+
+```
+MCP_SERVER_SCOPES=geo_information:*:*,sql_database:search_query:*
+```
+
+This would expose:
+1. All actions from the `geo_information` agent
+2. Only the `search_query` action from the `sql_database` agent
+
+Scopes provide fine-grained control over which capabilities are exposed to MCP clients, allowing you to:
+
+- Limit access to sensitive operations
+- Create purpose-specific MCP server interfaces
+- Reduce complexity by exposing only relevant tools
+- Implement role-based access control
+
+When an MCP client connects, the gateway filters the available agents based on these scopes and only exposes the matching actions as MCP tools.
+
 ### Architecture
 
 The MCP Server Gateway consists of several components:
