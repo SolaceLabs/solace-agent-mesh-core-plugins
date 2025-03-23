@@ -96,7 +96,7 @@ class MCPServer:
         or directly for SSE transport.
         """
         if self.running:
-            log.warning(f"{self.log_identifier}Server already running")
+            log.warning("%sServer already running", self.log_identifier)
             return
 
         if self.transport_type == "stdio":
@@ -104,15 +104,17 @@ class MCPServer:
             self.server_thread.daemon = True
             self.server_thread.start()
             self.running = True
-            log.info(f"{self.log_identifier}Started MCP server with stdio transport")
+            log.info("%sStarted MCP server with stdio transport", self.log_identifier)
         elif self.transport_type == "sse":
             # SSE transport is not started in a thread - it's expected to be
             # integrated with a web server
             self.server = self._create_server()
             self.running = True
             log.info(
-                f"{self.log_identifier}Created MCP server with SSE transport "
-                f"on {self.host}:{self.port}"
+                "%sCreated MCP server with SSE transport on %s:%s",
+                self.log_identifier,
+                self.host,
+                self.port
             )
         else:
             raise ValueError(
@@ -129,7 +131,7 @@ class MCPServer:
             self.server_thread.join(timeout=1.0)
             self.server_thread = None
 
-        log.info(f"{self.log_identifier}Stopped MCP server")
+        log.info("%sStopped MCP server", self.log_identifier)
 
     def _create_server(self) -> Server:
         """Create the MCP server instance.
@@ -234,7 +236,10 @@ class MCPServer:
             return result
         except Exception as e:
             log.error(
-                f"{self.log_identifier}Error executing tool {tool_name}: {str(e)}",
+                "%sError executing tool %s: %s",
+                self.log_identifier,
+                tool_name,
+                str(e),
                 exc_info=True,
             )
             return CallToolResult(
@@ -283,7 +288,10 @@ class MCPServer:
             return result
         except Exception as e:
             log.error(
-                f"{self.log_identifier}Error reading resource {resource_uri}: {str(e)}",
+                "%sError reading resource %s: %s",
+                self.log_identifier,
+                resource_uri,
+                str(e),
                 exc_info=True,
             )
             return ReadResourceResult(contents=[])
@@ -323,7 +331,10 @@ class MCPServer:
             return result
         except Exception as e:
             log.error(
-                f"{self.log_identifier}Error getting prompt {prompt_name}: {str(e)}",
+                "%sError getting prompt %s: %s",
+                self.log_identifier,
+                prompt_name,
+                str(e),
                 exc_info=True,
             )
             return GetPromptResult(messages=[])
@@ -350,7 +361,8 @@ class MCPServer:
             except (ImportError, NameError):
                 # If that fails, use a mock implementation
                 log.warning(
-                    f"{self.log_identifier}Using mock stdio server implementation"
+                    "%sUsing mock stdio server implementation",
+                    self.log_identifier
                 )
 
                 # Create simple stdin/stdout streams for testing
@@ -381,7 +393,9 @@ class MCPServer:
         """
         if self.transport_type != "sse":
             raise ValueError(
-                f"{self.log_identifier}SSE transport not available for {self.transport_type} transport"
+                "%sSSE transport not available for %s transport",
+                self.log_identifier,
+                self.transport_type
             )
 
         if not self.server:
@@ -398,7 +412,7 @@ class MCPServer:
         """
         self.tools.append(tool)
         self.tool_callbacks[tool.name] = callback
-        log.info(f"{self.log_identifier}Registered tool: {tool.name}")
+        log.info("%sRegistered tool: %s", self.log_identifier, tool.name)
 
     def register_resource(self, resource: Resource, callback: Callable) -> None:
         """Register a resource with the server.
@@ -413,7 +427,7 @@ class MCPServer:
             str(resource.uri) if hasattr(resource.uri, "__str__") else resource.uri
         )
         self.resource_callbacks[uri_key] = callback
-        log.info(f"{self.log_identifier}Registered resource: {resource.uri}")
+        log.info("%sRegistered resource: %s", self.log_identifier, resource.uri)
 
     def register_prompt(self, prompt: Prompt, callback: Callable) -> None:
         """Register a prompt with the server.
@@ -424,4 +438,4 @@ class MCPServer:
         """
         self.prompts.append(prompt)
         self.prompt_callbacks[prompt.name] = callback
-        log.info(f"{self.log_identifier}Registered prompt: {prompt.name}")
+        log.info("%sRegistered prompt: %s", self.log_identifier, prompt.name)
