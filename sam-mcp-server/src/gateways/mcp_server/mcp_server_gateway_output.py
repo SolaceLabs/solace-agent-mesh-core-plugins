@@ -325,4 +325,11 @@ class MCPServerGatewayOutput(GatewayOutput):
         """Stop the component and clean up resources."""
         if hasattr(self, "registration_listener") and self.registration_listener:
             self.registration_listener.stop()
+            
+        # Shut down all server managers
+        if hasattr(self, "server_managers"):
+            for manager in list(self.server_managers.values()):
+                manager.shutdown()
+            self.server_managers.clear()
+            
         super().stop_component()
