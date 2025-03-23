@@ -85,10 +85,11 @@ class MCPServerGatewayOutput(GatewayOutput):
             # Process other messages using the parent class
             return super().invoke(message, data)
         except Exception as e:
-            log.error(f"{self.log_identifier} Error processing agent response: {str(e)}")
-            # Return error response
+            error_msg = f"Error processing agent response: {str(e)}"
+            log.error(f"{self.log_identifier} {error_msg}")
+            # Return error response with properly formatted errors list
             return {
-                "text": f"Error processing agent response: {str(e)}",
+                "text": error_msg,
                 "errors": [str(e)],
             }
 
