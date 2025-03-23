@@ -220,10 +220,10 @@ The queues will be managed as follows:
    - Handle text resources [DONE]
    - Test: Verify resources can be listed and retrieved
 
-7. **Task 2.4: Prompt Support**
-   - Implement prompt template handling
-   - Add prompt listing and retrieval
-   - Support parameter substitution
+7. **Task 2.4: Prompt Support** [DONE]
+   - Implement prompt template handling [DONE]
+   - Add prompt listing and retrieval [DONE]
+   - Support parameter substitution [DONE]
    - Test: Verify prompts are correctly exposed and usable
 
 #### Phase 3: Direct Agent Invocation
