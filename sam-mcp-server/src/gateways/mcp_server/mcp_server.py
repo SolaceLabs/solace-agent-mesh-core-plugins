@@ -134,8 +134,9 @@ class MCPServer:
             The MCP server instance.
         """
         server = Server(
-            implementation={"name": self.name, "version": "1.0.0"},
-            options=ServerOptions(
+            self.name,
+            "1.0.0",
+            ServerOptions(
                 capabilities={
                     "tools": {},
                     "resources": {},
