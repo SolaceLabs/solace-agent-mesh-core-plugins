@@ -293,6 +293,27 @@ class MCPServerGatewayOutput(GatewayOutput):
                     }
 
         return result
+        
+    def _cleanup_server_managers(self):
+        """Clean up server managers and their pending requests.
+        
+        This method iterates through all server managers and calls
+        cleanup_pending_requests on each one to remove timed out requests.
+        """
+        if hasattr(self, "server_managers"):
+            for server_name, manager in list(self.server_managers.items()):
+                try:
+                    cleaned_up = manager.cleanup_pending_requests()
+                    if cleaned_up:
+                        log.info(
+                            f"{self.log_identifier} Cleaned up {len(cleaned_up)} timed out "
+                            f"requests for server {server_name}"
+                        )
+                except Exception as e:
+                    log.error(
+                        f"{self.log_identifier} Error cleaning up server manager {server_name}: {str(e)}",
+                        exc_info=True
+                    )
 
     def _on_agent_added(self, agent_name: str, agent_data: Dict[str, Any]):
         """Callback when an agent is added to the registry.
