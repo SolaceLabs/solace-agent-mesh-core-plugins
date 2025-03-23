@@ -140,6 +140,14 @@ class MCPServerManager:
                     )
                     continue
                 
+                # Skip actions with no parameters defined
+                if not params:
+                    log.debug(
+                        f"{self.log_identifier}Skipping action {agent_name}.{action_name} "
+                        f"with no parameters defined"
+                    )
+                    continue
+                
                 # Create tool from action
                 tool = self._create_tool_from_action(agent_name, action)
                 
