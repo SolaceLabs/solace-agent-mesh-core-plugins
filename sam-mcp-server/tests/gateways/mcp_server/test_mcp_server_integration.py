@@ -313,8 +313,12 @@ class TestMCPServerIntegration(unittest.TestCase):
                 "text": "Coordinates for New York: 40.7128, -74.0060"
             }
             
-            # Handle the response
-            self.gateway_output._handle_agent_response(message, message.get_payload())
+            # Mock the _get_server_manager method to return our server manager
+            with patch("src.gateways.mcp_server.mcp_server_gateway_output.MCPServerGatewayOutput._get_server_manager") as mock_get_manager:
+                mock_get_manager.return_value = self.server_manager
+                
+                # Handle the response
+                self.gateway_output._handle_agent_response(message, message.get_payload())
         
         # Verify the response was put in the queue
         self.assertFalse(response_queue.empty())
