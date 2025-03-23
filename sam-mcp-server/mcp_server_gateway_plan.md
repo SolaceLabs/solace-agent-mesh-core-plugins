@@ -94,3 +94,11 @@ The implementation will require:
    - `ScopeValidator`: Enforces scope-based access control
 
 This architecture provides a direct bridge between MCP clients and Agent Mesh agents, bypassing the orchestrator for efficiency while maintaining security through scope-based access control.
+
+### Topics and Queues
+
+<inst>
+Describe all the topics that will need to be subscribed to and which topics will be used for publishing messages.
+
+Also, describe the queues that will be used for storing messages and how they will be managed.
+</inst>
