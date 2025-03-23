@@ -9,7 +9,8 @@ import logging
 import threading
 from typing import Dict, Any, Optional, List, Callable, Tuple
 
-from mcp import Server, ServerOptions
+from mcp.server import Server
+from mcp.server.options import ServerOptions
 from mcp.server.stdio import stdio_server
 from mcp.server.sse import SseServerTransport
 from mcp.types import (
