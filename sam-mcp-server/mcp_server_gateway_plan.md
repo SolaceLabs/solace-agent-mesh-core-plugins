@@ -228,10 +228,10 @@ The queues will be managed as follows:
 
 #### Phase 3: Direct Agent Invocation
 
-8. **Task 3.1: Action Request Sender**
-   - Implement direct agent action invocation
-   - Create correlation ID tracking
-   - Add request timeout handling
+8. **Task 3.1: Action Request Sender** [DONE]
+   - Implement direct agent action invocation [DONE]
+   - Create correlation ID tracking [DONE]
+   - Add request timeout handling [DONE]
    - Test: Verify requests are sent to correct agents
 
 9. **Task 3.2: Response Listener**

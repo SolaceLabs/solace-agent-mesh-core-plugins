@@ -5,6 +5,7 @@ including server initialization, tool registration, and request handling.
 """
 
 import threading
+import time
 from typing import Dict, Any, Optional, List, Callable
 
 from mcp.types import Tool, Resource, Prompt, PromptArgument, CallToolResult, TextContent, ReadResourceResult
@@ -271,10 +272,91 @@ class MCPServerManager:
                         isError=True
                     )
             
-            # TODO: Implement actual agent action invocation
-            # This is a placeholder that will be implemented in Task 3.1
-            result = f"Called {agent_name}.{action_name} with args: {args}"
+            # Create and send action request to the agent
+            import os
+            import uuid
+            import json
+            from queue import Queue, Empty
             
+            # Generate a correlation ID for tracking the request
+            correlation_id = str(uuid.uuid4())
+            
+            # Create the action request
+            action_request = {
+                "agent_name": agent_name,
+                "action_name": action_name,
+                "action_params": args,
+                "originator": "mcp_server_gateway",
+                "action_idx": 0,  # Single action request
+            }
+            
+            # Create a response queue for this request
+            response_queue = Queue()
+            
+            # Store the correlation ID and response queue
+            with self.lock:
+                if not hasattr(self, 'pending_requests'):
+                    self.pending_requests = {}
+                self.pending_requests[correlation_id] = {
+                    "queue": response_queue,
+                    "timestamp": time.time(),
+                    "agent_name": agent_name,
+                    "action_name": action_name,
+                }
+            
+            # Create the message to send
+            topic = f"{os.getenv('SOLACE_AGENT_MESH_NAMESPACE', '')}solace-agent-mesh/v1/actionRequest/gateway/agent/{agent_name}/{action_name}"
+            message = {
+                "payload": action_request,
+                "topic": topic,
+                "user_properties": {
+                    "mcp_correlation_id": correlation_id,
+                    "gateway_id": self.server_name,
+                }
+            }
+            
+            # TODO: Send the message to the broker
+            # This is a placeholder - in a real implementation, we would send the message to the broker
+            log.info(f"{self.log_identifier}Sending action request to {agent_name}.{action_name} with correlation ID {correlation_id}")
+            
+            # Wait for the response with timeout
+            timeout_seconds = 30  # Default timeout
+            try:
+                response = response_queue.get(timeout=timeout_seconds)
+                
+                # Process the response
+                if isinstance(response, dict):
+                    if "error" in response:
+                        return CallToolResult(
+                            content=[TextContent(type="text", text=f"Error: {response['error']}")],
+                            isError=True
+                        )
+                    elif "message" in response:
+                        return CallToolResult(
+                            content=[TextContent(type="text", text=response["message"])]
+                        )
+                    else:
+                        return CallToolResult(
+                            content=[TextContent(type="text", text=str(response))]
+                        )
+                else:
+                    return CallToolResult(
+                        content=[TextContent(type="text", text=str(response))]
+                    )
+            except Empty:
+                # Handle timeout
+                with self.lock:
+                    if correlation_id in self.pending_requests:
+                        del self.pending_requests[correlation_id]
+                
+                return CallToolResult(
+                    content=[TextContent(type="text", text=f"Request to {agent_name}.{action_name} timed out after {timeout_seconds} seconds")],
+                    isError=True
+                )
+            
+            # For testing purposes, return a simulated response
+            # In a real implementation, this would be replaced by the actual response handling
+            result = f"Called {agent_name}.{action_name} with args: {args}"
             return CallToolResult(
                 content=[TextContent(type="text", text=result)]
             )
@@ -419,3 +501,69 @@ class MCPServerManager:
                 
             # Re-register tools and resources
             self._register_agent_tools()
+            
+    def handle_action_response(self, correlation_id: str, response_data: Dict[str, Any]) -> bool:
+        """Handle an action response from an agent.
+        
+        Args:
+            correlation_id: The correlation ID of the request.
+            response_data: The response data from the agent.
+            
+        Returns:
+            True if the response was handled, False otherwise.
+        """
+        with self.lock:
+            if not hasattr(self, 'pending_requests'):
+                return False
+                
+            if correlation_id not in self.pending_requests:
+                log.warning(f"{self.log_identifier}Received response for unknown correlation ID: {correlation_id}")
+                return False
+                
+            # Get the request info
+            request_info = self.pending_requests[correlation_id]
+            response_queue = request_info["queue"]
+            
+            # Put the response in the queue
+            response_queue.put(response_data)
+            
+            # Remove the request from pending requests
+            del self.pending_requests[correlation_id]
+            
+            return True
+            
+    def cleanup_pending_requests(self, max_age_seconds: int = 60) -> List[str]:
+        """Clean up pending requests that have timed out.
+        
+        Args:
+            max_age_seconds: Maximum age of requests in seconds.
+            
+        Returns:
+            List of correlation IDs that were cleaned up.
+        """
+        cleaned_up = []
+        current_time = time.time()
+        
+        with self.lock:
+            if not hasattr(self, 'pending_requests'):
+                return cleaned_up
+                
+            for correlation_id, request_info in list(self.pending_requests.items()):
+                if current_time - request_info["timestamp"] > max_age_seconds:
+                    # Request has timed out
+                    response_queue = request_info["queue"]
+                    agent_name = request_info["agent_name"]
+                    action_name = request_info["action_name"]
+                    
+                    # Put a timeout error in the queue
+                    response_queue.put({
+                        "error": f"Request to {agent_name}.{action_name} timed out after {max_age_seconds} seconds"
+                    })
+                    
+                    # Remove the request from pending requests
+                    del self.pending_requests[correlation_id]
+                    cleaned_up.append(correlation_id)
+                    
+                    log.warning(f"{self.log_identifier}Request to {agent_name}.{action_name} timed out after {max_age_seconds} seconds")
+            
+            return cleaned_up

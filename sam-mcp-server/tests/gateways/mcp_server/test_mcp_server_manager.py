@@ -2,6 +2,7 @@
 
 import unittest
 from unittest.mock import patch, MagicMock
+from queue import Queue, Empty
 
 # Import directly from our mocked classes
 from src.gateways.mcp_server.mcp_server import MCPServer, Tool, CallToolResult, TextContent
@@ -219,8 +220,12 @@ class TestMCPServerManager(unittest.TestCase):
         self.assertEqual(resource2.description, "Resource 2 (from agent agent1)")
         self.assertEqual(resource2.mimeType, "application/json")
 
-    def test_handle_tool_call(self):
+    @patch('time.time')
+    def test_handle_tool_call(self, mock_time):
         """Test handling a tool call."""
+        # Set mock time
+        mock_time.return_value = 1000
+        
         # Mock agent_registry.get_agent
         self.agent_registry.get_agent.return_value = {
             "agent_name": "agent1",
@@ -251,6 +256,19 @@ class TestMCPServerManager(unittest.TestCase):
             "Called agent1.action1 with args: {'param1': 'value1'}"
         )
         self.assertFalse(result.isError)
+        
+        # Verify pending request was created
+        self.assertTrue(hasattr(self.manager, 'pending_requests'))
+        self.assertEqual(len(self.manager.pending_requests), 1)
+        
+        # Get the correlation ID
+        correlation_id = list(self.manager.pending_requests.keys())[0]
+        
+        # Verify request info
+        request_info = self.manager.pending_requests[correlation_id]
+        self.assertEqual(request_info["agent_name"], "agent1")
+        self.assertEqual(request_info["action_name"], "action1")
+        self.assertEqual(request_info["timestamp"], 1000)
         
         # Test with missing required parameter
         result = self.manager._handle_tool_call("agent1", "action1", {})
@@ -370,6 +388,91 @@ class TestMCPServerManager(unittest.TestCase):
         
         # Verify _register_agent_tools was not called
         self.manager._register_agent_tools.assert_not_called()
+        
+    @patch('time.time')
+    def test_handle_action_response(self, mock_time):
+        """Test handling an action response."""
+        # Set mock time
+        mock_time.return_value = 1000
+        
+        # Create a pending request
+        self.manager.pending_requests = {}
+        correlation_id = "test-correlation-id"
+        
+        # Create a mock queue
+        mock_queue = MagicMock()
+        
+        # Add the request to pending requests
+        self.manager.pending_requests[correlation_id] = {
+            "queue": mock_queue,
+            "timestamp": 1000,
+            "agent_name": "agent1",
+            "action_name": "action1",
+        }
+        
+        # Create response data
+        response_data = {"message": "Test response"}
+        
+        # Handle the response
+        result = self.manager.handle_action_response(correlation_id, response_data)
+        
+        # Verify result
+        self.assertTrue(result)
+        
+        # Verify queue.put was called
+        mock_queue.put.assert_called_once_with(response_data)
+        
+        # Verify request was removed from pending requests
+        self.assertNotIn(correlation_id, self.manager.pending_requests)
+        
+        # Test with unknown correlation ID
+        result = self.manager.handle_action_response("unknown-id", response_data)
+        
+        # Verify result
+        self.assertFalse(result)
+        
+    @patch('time.time')
+    def test_cleanup_pending_requests(self, mock_time):
+        """Test cleaning up pending requests."""
+        # Set mock time
+        mock_time.return_value = 1100  # Current time
+        
+        # Create pending requests
+        self.manager.pending_requests = {}
+        
+        # Create mock queues
+        mock_queue1 = MagicMock()
+        mock_queue2 = MagicMock()
+        
+        # Add requests to pending requests
+        self.manager.pending_requests["id1"] = {
+            "queue": mock_queue1,
+            "timestamp": 1000,  # 100 seconds old
+            "agent_name": "agent1",
+            "action_name": "action1",
+        }
+        
+        self.manager.pending_requests["id2"] = {
+            "queue": mock_queue2,
+            "timestamp": 1090,  # 10 seconds old
+            "agent_name": "agent2",
+            "action_name": "action2",
+        }
+        
+        # Clean up requests older than 60 seconds
+        cleaned_up = self.manager.cleanup_pending_requests(max_age_seconds=60)
+        
+        # Verify result
+        self.assertEqual(len(cleaned_up), 1)
+        self.assertIn("id1", cleaned_up)
+        
+        # Verify queue.put was called for timed out request
+        mock_queue1.put.assert_called_once()
+        mock_queue2.put.assert_not_called()
+        
+        # Verify timed out request was removed
+        self.assertNotIn("id1", self.manager.pending_requests)
+        self.assertIn("id2", self.manager.pending_requests)
 
 
 if __name__ == "__main__":
