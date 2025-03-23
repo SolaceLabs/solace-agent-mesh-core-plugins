@@ -172,13 +172,11 @@ The MCP Server Gateway and Agent log to the standard Solace Agent Mesh log files
 
 ### Example 1: Using the Filesystem MCP Server
 
-<inst>
-Fix these examples to comply with above. You no longer need to specify the server name in the environment variable.
-</inst>
-
 ```
-MCP_SERVER_NAME=filesystem
-MCP_SERVER_COMMAND=npx -y @modelcontextprotocol/server-filesystem /home/user/documents
+# After creating the agent with:
+# solace-agent-mesh add agent mcp_filesystem --copy-from sam_mcp_server:mcp_server
+
+FILESYSTEM_SERVER_COMMAND=npx -y @modelcontextprotocol/server-filesystem /home/user/documents
 ```
 
 This exposes the filesystem server's capabilities as agent actions, allowing access to files in the specified directory.
@@ -186,8 +184,10 @@ This exposes the filesystem server's capabilities as agent actions, allowing acc
 ### Example 2: Using the GitHub MCP Server
 
 ```
-MCP_SERVER_NAME=github
-MCP_SERVER_COMMAND=npx -y @modelcontextprotocol/server-github
+# After creating the agent with:
+# solace-agent-mesh add agent mcp_github --copy-from sam_mcp_server:mcp_server
+
+GITHUB_SERVER_COMMAND=npx -y @modelcontextprotocol/server-github
 ```
 
 This exposes GitHub repository operations as agent actions, enabling repository management through the agent.
