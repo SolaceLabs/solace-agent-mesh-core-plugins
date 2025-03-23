@@ -85,10 +85,11 @@ class TestResponseListener(unittest.TestCase):
         # Verify _get_server_manager was called
         mock_get_server_manager.assert_called_once_with("test-server")
 
-        # Verify handle_action_response was called
-        mock_server_manager.handle_action_response.assert_called_once_with(
-            "test-correlation-id", data
-        )
+        # Verify handle_action_response was called with transformed data
+        mock_server_manager.handle_action_response.assert_called_once()
+        call_args = mock_server_manager.handle_action_response.call_args[0]
+        self.assertEqual(call_args[0], "test-correlation-id")
+        self.assertIn("content", call_args[1])
 
         # Verify correlation ID was added to result
         self.assertEqual(result["mcp_correlation_id"], "test-correlation-id")
@@ -129,11 +130,12 @@ class TestResponseListener(unittest.TestCase):
         # Verify _get_server_manager was called
         mock_get_server_manager.assert_called_once_with("test-server")
 
-        # Verify handle_action_response was called with error data
+        # Verify handle_action_response was called with transformed data
         mock_server_manager.handle_action_response.assert_called_once()
         call_args = mock_server_manager.handle_action_response.call_args[0]
         self.assertEqual(call_args[0], "test-correlation-id")
-        self.assertEqual(call_args[1]["error"], "Request timed out")
+        self.assertIn("content", call_args[1])
+        self.assertTrue(call_args[1].get("isError", False))
 
         # Verify correlation ID was added to result
         self.assertEqual(result["mcp_correlation_id"], "test-correlation-id")
@@ -225,6 +227,51 @@ class TestResponseListener(unittest.TestCase):
         mock_server_manager1.cleanup_pending_requests.assert_called_once()
         mock_server_manager2.cleanup_pending_requests.assert_called_once()
 
+    def test_transform_response_to_mcp_format(self):
+        """Test transforming response to MCP format."""
+        # Test with text message
+        text_data = {"message": "Test message"}
+        result = self.gateway_output._transform_response_to_mcp_format(text_data)
+        self.assertIn("content", result)
+        self.assertEqual(len(result["content"]), 1)
+        self.assertEqual(result["content"][0]["type"], "text")
+        self.assertEqual(result["content"][0]["text"], "Test message")
+        
+        # Test with file
+        file_data = {
+            "files": [
+                {
+                    "name": "test.txt",
+                    "content": "base64content",
+                    "mime_type": "text/plain"
+                }
+            ]
+        }
+        result = self.gateway_output._transform_response_to_mcp_format(file_data)
+        self.assertIn("content", result)
+        self.assertEqual(len(result["content"]), 1)
+        self.assertEqual(result["content"][0]["type"], "file")
+        self.assertEqual(result["content"][0]["name"], "test.txt")
+        self.assertEqual(result["content"][0]["data"], "base64content")
+        self.assertEqual(result["content"][0]["mimeType"], "text/plain")
+        
+        # Test with error
+        error_data = {
+            "error_info": {
+                "error_message": "Test error"
+            }
+        }
+        result = self.gateway_output._transform_response_to_mcp_format(error_data)
+        self.assertIn("content", result)
+        self.assertTrue(result["isError"])
+        self.assertEqual(result["content"][0]["text"], "Test error")
+        
+        # Test with empty data
+        empty_data = {}
+        result = self.gateway_output._transform_response_to_mcp_format(empty_data)
+        self.assertIn("content", result)
+        self.assertEqual(result["content"][0]["text"], "No content available")
+        
     def test_stop_component(self):
         """Test stopping the component."""
         # Create mock server managers
