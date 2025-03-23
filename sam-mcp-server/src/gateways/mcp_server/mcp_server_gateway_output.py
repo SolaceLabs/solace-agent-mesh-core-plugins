@@ -129,6 +129,45 @@ class MCPServerGatewayOutput(GatewayOutput):
         # Process the registration using the listener
         self.registration_listener.process_registration(data)
 
+    def _get_server_manager(self, server_name: str):
+        """Get or create a server manager for the given server name.
+        
+        Args:
+            server_name: Name of the MCP server.
+            
+        Returns:
+            The server manager instance, or None if it couldn't be created.
+        """
+        if server_name in self.server_managers:
+            return self.server_managers[server_name]
+            
+        try:
+            # Import here to avoid circular imports
+            from .mcp_server_manager import MCPServerManager
+            
+            # Create a new server manager
+            manager = MCPServerManager(
+                agent_registry=self.agent_registry,
+                server_name=server_name,
+                scopes=self.scopes
+            )
+            
+            # Initialize the manager
+            if manager.initialize():
+                self.server_managers[server_name] = manager
+                return manager
+            else:
+                log.error(
+                    f"{self.log_identifier} Failed to initialize MCP server manager for {server_name}"
+                )
+                return None
+        except Exception as e:
+            log.error(
+                f"{self.log_identifier} Error creating MCP server manager for {server_name}: {str(e)}",
+                exc_info=True
+            )
+            return None
+            
     def _handle_agent_response(
         self, message: Message, data: Dict[str, Any]
     ) -> Dict[str, Any]:
@@ -149,6 +188,28 @@ class MCPServerGatewayOutput(GatewayOutput):
         correlation_id = user_properties.get("mcp_correlation_id")
         if correlation_id:
             result["mcp_correlation_id"] = correlation_id
+            
+            # Forward the response to the MCP server manager if it exists
+            from .mcp_server_factory import MCPServerFactory
+            
+            # Extract server name from user properties
+            server_name = user_properties.get("gateway_id")
+            if server_name:
+                # Get the server instance
+                server_manager = self._get_server_manager(server_name)
+                if server_manager:
+                    # Forward the response to the server manager
+                    success = server_manager.handle_action_response(correlation_id, data)
+                    if success:
+                        log.info(
+                            f"{self.log_identifier} Successfully forwarded response for "
+                            f"correlation ID {correlation_id} to MCP server {server_name}"
+                        )
+                    else:
+                        log.warning(
+                            f"{self.log_identifier} Failed to forward response for "
+                            f"correlation ID {correlation_id} to MCP server {server_name}"
+                        )
 
         # Add agent information if available
         topic = message.get_topic()
