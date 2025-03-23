@@ -312,7 +312,9 @@ class TestMCPServerManager(unittest.TestCase):
         
         # Access the TextResourceContents object's attributes directly
         resource_content = result.contents[0]
-        self.assertEqual(resource_content.uri, "agent://agent1/resource1")
+        # Convert to string for comparison if it's an AnyUrl object
+        uri = str(resource_content.uri) if hasattr(resource_content.uri, "__str__") else resource_content.uri
+        self.assertEqual(uri, "agent://agent1/resource1")
         self.assertEqual(resource_content.mimeType, "text/plain")
         self.assertTrue("Resource content for agent1/resource1" in resource_content.text)
         
