@@ -8,7 +8,7 @@ import threading
 import time
 from typing import Dict, Any, Optional, List, Callable
 
-from mcp.types import Tool, Resource, Prompt, PromptArgument, CallToolResult, TextContent, ReadResourceResult
+from mcp.types import Tool, Resource, Prompt, PromptArgument, CallToolResult, TextContent, ReadResourceResult, GetPromptResult
 
 from solace_ai_connector.common.log import log
 
