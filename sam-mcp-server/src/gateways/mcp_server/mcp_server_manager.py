@@ -7,7 +7,7 @@ including server initialization, tool registration, and request handling.
 import threading
 from typing import Dict, Any, Optional, List, Callable
 
-from mcp.types import Tool, Resource, Prompt, PromptArgument, CallToolResult, TextContent
+from mcp.types import Tool, Resource, Prompt, PromptArgument, CallToolResult, TextContent, ReadResourceResult
 
 from solace_ai_connector.common.log import log
 
