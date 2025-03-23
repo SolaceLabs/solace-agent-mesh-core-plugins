@@ -5,16 +5,14 @@ connections, processes requests, and manages the server lifecycle.
 """
 
 import asyncio
-import logging
 import threading
-from typing import Dict, Any, Optional, List, Callable, Tuple
+from typing import Dict, Any, List, Callable
 
 from mcp.server import Server
 from mcp.types import (
     Tool,
     Resource,
     Prompt,
-    PromptArgument,
     CallToolRequest,
     CallToolResult,
     ReadResourceRequest,
@@ -26,10 +24,16 @@ from mcp.types import (
 from mcp.server.stdio import stdio_server
 from mcp.server.sse import SseServerTransport
 
+# <inst>
+# Fix all the log calls to use lazy formatting. I see a log of warnings
+# </inst>
+
+
 # Define ServerOptions class since mcp.server.options doesn't exist
 class ServerOptions:
     def __init__(self, capabilities=None):
         self.capabilities = capabilities or {}
+
 
 from solace_ai_connector.common.log import log
 
@@ -146,39 +150,45 @@ class MCPServer:
         )
 
         # Register handlers for tools, resources, and prompts
-        # The API has changed - we need to use decorators instead of set_request_handler
-        
+
         @server.list_tools()
         async def handle_list_tools():
             return self.tools
-            
+
         @server.call_tool()
         async def handle_call_tool(name, arguments):
             return await self._handle_tool_call(
-                CallToolRequest(params=type('obj', (object,), {'name': name, 'arguments': arguments})),
-                None
+                CallToolRequest(
+                    params=type(
+                        "obj", (object,), {"name": name, "arguments": arguments}
+                    )
+                ),
+                None,
             )
-            
+
         @server.list_resources()
         async def handle_list_resources():
             return self.resources
-            
+
         @server.read_resource()
         async def handle_read_resource(uri):
             return await self._handle_resource_read(
-                ReadResourceRequest(params=type('obj', (object,), {'uri': uri})),
-                None
+                ReadResourceRequest(params=type("obj", (object,), {"uri": uri})), None
             )
-            
+
         @server.list_prompts()
         async def handle_list_prompts():
             return self.prompts
-            
+
         @server.get_prompt()
         async def handle_get_prompt(name, arguments):
             return await self._handle_prompt_get(
-                GetPromptRequest(params=type('obj', (object,), {'name': name, 'arguments': arguments})),
-                None
+                GetPromptRequest(
+                    params=type(
+                        "obj", (object,), {"name": name, "arguments": arguments}
+                    )
+                ),
+                None,
             )
 
         return server
@@ -248,8 +258,10 @@ class MCPServer:
         """
         resource_uri = request.params.uri
         # Convert AnyUrl to string if needed
-        uri_key = str(resource_uri) if hasattr(resource_uri, "__str__") else resource_uri
-        
+        uri_key = (
+            str(resource_uri) if hasattr(resource_uri, "__str__") else resource_uri
+        )
+
         if uri_key not in self.resource_callbacks:
             return ReadResourceResult(contents=[])
 
@@ -333,7 +345,7 @@ class MCPServer:
                     await server.run(
                         streams[0],  # read stream
                         streams[1],  # write stream
-                        server.create_initialization_options()
+                        server.create_initialization_options(),
                     )
             except (ImportError, NameError):
                 # If that fails, use a mock implementation
@@ -357,11 +369,7 @@ class MCPServer:
 
                 stdin = MockStream()
                 stdout = MockStream()
-                await server.run(
-                    stdin, 
-                    stdout,
-                    server.create_initialization_options()
-                )
+                await server.run(stdin, stdout, server.create_initialization_options())
 
         asyncio.run(run_server())
 
@@ -401,7 +409,9 @@ class MCPServer:
         """
         self.resources.append(resource)
         # Convert AnyUrl to string if needed
-        uri_key = str(resource.uri) if hasattr(resource.uri, "__str__") else resource.uri
+        uri_key = (
+            str(resource.uri) if hasattr(resource.uri, "__str__") else resource.uri
+        )
         self.resource_callbacks[uri_key] = callback
         log.info(f"{self.log_identifier}Registered resource: {resource.uri}")
 
