@@ -208,11 +208,11 @@ The queues will be managed as follows:
    - Implement basic request/response handling [DONE]
    - Test: Verify server starts and responds to basic requests [DONE]
 
-5. **Task 2.2: Tool Exposure**
-   - Convert agent actions to MCP tools
-   - Implement tool listing and discovery
-   - Add parameter validation
-   - Test: Verify tools are correctly exposed to MCP clients
+5. **Task 2.2: Tool Exposure** [DONE]
+   - Convert agent actions to MCP tools [DONE]
+   - Implement tool listing and discovery [DONE]
+   - Add parameter validation [DONE]
+   - Test: Verify tools are correctly exposed to MCP clients [DONE]
 
 6. **Task 2.3: Resource Handling**
    - Implement resource listing and retrieval

@@ -121,6 +121,35 @@ class TestMCPServerManager(unittest.TestCase):
                                 "required": True
                             }
                         ]
+                    },
+                    {
+                        "name": "action2",
+                        "description": "Action 2",
+                        "params": [
+                            {
+                                "name": "param2",
+                                "desc": "Parameter 2",
+                                "type": "number",
+                                "required": False
+                            },
+                            {
+                                "name": "param3",
+                                "desc": "Parameter 3",
+                                "type": "boolean",
+                                "required": True
+                            }
+                        ]
+                    },
+                    # Invalid action without params
+                    {
+                        "name": "action3",
+                        "description": "Action 3"
+                    },
+                    # Invalid action with non-list params
+                    {
+                        "name": "action4",
+                        "description": "Action 4",
+                        "params": "invalid"
                     }
                 ]
             }
@@ -129,23 +158,54 @@ class TestMCPServerManager(unittest.TestCase):
         # Initialize manager
         self.manager.initialize()
         
-        # Verify register_tool was called
-        mock_server.register_tool.assert_called_once()
+        # Verify register_tool was called twice (for action1 and action2, not for invalid actions)
+        self.assertEqual(mock_server.register_tool.call_count, 2)
         
-        # Get the tool that was registered
-        tool = mock_server.register_tool.call_args[0][0]
+        # Get the first tool that was registered
+        tool1 = mock_server.register_tool.call_args_list[0][0][0]
         
-        # Verify tool properties
-        self.assertEqual(tool.name, "agent1.action1")
-        self.assertEqual(tool.description, "Action 1 (from agent agent1)")
-        self.assertEqual(tool.inputSchema["type"], "object")
-        self.assertEqual(tool.inputSchema["properties"]["param1"]["type"], "string")
-        self.assertEqual(tool.inputSchema["properties"]["param1"]["description"], "Parameter 1")
-        self.assertEqual(tool.inputSchema["required"], ["param1"])
+        # Verify tool1 properties
+        self.assertEqual(tool1.name, "agent1.action1")
+        self.assertEqual(tool1.description, "Action 1 (from agent agent1)")
+        self.assertEqual(tool1.inputSchema["type"], "object")
+        self.assertEqual(tool1.inputSchema["properties"]["param1"]["type"], "string")
+        self.assertEqual(tool1.inputSchema["properties"]["param1"]["description"], "Parameter 1")
+        self.assertEqual(tool1.inputSchema["required"], ["param1"])
+        
+        # Get the second tool that was registered
+        tool2 = mock_server.register_tool.call_args_list[1][0][0]
+        
+        # Verify tool2 properties
+        self.assertEqual(tool2.name, "agent1.action2")
+        self.assertEqual(tool2.description, "Action 2 (from agent agent1)")
+        self.assertEqual(tool2.inputSchema["type"], "object")
+        self.assertEqual(tool2.inputSchema["properties"]["param2"]["type"], "number")
+        self.assertEqual(tool2.inputSchema["properties"]["param3"]["type"], "boolean")
+        self.assertEqual(tool2.inputSchema["required"], ["param3"])
 
     def test_handle_tool_call(self):
         """Test handling a tool call."""
-        # Call _handle_tool_call
+        # Mock agent_registry.get_agent
+        self.agent_registry.get_agent.return_value = {
+            "agent_name": "agent1",
+            "description": "Agent 1",
+            "actions": [
+                {
+                    "name": "action1",
+                    "description": "Action 1",
+                    "params": [
+                        {
+                            "name": "param1",
+                            "desc": "Parameter 1",
+                            "type": "string",
+                            "required": True
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        # Call _handle_tool_call with valid parameters
         result = self.manager._handle_tool_call("agent1", "action1", {"param1": "value1"})
         
         # Verify result
@@ -155,6 +215,42 @@ class TestMCPServerManager(unittest.TestCase):
             "Called agent1.action1 with args: {'param1': 'value1'}"
         )
         self.assertFalse(result.isError)
+        
+        # Test with missing required parameter
+        result = self.manager._handle_tool_call("agent1", "action1", {})
+        
+        # Verify error result
+        self.assertEqual(result.content[0].type, "text")
+        self.assertTrue("Missing required parameter" in result.content[0].text)
+        self.assertTrue(result.isError)
+        
+        # Test with non-existent agent
+        self.agent_registry.get_agent.return_value = None
+        result = self.manager._handle_tool_call("non_existent", "action1", {"param1": "value1"})
+        
+        # Verify error result
+        self.assertEqual(result.content[0].type, "text")
+        self.assertTrue("Agent 'non_existent' not found" in result.content[0].text)
+        self.assertTrue(result.isError)
+        
+        # Test with non-existent action
+        self.agent_registry.get_agent.return_value = {
+            "agent_name": "agent1",
+            "description": "Agent 1",
+            "actions": [
+                {
+                    "name": "action1",
+                    "description": "Action 1",
+                    "params": []
+                }
+            ]
+        }
+        result = self.manager._handle_tool_call("agent1", "non_existent", {"param1": "value1"})
+        
+        # Verify error result
+        self.assertEqual(result.content[0].type, "text")
+        self.assertTrue("Action 'non_existent' not found" in result.content[0].text)
+        self.assertTrue(result.isError)
 
     def test_update_agent_registry(self):
         """Test updating the agent registry."""

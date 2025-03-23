@@ -131,13 +131,29 @@ class MCPServerManager:
                 if not action_name:
                     continue
                     
+                # Skip actions without parameters or with invalid parameters
+                params = action.get("params", [])
+                if not isinstance(params, list):
+                    log.warning(
+                        f"{self.log_identifier}Skipping action {agent_name}.{action_name} "
+                        f"with invalid params: {params}"
+                    )
+                    continue
+                
                 # Create tool from action
                 tool = self._create_tool_from_action(agent_name, action)
                 
+                # Create a closure to capture the current agent_name and action_name
+                def create_handler(a_name, act_name):
+                    return lambda args: self._handle_tool_call(a_name, act_name, args)
+                
                 # Register tool with server
-                self.server.register_tool(
-                    tool,
-                    lambda args, a=agent_name, n=action_name: self._handle_tool_call(a, n, args)
+                handler = create_handler(agent_name, action_name)
+                self.server.register_tool(tool, handler)
+                
+                log.info(
+                    f"{self.log_identifier}Registered tool {tool.name} "
+                    f"for agent {agent_name}, action {action_name}"
                 )
                 
     def _create_tool_from_action(self, agent_name: str, action: Dict[str, Any]) -> Tool:
@@ -160,12 +176,24 @@ class MCPServerManager:
         
         for param in params:
             param_name = param.get("name")
+            if not param_name:
+                continue
+                
             param_desc = param.get("desc", "")
             param_type = param.get("type", "string")
             param_required = param.get("required", False)
             
+            # Map agent mesh parameter types to JSON Schema types
+            json_type = "string"  # Default type
+            if param_type == "number" or param_type == "integer":
+                json_type = param_type
+            elif param_type == "boolean":
+                json_type = "boolean"
+            elif param_type == "array":
+                json_type = "array"
+                
             properties[param_name] = {
-                "type": param_type,
+                "type": json_type,
                 "description": param_desc
             }
             
@@ -199,6 +227,39 @@ class MCPServerManager:
             The tool call result.
         """
         try:
+            # Validate agent exists
+            agent = self.agent_registry.get_agent(agent_name)
+            if not agent:
+                return CallToolResult(
+                    content=[TextContent(type="text", text=f"Agent '{agent_name}' not found")],
+                    isError=True
+                )
+                
+            # Validate action exists
+            action = None
+            for act in agent.get("actions", []):
+                if act and act.get("name") == action_name:
+                    action = act
+                    break
+                    
+            if not action:
+                return CallToolResult(
+                    content=[TextContent(type="text", text=f"Action '{action_name}' not found for agent '{agent_name}'")],
+                    isError=True
+                )
+                
+            # Validate parameters
+            params = action.get("params", [])
+            for param in params:
+                param_name = param.get("name")
+                param_required = param.get("required", False)
+                
+                if param_required and param_name not in args:
+                    return CallToolResult(
+                        content=[TextContent(type="text", text=f"Missing required parameter '{param_name}'")],
+                        isError=True
+                    )
+            
             # TODO: Implement actual agent action invocation
             # This is a placeholder that will be implemented in Task 3.1
             result = f"Called {agent_name}.{action_name} with args: {args}"
