@@ -202,11 +202,11 @@ The queues will be managed as follows:
 
 #### Phase 2: MCP Server Implementation
 
-4. **Task 2.1: Basic MCP Server Setup**
-   - Implement MCP server initialization
-   - Set up transport handling (stdio/SSE)
-   - Implement basic request/response handling
-   - Test: Verify server starts and responds to basic requests
+4. **Task 2.1: Basic MCP Server Setup** [DONE]
+   - Implement MCP server initialization [DONE]
+   - Set up transport handling (stdio/SSE) [DONE]
+   - Implement basic request/response handling [DONE]
+   - Test: Verify server starts and responds to basic requests [DONE]
 
 5. **Task 2.2: Tool Exposure**
    - Convert agent actions to MCP tools
