@@ -1,0 +1,80 @@
+# MCP Server Gateway Interface Flows
+# This file defines the flows for the MCP Server Gateway interface
+
+log:
+  stdout_log_level: INFO
+  log_file_level: INFO
+  log_file: solace_ai_connector.log
+
+shared_config:
+  - broker_config: &broker_connection
+      broker_connection_share: ${SOLACE_BROKER_URL}
+      dev_mode: ${SOLACE_DEV_MODE, false}
+      broker_url: ${SOLACE_BROKER_URL}
+      broker_username: ${SOLACE_BROKER_USERNAME}
+      broker_password: ${SOLACE_BROKER_PASSWORD}
+      broker_vpn: ${SOLACE_BROKER_VPN}
+      temporary_queue: ${USE_TEMPORARY_QUEUES, false}
+
+flows:
+  # Flow to handle MCP server gateway input
+  - name: mcp_server_gateway_input
+    components:
+      # Input component for MCP server gateway
+      - component_name: mcp_server_gateway_input
+        component_module: src.gateways.mcp_server.mcp_server_gateway_input
+        component_config:
+          gateway_config:
+            gateway_id: ${GATEWAY_ID, mcp-server}
+            system_purpose: ${SYSTEM_PURPOSE, "You are a helpful assistant that can use tools to accomplish tasks."}
+            interaction_type: interactive
+            identity_key_field: identity
+            identity:
+              type: simple
+              module: solace_agent_mesh.gateway.identity.simple_identity_provider
+              configuration:
+                key_field: identity
+
+      # Output to a Solace broker
+      - component_name: broker_output
+        component_module: broker_output
+        component_config:
+          <<: *broker_connection
+          payload_encoding: utf-8
+          payload_format: json
+          copy_user_properties: true
+
+  # Flow to handle MCP server gateway output
+  - name: mcp_server_gateway_output
+    components:
+      # Input from a Solace broker
+      - component_name: broker_input
+        component_module: broker_input
+        component_config:
+          <<: *broker_connection
+          payload_encoding: utf-8
+          payload_format: json
+          broker_queue_name: ${SOLACE_AGENT_MESH_NAMESPACE}mcp_server_gateway_output
+          broker_subscriptions:
+            - topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/actionResponse/agent/*/*
+              qos: 1
+            - topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/actionResponse/agent/*/*/timeout
+              qos: 1
+            - topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/register/agent/*
+              qos: 1
+
+      # Process the response with a custom component
+      - component_name: mcp_server_gateway_output
+        component_module: src.gateways.mcp_server.mcp_server_gateway_output
+        component_config:
+          gateway_config:
+            gateway_id: ${GATEWAY_ID, mcp-server}
+          
+      # Output to a Solace broker
+      - component_name: broker_output
+        component_module: broker_output
+        component_config:
+          <<: *broker_connection
+          payload_encoding: utf-8
+          payload_format: json
+          copy_user_properties: true

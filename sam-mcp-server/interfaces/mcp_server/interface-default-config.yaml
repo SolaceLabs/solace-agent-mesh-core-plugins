@@ -1,0 +1,16 @@
+# MCP Server Gateway Interface Default Configuration
+# This file defines the default configuration for the MCP Server Gateway interface
+
+# Gateway ID
+GATEWAY_ID: mcp-server
+
+# System purpose for the gateway
+SYSTEM_PURPOSE: "You are a helpful assistant that can use tools to accomplish tasks."
+
+# Scopes to filter agents by
+MCP_SERVER_SCOPES: "*:*:*"
+
+# MCP server configuration
+MCP_SERVER_PORT: 8080
+MCP_SERVER_HOST: 0.0.0.0
+MCP_SERVER_TRANSPORT: sse
