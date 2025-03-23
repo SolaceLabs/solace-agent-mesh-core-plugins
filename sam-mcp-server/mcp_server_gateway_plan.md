@@ -214,10 +214,10 @@ The queues will be managed as follows:
    - Add parameter validation [DONE]
    - Test: Verify tools are correctly exposed to MCP clients [DONE]
 
-6. **Task 2.3: Resource Handling**
-   - Implement resource listing and retrieval
-   - Add file service integration
-   - Handle binary and text resources
+6. **Task 2.3: Resource Handling** [DONE]
+   - Implement resource listing and retrieval [DONE]
+   - Add agent resource integration [DONE]
+   - Handle text resources [DONE]
    - Test: Verify resources can be listed and retrieved
 
 7. **Task 2.4: Prompt Support**

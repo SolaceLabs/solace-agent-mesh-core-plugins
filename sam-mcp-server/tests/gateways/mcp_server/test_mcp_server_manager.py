@@ -152,6 +152,20 @@ class TestMCPServerManager(unittest.TestCase):
                         "description": "Action 4",
                         "params": "invalid"
                     }
+                ],
+                "resources": [
+                    {
+                        "name": "resource1",
+                        "uri": "resource1",
+                        "description": "Resource 1",
+                        "mime_type": "text/plain"
+                    },
+                    {
+                        "name": "resource2",
+                        "uri": "resource2",
+                        "description": "Resource 2",
+                        "mime_type": "application/json"
+                    }
                 ]
             }
         }
@@ -183,6 +197,27 @@ class TestMCPServerManager(unittest.TestCase):
         self.assertEqual(tool2.inputSchema["properties"]["param2"]["type"], "number")
         self.assertEqual(tool2.inputSchema["properties"]["param3"]["type"], "boolean")
         self.assertEqual(tool2.inputSchema["required"], ["param3"])
+        
+        # Verify register_resource was called twice
+        self.assertEqual(mock_server.register_resource.call_count, 2)
+        
+        # Get the first resource that was registered
+        resource1 = mock_server.register_resource.call_args_list[0][0][0]
+        
+        # Verify resource1 properties
+        self.assertEqual(resource1.uri, "agent://agent1/resource1")
+        self.assertEqual(resource1.name, "resource1")
+        self.assertEqual(resource1.description, "Resource 1 (from agent agent1)")
+        self.assertEqual(resource1.mimeType, "text/plain")
+        
+        # Get the second resource that was registered
+        resource2 = mock_server.register_resource.call_args_list[1][0][0]
+        
+        # Verify resource2 properties
+        self.assertEqual(resource2.uri, "agent://agent1/resource2")
+        self.assertEqual(resource2.name, "resource2")
+        self.assertEqual(resource2.description, "Resource 2 (from agent agent1)")
+        self.assertEqual(resource2.mimeType, "application/json")
 
     def test_handle_tool_call(self):
         """Test handling a tool call."""
@@ -252,6 +287,56 @@ class TestMCPServerManager(unittest.TestCase):
         self.assertEqual(result.content[0].type, "text")
         self.assertTrue("Action 'non_existent' not found" in result.content[0].text)
         self.assertTrue(result.isError)
+
+    def test_handle_resource_read(self):
+        """Test handling a resource read."""
+        # Mock agent_registry.get_agent
+        self.agent_registry.get_agent.return_value = {
+            "agent_name": "agent1",
+            "description": "Agent 1",
+            "resources": [
+                {
+                    "name": "resource1",
+                    "uri": "resource1",
+                    "description": "Resource 1",
+                    "mime_type": "text/plain"
+                }
+            ]
+        }
+        
+        # Call _handle_resource_read with valid parameters
+        result = self.manager._handle_resource_read("agent1", "resource1")
+        
+        # Verify result
+        self.assertEqual(len(result.contents), 1)
+        self.assertEqual(result.contents[0]["uri"], "agent://agent1/resource1")
+        self.assertEqual(result.contents[0]["mimeType"], "text/plain")
+        self.assertTrue("Resource content for agent1/resource1" in result.contents[0]["text"])
+        
+        # Test with non-existent agent
+        self.agent_registry.get_agent.return_value = None
+        result = self.manager._handle_resource_read("non_existent", "resource1")
+        
+        # Verify empty result
+        self.assertEqual(len(result.contents), 0)
+        
+        # Test with non-existent resource
+        self.agent_registry.get_agent.return_value = {
+            "agent_name": "agent1",
+            "description": "Agent 1",
+            "resources": [
+                {
+                    "name": "resource1",
+                    "uri": "resource1",
+                    "description": "Resource 1",
+                    "mime_type": "text/plain"
+                }
+            ]
+        }
+        result = self.manager._handle_resource_read("agent1", "non_existent")
+        
+        # Verify empty result
+        self.assertEqual(len(result.contents), 0)
 
     def test_update_agent_registry(self):
         """Test updating the agent registry."""

@@ -164,6 +164,9 @@ class MCPServerManager:
                     f"for agent {agent_name}, action {action_name}"
                 )
                 
+            # Register file resources for the agent if it has any
+            self._register_agent_resources(agent_name, agent_data)
+                
     def _create_tool_from_action(self, agent_name: str, action: Dict[str, Any]) -> Tool:
         """Create an MCP tool from an agent action.
         
@@ -285,11 +288,110 @@ class MCPServerManager:
                 isError=True
             )
             
+    def _register_agent_resources(self, agent_name: str, agent_data: Dict[str, Any]) -> None:
+        """Register agent resources as MCP resources.
+        
+        Args:
+            agent_name: Name of the agent.
+            agent_data: Agent data.
+        """
+        if not self.server:
+            return
+            
+        # Check if agent has resources
+        resources = agent_data.get("resources", [])
+        if not resources:
+            return
+            
+        for resource in resources:
+            if not resource:
+                continue
+                
+            resource_name = resource.get("name")
+            resource_uri = resource.get("uri")
+            resource_description = resource.get("description", "")
+            resource_mime_type = resource.get("mime_type", "text/plain")
+            
+            if not resource_name or not resource_uri:
+                continue
+                
+            # Create MCP resource
+            mcp_resource = Resource(
+                uri=f"agent://{agent_name}/{resource_uri}",
+                name=resource_name,
+                description=f"{resource_description} (from agent {agent_name})",
+                mimeType=resource_mime_type
+            )
+            
+            # Create a closure to capture the current agent_name and resource_uri
+            def create_handler(a_name, r_uri):
+                return lambda: self._handle_resource_read(a_name, r_uri)
+                
+            # Register resource with server
+            handler = create_handler(agent_name, resource_uri)
+            self.server.register_resource(mcp_resource, handler)
+            
+            log.info(
+                f"{self.log_identifier}Registered resource {mcp_resource.uri} "
+                f"for agent {agent_name}"
+            )
+            
+    def _handle_resource_read(self, agent_name: str, resource_uri: str) -> ReadResourceResult:
+        """Handle a resource read request.
+        
+        Args:
+            agent_name: Name of the agent.
+            resource_uri: URI of the resource.
+            
+        Returns:
+            The resource read result.
+        """
+        try:
+            # Validate agent exists
+            agent = self.agent_registry.get_agent(agent_name)
+            if not agent:
+                return ReadResourceResult(
+                    contents=[]
+                )
+                
+            # Validate resource exists
+            resource = None
+            for res in agent.get("resources", []):
+                if res and res.get("uri") == resource_uri:
+                    resource = res
+                    break
+                    
+            if not resource:
+                return ReadResourceResult(
+                    contents=[]
+                )
+                
+            # TODO: Implement actual agent resource retrieval
+            # This is a placeholder that will be implemented in Task 3.1
+            content = f"Resource content for {agent_name}/{resource_uri}"
+            mime_type = resource.get("mime_type", "text/plain")
+            
+            return ReadResourceResult(
+                contents=[{
+                    "uri": f"agent://{agent_name}/{resource_uri}",
+                    "text": content,
+                    "mimeType": mime_type
+                }]
+            )
+        except Exception as e:
+            log.error(
+                f"{self.log_identifier}Error reading resource {agent_name}/{resource_uri}: {str(e)}",
+                exc_info=True
+            )
+            return ReadResourceResult(
+                contents=[]
+            )
+            
     def update_agent_registry(self) -> None:
         """Update the server with the latest agent registry."""
         with self.lock:
             if not self.initialized:
                 return
                 
-            # Re-register tools
+            # Re-register tools and resources
             self._register_agent_tools()
