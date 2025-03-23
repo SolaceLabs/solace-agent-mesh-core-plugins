@@ -347,6 +347,10 @@ class MCPServerGatewayOutput(GatewayOutput):
                 error_message = data["error_info"].get("error_message", error_message)
             elif isinstance(data["error_info"], str):
                 error_message = data["error_info"]
+            
+            # Remove "Error: " prefix if present
+            if error_message.startswith("Error: "):
+                error_message = error_message[7:]
                 
             # Add error message if not already in content
             if "content" not in transformed_data:
