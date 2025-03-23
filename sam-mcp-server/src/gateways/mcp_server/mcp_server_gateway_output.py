@@ -77,6 +77,9 @@ class MCPServerGatewayOutput(GatewayOutput):
             on_agent_removed=self._on_agent_removed,
         )
         self.registration_listener.start()
+        
+        # Cache for server managers
+        self.server_managers = {}
 
         # Only log if log_identifier is available (it may not be during testing)
         if hasattr(self, "log_identifier"):
