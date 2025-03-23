@@ -105,7 +105,9 @@ class TestMCPServer(unittest.TestCase):
         
         # Verify resource was registered
         self.assertEqual(len(self.server.resources), 1)
-        self.assertEqual(self.server.resources[0].uri, "test://resource")
+        # Convert to string for comparison if it's an AnyUrl object
+        uri = str(self.server.resources[0].uri) if hasattr(self.server.resources[0].uri, "__str__") else self.server.resources[0].uri
+        self.assertEqual(uri, "test://resource")
         self.assertEqual(self.server.resource_callbacks["test://resource"], callback)
 
     def test_register_prompt(self):
