@@ -248,11 +248,11 @@ The queues will be managed as follows:
 
 #### Phase 4: Advanced Features and Optimization
 
-11. **Task 4.1: Sampling Support**
-    - Implement LLM sampling capability
-    - Add model preference handling
-    - Support system prompts and context inclusion
-    - Test: Verify sampling requests work correctly
+11. **Task 4.1: Remove Sampling Support**
+    - Remove sampling capability from implementation plan
+    - Note: In Solace Agent Mesh context, agents don't require sampling
+    - MCP servers wrapped by SAM agents handle their own LLM requests
+    - Agents don't have the ability to request sampling
 
 12. **Task 4.2: Session Management**
     - Implement client session tracking

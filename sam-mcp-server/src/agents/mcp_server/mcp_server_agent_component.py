@@ -93,13 +93,7 @@ info.update(
                 "type": "integer",
                 "default": 30,
             },
-            {
-                "name": "enable_sampling",
-                "required": False,
-                "description": "Enables sampling (Allowing servers to access LLMs through client)",
-                "type": "boolean",
-                "default": False,
-            },
+            # Sampling support removed as it's not needed in Solace Agent Mesh context
         ],
     }
 )
@@ -136,7 +130,6 @@ class McpServerAgentComponent(BaseAgentComponent):
 
         self.agent_name = self.get_config("server_name")
         self.agent_description = self.get_config("server_description")
-        self.enable_sampling = self.get_config("enable_sampling")
         self.info["agent_name"] = self.agent_name
         self.info["description"] = self.agent_description
 
@@ -296,60 +289,10 @@ class McpServerAgentComponent(BaseAgentComponent):
         request = responder.request.root
         log.debug("handle_server_request %s", responder.request)
         try:
-            if request.method == "sampling/createMessage":
-                response = self.perform_sampling(request)
-                await responder.respond(response)
-                return response
-            else:
-                raise ValueError(f"Unknown method: {request.method}")
+            # In Solace Agent Mesh context, we don't support sampling
+            # as agents handle their own LLM requests
+            raise ValueError(f"Unsupported method: {request.method}")
         except Exception as e:
             err_msg = f"Error handling server request: {str(e)}"
             log.error(err_msg)
             await responder.respond(types.ErrorData(code=400, message=err_msg))
-
-    def perform_sampling(
-        self, sampling: types.ServerRequest
-    ) -> types.CreateMessageResult:
-        messages = self.convert_sampling_to_llm_request(sampling)
-        content = self.do_llm_service_request(messages).get("content")
-        response = types.CreateMessageResult(
-            role="assistant",
-            content=types.TextContent(type="text", text=content),
-            model=self.llm_service_topic,
-        )
-        return response
-
-    def convert_sampling_to_llm_request(self, sampling: types.CreateMessageRequest):
-        params = sampling.params
-        messages = []
-        if not params.messages:
-            raise ValueError("Invalid messages format")
-
-        if params.systemPrompt:
-            messages.append(
-                {
-                    "role": "system",
-                    "content": [{"type": "text", "text": params.systemPrompt}],
-                }
-            )
-
-        for message in params.messages:
-            entry = {
-                "role": message.role,
-            }
-            content = message.content
-            if isinstance(content, types.TextContent):
-                entry["content"] = [{"type": "text", "text": content.text}]
-
-            elif isinstance(content, types.ImageContent):
-                mime_type = content.mimeType or "image/png"
-                data = content.data
-                entry["content"] = [{
-                    "type": "image_url",
-                    "text": f"data:{mime_type};base64,{data}",
-                }]
-            else:
-                raise ValueError("Invalid message content format")
-            messages.append(entry)
-
-        return messages
