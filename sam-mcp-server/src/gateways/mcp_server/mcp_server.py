@@ -146,23 +146,40 @@ class MCPServer:
         )
 
         # Register handlers for tools, resources, and prompts
-        server.set_request_handler(
-            "tools/list", lambda request, extra: {"tools": self.tools}
-        )
-
-        server.set_request_handler("tools/call", self._handle_tool_call)
-
-        server.set_request_handler(
-            "resources/list", lambda request, extra: {"resources": self.resources}
-        )
-
-        server.set_request_handler("resources/read", self._handle_resource_read)
-
-        server.set_request_handler(
-            "prompts/list", lambda request, extra: {"prompts": self.prompts}
-        )
-
-        server.set_request_handler("prompts/get", self._handle_prompt_get)
+        # The API has changed - we need to use decorators instead of set_request_handler
+        
+        @server.list_tools()
+        async def handle_list_tools():
+            return self.tools
+            
+        @server.call_tool()
+        async def handle_call_tool(name, arguments):
+            return await self._handle_tool_call(
+                CallToolRequest(params=type('obj', (object,), {'name': name, 'arguments': arguments})),
+                None
+            )
+            
+        @server.list_resources()
+        async def handle_list_resources():
+            return self.resources
+            
+        @server.read_resource()
+        async def handle_read_resource(uri):
+            return await self._handle_resource_read(
+                ReadResourceRequest(params=type('obj', (object,), {'uri': uri})),
+                None
+            )
+            
+        @server.list_prompts()
+        async def handle_list_prompts():
+            return self.prompts
+            
+        @server.get_prompt()
+        async def handle_get_prompt(name, arguments):
+            return await self._handle_prompt_get(
+                GetPromptRequest(params=type('obj', (object,), {'name': name, 'arguments': arguments})),
+                None
+            )
 
         return server
 
@@ -307,8 +324,14 @@ class MCPServer:
                 # Try to import and use the real stdio_server
                 from mcp.server.stdio import stdio_server
 
-                async with stdio_server() as (stdin, stdout):
-                    await server.run(stdin, stdout)
+                async with stdio_server() as streams:
+                    # The API has changed - stdio_server now returns a tuple of streams
+                    # that should be passed to server.run
+                    await server.run(
+                        streams[0],  # read stream
+                        streams[1],  # write stream
+                        server.create_initialization_options()
+                    )
             except (ImportError, NameError):
                 # If that fails, use a mock implementation
                 log.warning(
@@ -331,7 +354,11 @@ class MCPServer:
 
                 stdin = MockStream()
                 stdout = MockStream()
-                await server.run(stdin, stdout)
+                await server.run(
+                    stdin, 
+                    stdout,
+                    server.create_initialization_options()
+                )
 
         asyncio.run(run_server())
 
