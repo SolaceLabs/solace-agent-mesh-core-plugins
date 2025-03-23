@@ -188,11 +188,11 @@ The queues will be managed as follows:
    - Set up logging and error handling [DONE]
    - Test: Verify gateway loads without errors [DONE]
 
-2. **Task 1.2: Implement Agent Registry**
-   - Create `AgentRegistry` class to store agent information
-   - Implement methods to add, update, and remove agents
-   - Add filtering by scopes
-   - Test: Verify registry can store and retrieve agent information
+2. **Task 1.2: Implement Agent Registry** [DONE]
+   - Create `AgentRegistry` class to store agent information [DONE]
+   - Implement methods to add, update, and remove agents [DONE]
+   - Add filtering by scopes [DONE]
+   - Test: Verify registry can store and retrieve agent information [DONE]
 
 3. **Task 1.3: Agent Registration Listener**
    - Subscribe to agent registration topics

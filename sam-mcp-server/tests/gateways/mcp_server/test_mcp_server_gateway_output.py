@@ -5,6 +5,7 @@ from unittest.mock import patch, MagicMock
 
 from solace_ai_connector.common.message import Message
 from src.gateways.mcp_server.mcp_server_gateway_output import MCPServerGatewayOutput
+from src.gateways.mcp_server.agent_registry import AgentRegistry
 
 
 class TestMCPServerGatewayOutput(unittest.TestCase):
@@ -32,7 +33,8 @@ class TestMCPServerGatewayOutput(unittest.TestCase):
         self.gateway_output.discard_current_message = MagicMock()
         self.gateway_output.gateway_id = "test-gateway"
 
-    def test_handle_agent_registration(self):
+    @patch("src.gateways.mcp_server.agent_registry.AgentRegistry.register_agent")
+    def test_handle_agent_registration(self, mock_register_agent):
         """Test handling agent registration."""
         # Create test agent data
         agent_data = {
@@ -47,22 +49,21 @@ class TestMCPServerGatewayOutput(unittest.TestCase):
         self.gateway_output._handle_agent_registration(agent_data)
 
         # Verify agent was registered
-        self.assertIn("test_agent", self.gateway_output.agent_registry)
-        self.assertEqual(
-            self.gateway_output.agent_registry["test_agent"]["description"],
-            "Test agent",
-        )
+        mock_register_agent.assert_called_once_with(agent_data)
 
     def test_handle_agent_registration_no_name(self):
         """Test handling agent registration without a name."""
         # Create test agent data without name
         agent_data = {"description": "Test agent", "actions": []}
 
+        # Mock the registry's register_agent method
+        self.gateway_output.agent_registry.register_agent = MagicMock()
+
         # Call _handle_agent_registration method
         self.gateway_output._handle_agent_registration(agent_data)
 
-        # Verify no agent was registered
-        self.assertEqual(len(self.gateway_output.agent_registry), 0)
+        # Verify register_agent was not called
+        self.gateway_output.agent_registry.register_agent.assert_not_called()
 
     @patch("solace_agent_mesh.gateway.components.gateway_output.GatewayOutput.invoke")
     def test_handle_agent_response(self, mock_super_invoke):
@@ -70,12 +71,19 @@ class TestMCPServerGatewayOutput(unittest.TestCase):
         # Mock parent invoke method
         mock_super_invoke.return_value = {"text": "Test response"}
 
-        # Create test message with correlation ID
+        # Create test message with correlation ID and agent topic
         message = Message(
             payload={"text": "Test response"},
             user_properties={"mcp_correlation_id": "test-correlation-id"},
+            topic="solace-agent-mesh/v1/actionResponse/agent/test_agent/test_action"
         )
         data = {"text": "Test response"}
+
+        # Mock agent registry get_agent method
+        self.gateway_output.agent_registry.get_agent = MagicMock(return_value={
+            "name": "test_agent",
+            "description": "Test agent description"
+        })
 
         # Call _handle_agent_response method
         result = self.gateway_output._handle_agent_response(message, data)
@@ -85,6 +93,10 @@ class TestMCPServerGatewayOutput(unittest.TestCase):
 
         # Verify correlation ID was added to result
         self.assertEqual(result["mcp_correlation_id"], "test-correlation-id")
+        
+        # Verify agent info was added
+        self.assertIn("agent_info", result)
+        self.assertEqual(result["agent_info"]["name"], "test_agent")
 
     @patch("solace_agent_mesh.gateway.components.gateway_output.GatewayOutput.invoke")
     def test_invoke_agent_registration(self, mock_super_invoke):
@@ -188,3 +200,30 @@ class TestMCPServerGatewayOutput(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+    def test_get_filtered_agents(self):
+        """Test getting filtered agents."""
+        # Mock the registry's get_filtered_agents method
+        self.gateway_output.agent_registry.get_filtered_agents = MagicMock(
+            return_value={"test_agent": {"name": "test_agent"}}
+        )
+        
+        # Call get_filtered_agents method
+        result = self.gateway_output.get_filtered_agents()
+        
+        # Verify get_filtered_agents was called with the correct scope
+        self.gateway_output.agent_registry.get_filtered_agents.assert_called_once_with("test:*:*")
+        
+        # Verify result
+        self.assertEqual(result, {"test_agent": {"name": "test_agent"}})
+    def test_handle_timer_event(self):
+        """Test handling timer events."""
+        # Mock the registry's cleanup_expired_agents method
+        self.gateway_output.agent_registry.cleanup_expired_agents = MagicMock(
+            return_value=["expired_agent"]
+        )
+        
+        # Call handle_timer_event method
+        self.gateway_output.handle_timer_event("agent_registry_cleanup")
+        
+        # Verify cleanup_expired_agents was called
+        self.gateway_output.agent_registry.cleanup_expired_agents.assert_called_once()
