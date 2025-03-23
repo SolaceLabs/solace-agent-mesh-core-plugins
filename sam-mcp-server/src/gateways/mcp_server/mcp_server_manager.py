@@ -371,20 +371,37 @@ class MCPServerManager:
             content = f"Resource content for {agent_name}/{resource_uri}"
             mime_type = resource.get("mime_type", "text/plain")
             
-            # Import TextResourceContents at the module level to avoid import issues
-            from .mcp_server import TextResourceContents
-            
-            # Create a TextResourceContents object
-            resource_content = TextResourceContents(
-                uri=f"agent://{agent_name}/{resource_uri}",
-                text=content,
-                mimeType=mime_type
-            )
-            
-            # Return the result with the content
-            return ReadResourceResult(
-                contents=[resource_content]
-            )
+            # Check if we're using the real MCP library or our mock
+            try:
+                # Try to use the real MCP library first
+                from mcp.types import TextResourceContents as RealTextResourceContents
+                
+                # Create a dictionary that matches the expected structure
+                resource_content = {
+                    "uri": f"agent://{agent_name}/{resource_uri}",
+                    "text": content,
+                    "mimeType": mime_type
+                }
+                
+                # Return the result with the content
+                return ReadResourceResult(
+                    contents=[resource_content]
+                )
+            except (ImportError, TypeError, ValueError):
+                # If that fails, use our mock implementation
+                from .mcp_server import TextResourceContents
+                
+                # Create a TextResourceContents object
+                resource_content = TextResourceContents(
+                    uri=f"agent://{agent_name}/{resource_uri}",
+                    text=content,
+                    mimeType=mime_type
+                )
+                
+                # Return the result with the content
+                return ReadResourceResult(
+                    contents=[resource_content]
+                )
         except Exception as e:
             log.error(
                 f"{self.log_identifier}Error reading resource {agent_name}/{resource_uri}: {str(e)}",
