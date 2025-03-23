@@ -24,10 +24,6 @@ from mcp.types import (
 from mcp.server.stdio import stdio_server
 from mcp.server.sse import SseServerTransport
 
-# <inst>
-# Fix all the log calls to use lazy formatting. I see a log of warnings
-# </inst>
-
 
 # Define ServerOptions class since mcp.server.options doesn't exist
 class ServerOptions:
@@ -114,7 +110,7 @@ class MCPServer:
                 "%sCreated MCP server with SSE transport on %s:%s",
                 self.log_identifier,
                 self.host,
-                self.port
+                self.port,
             )
         else:
             raise ValueError(
@@ -361,8 +357,7 @@ class MCPServer:
             except (ImportError, NameError):
                 # If that fails, use a mock implementation
                 log.warning(
-                    "%sUsing mock stdio server implementation",
-                    self.log_identifier
+                    "%sUsing mock stdio server implementation", self.log_identifier
                 )
 
                 # Create simple stdin/stdout streams for testing
@@ -395,7 +390,7 @@ class MCPServer:
             raise ValueError(
                 "%sSSE transport not available for %s transport",
                 self.log_identifier,
-                self.transport_type
+                self.transport_type,
             )
 
         if not self.server:
