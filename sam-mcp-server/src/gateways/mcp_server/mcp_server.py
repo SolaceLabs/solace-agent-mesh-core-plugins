@@ -9,6 +9,7 @@ import threading
 from typing import Dict, Any, List, Callable
 
 from mcp.server import Server
+from mcp.server.sse import SseServerTransport
 from mcp.types import (
     Tool,
     Resource,
@@ -21,16 +22,13 @@ from mcp.types import (
     GetPromptResult,
     TextContent,
 )
-from mcp.server.sse import SseServerTransport
+from solace_ai_connector.common.log import log
 
 
 # Define ServerOptions class since mcp.server.options doesn't exist
 class ServerOptions:
     def __init__(self, capabilities=None):
         self.capabilities = capabilities or {}
-
-
-from solace_ai_connector.common.log import log
 
 
 class MCPServer:
