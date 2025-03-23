@@ -97,8 +97,82 @@ This architecture provides a direct bridge between MCP clients and Agent Mesh ag
 
 ### Topics and Queues
 
-<inst>
-Describe all the topics that will need to be subscribed to and which topics will be used for publishing messages.
+#### Subscription Topics
 
-Also, describe the queues that will be used for storing messages and how they will be managed.
-</inst>
+The MCP Server Gateway will need to subscribe to the following topics:
+
+1. **Agent Registration Topics**
+   - `solace-agent-mesh/v1/register/agent/*`
+     - Used to listen for agent registration messages
+     - Provides information about available agents and their capabilities
+     - Updates the gateway's agent registry when new agents register or update their capabilities
+
+2. **Action Response Topics**
+   - `solace-agent-mesh/v1/actionResponse/agent/*/*`
+     - Used to listen for responses from agents after action execution
+     - Captures all agent responses regardless of which agent they come from
+     - Allows the gateway to intercept responses meant for the orchestrator
+
+3. **Action Response Timeout Topics**
+   - `solace-agent-mesh/v1/actionResponse/agent/*/*/timeout`
+     - Used to listen for timeout notifications when an agent fails to respond
+     - Enables proper error handling for MCP clients
+
+#### Publishing Topics
+
+The MCP Server Gateway will publish messages to the following topics:
+
+1. **Action Request Topics**
+   - `solace-agent-mesh/v1/actionRequest/gateway/agent/{agent_name}/{action_name}`
+     - Used to send action requests directly to agents
+     - Bypasses the orchestrator for efficiency
+     - Includes a correlation ID to match responses with requests
+
+2. **Gateway Status Topics**
+   - `solace-agent-mesh/v1/status/gateway/mcp-server`
+     - Used to publish gateway status updates
+     - Indicates whether the gateway is running and healthy
+     - Includes information about connected MCP clients
+
+#### Queues
+
+The MCP Server Gateway will use the following queues:
+
+1. **Request Processing Queue**
+   - Stores incoming MCP client requests
+   - Ensures requests are processed in order
+   - Prevents request loss during high load
+   - Managed with a configurable maximum depth and timeout
+
+2. **Response Correlation Queue**
+   - Maps request IDs to pending responses
+   - Stores information about which MCP client is waiting for which response
+   - Enables asynchronous processing of responses
+   - Includes timeout mechanism to prevent memory leaks from abandoned requests
+
+3. **Agent Registry Queue**
+   - Stores updates to the agent registry
+   - Ensures thread-safe updates to the registry
+   - Processes registration messages in order
+   - Periodically cleans up expired agent registrations
+
+#### Queue Management
+
+The queues will be managed as follows:
+
+1. **Depth Limits**
+   - Each queue will have a configurable maximum depth
+   - When a queue reaches its depth limit, new messages will be rejected with appropriate error handling
+
+2. **Timeouts**
+   - Each queue entry will have a configurable timeout
+   - Expired entries will be removed and appropriate error responses generated
+
+3. **Persistence**
+   - Queues will be in-memory by default for performance
+   - Optional persistence can be enabled for reliability in production environments
+
+4. **Monitoring**
+   - Queue depths and processing times will be monitored
+   - Alerts will be generated if queues exceed threshold values
+   - Performance metrics will be collected for optimization
