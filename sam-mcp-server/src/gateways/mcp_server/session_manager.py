@@ -172,7 +172,13 @@ class SessionManager:
             session_id = self.clients.get(client_id)
             if not session_id:
                 return None
-            return self.get_session(session_id)
+            
+            # Get the session directly from the sessions dictionary
+            # instead of calling get_session to avoid deadlock
+            session = self.sessions.get(session_id)
+            if session:
+                session.update_activity()
+            return session
 
     def remove_session(self, session_id: str) -> bool:
         """Remove a session.
