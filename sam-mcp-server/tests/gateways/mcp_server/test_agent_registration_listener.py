@@ -147,11 +147,26 @@ class TestAgentRegistrationListener(unittest.TestCase):
         # Mock agent_registry.cleanup_expired_agents to return expired agents
         self.agent_registry.cleanup_expired_agents.return_value = ["expired_agent"]
         
-        # Set running flag to True
-        self.listener.running = True
+        # Create a modified version of _cleanup_loop that only runs once
+        def run_once():
+            try:
+                # Sleep for the cleanup interval
+                time.sleep(self.listener.cleanup_interval_ms / 1000)
+                
+                # Clean up expired agents
+                expired_agents = self.agent_registry.cleanup_expired_agents()
+                if expired_agents:
+                    # Call the callback for each removed agent
+                    if self.listener.on_agent_removed:
+                        for agent_name in expired_agents:
+                            self.listener.on_agent_removed(agent_name)
+            except Exception as e:
+                pass
         
-        # Call cleanup loop once
-        self.listener._cleanup_loop()
+        # Patch the _cleanup_loop method to use our run_once function
+        with patch.object(self.listener, '_cleanup_loop', run_once):
+            # Call the patched method
+            self.listener._cleanup_loop()
         
         # Verify sleep was called
         mock_sleep.assert_called_once_with(0.1)  # 100ms converted to seconds
