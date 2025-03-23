@@ -1,5 +1,6 @@
 """Tests for the AgentRegistrationListener class."""
 
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 
