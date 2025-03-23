@@ -161,7 +161,7 @@ class TestSessionManager(unittest.TestCase):
         self.assertTrue(self.session_manager.authorize(session.session_id, "test:write:data"))
         
         # Test authorization with non-matching scope
-        self.assertFalse(self.session_manager.authorize(session.session_i, "test:delete:*"))
+        self.assertFalse(self.session_manager.authorize(session.session_id, "test:delete:*"))
         
         # Test authorization with non-existent session
         self.assertFalse(self.session_manager.authorize("non-existent", "test:read:*"))
