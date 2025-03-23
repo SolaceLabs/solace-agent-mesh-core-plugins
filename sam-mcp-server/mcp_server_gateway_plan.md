@@ -178,6 +178,18 @@ The queues will be managed as follows:
    - Performance metrics will be collected for optimization
 
 
+### Software Architecture
+
+This section describes all the files that make up the MCP Server Gateway and what there purpose is.
+
+<inst>
+Fill in this section with details about what each file does and how it fits into the overall architecture.
+- Use sequence diagrams to show how the components interact with each other.
+- Describe how it is configured
+- Add an area that talks about things to be careful of that might trip you up
+</inst>
+
+
 ### Implementation Plan
 
 #### Phase 1: Foundation and Agent Registry
