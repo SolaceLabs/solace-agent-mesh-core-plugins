@@ -87,19 +87,38 @@ class TestMCPServerIntegration(unittest.TestCase):
             
     def _create_gateway_input(self):
         """Create a gateway input component for testing."""
-        with patch("solace_agent_mesh.gateway.components.gateway_input.GatewayInput.__init__") as mock_init:
-            mock_init.return_value = None
-            
-            gateway_input = MCPServerGatewayInput()
-            
-            # Set required attributes
-            gateway_input.log_identifier = "[TestGateway]"
-            gateway_input.scopes = "*:*:*"
-            gateway_input.port = 9090
-            gateway_input.host = "localhost"
-            gateway_input.transport = "stdio"
-            
-            return gateway_input
+        # Create the gateway input instance
+        gateway_input = MCPServerGatewayInput()
+        
+        # Override the get_config method to return test values
+        original_get_config = gateway_input.get_config
+        
+        def mock_get_config(key, default=None):
+            config_values = {
+                "mcp_server_scopes": "*:*:*",
+                "mcp_server_port": 9090,
+                "mcp_server_host": "localhost",
+                "mcp_server_transport": "stdio"
+            }
+            return config_values.get(key, default) or original_get_config(key, default)
+        
+        gateway_input.get_config = mock_get_config
+        
+        # Set required attributes
+        gateway_input.log_identifier = "[TestGateway]"
+        gateway_input.component_config = {}
+        gateway_input._initialize_history = MagicMock(return_value=None)
+        gateway_input._initialize_identity_component = MagicMock(return_value=MagicMock())
+        gateway_input.use_history = False
+        gateway_input.gateway_id = "test-gateway"
+        
+        # Set the values that would normally be set by get_config
+        gateway_input.scopes = "*:*:*"
+        gateway_input.port = 9090
+        gateway_input.host = "localhost"
+        gateway_input.transport = "stdio"
+        
+        return gateway_input
             
     def _register_test_agents(self):
         """Register test agents for integration testing."""
