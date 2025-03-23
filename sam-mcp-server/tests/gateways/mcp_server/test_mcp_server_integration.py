@@ -59,36 +59,31 @@ class TestMCPServerIntegration(unittest.TestCase):
         
     def _create_gateway_output(self):
         """Create a gateway output component for testing."""
-        with patch("solace_agent_mesh.gateway.components.gateway_output.GatewayOutput.__init__") as mock_init:
-            mock_init.return_value = None
-            
-            # Create the gateway output instance
-            gateway_output = MCPServerGatewayOutput()
-            
-            # Set required attributes
-            gateway_output.log_identifier = "[TestGateway]"
-            gateway_output.discard_current_message = MagicMock()
-            gateway_output.gateway_id = "test-gateway"
-            gateway_output.agent_registry = self.agent_registry
-            gateway_output.registration_listener = self.registration_listener
-            gateway_output.server_managers = {}
-            
-            # Set component_config before any get_config calls
-            gateway_output.component_config = {}
-            
-            # Create a mock for get_config that doesn't rely on component_config
-            def mock_get_config(key, default=None):
-                config_values = {
-                    "mcp_server_scopes": "*:*:*",
-                    "agent_ttl_ms": 1000,
-                    "agent_cleanup_interval_ms": 500
-                }
-                return config_values.get(key, default)
-            
-            # Replace the get_config method
-            gateway_output.get_config = mock_get_config
-            
-            return gateway_output
+        # Instead of mocking the parent __init__, create a real instance and then override attributes
+        gateway_output = MCPServerGatewayOutput()
+        
+        # Override the get_config method to return test values
+        original_get_config = gateway_output.get_config
+        
+        def mock_get_config(key, default=None):
+            config_values = {
+                "mcp_server_scopes": "*:*:*",
+                "agent_ttl_ms": 1000,
+                "agent_cleanup_interval_ms": 500
+            }
+            return config_values.get(key, default) or original_get_config(key, default)
+        
+        gateway_output.get_config = mock_get_config
+        
+        # Set test-specific attributes
+        gateway_output.log_identifier = "[TestGateway]"
+        gateway_output.discard_current_message = MagicMock()
+        gateway_output.gateway_id = "test-gateway"
+        gateway_output.agent_registry = self.agent_registry
+        gateway_output.registration_listener = self.registration_listener
+        gateway_output.server_managers = {}
+        
+        return gateway_output
             
     def _create_gateway_input(self):
         """Create a gateway input component for testing."""
