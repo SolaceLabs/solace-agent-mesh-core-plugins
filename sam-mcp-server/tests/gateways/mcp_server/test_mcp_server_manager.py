@@ -389,6 +389,127 @@ class TestMCPServerManager(unittest.TestCase):
         # Verify _register_agent_tools was not called
         self.manager._register_agent_tools.assert_not_called()
         
+    def test_register_agent_prompts(self):
+        """Test registering agent prompts."""
+        # Mock server
+        self.manager.server = MagicMock()
+        
+        # Mock agent data with prompts
+        agent_data = {
+            "agent_name": "agent1",
+            "description": "Agent 1",
+            "prompts": [
+                {
+                    "name": "greeting",
+                    "description": "A greeting prompt",
+                    "template": "Hello, {name}!",
+                    "arguments": [
+                        {
+                            "name": "name",
+                            "description": "Name to greet",
+                            "required": True
+                        }
+                    ]
+                },
+                {
+                    "name": "farewell",
+                    "description": "A farewell prompt",
+                    "template": "Goodbye, {name}!",
+                    "arguments": [
+                        {
+                            "name": "name",
+                            "description": "Name to bid farewell",
+                            "required": False
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        # Register prompts
+        self.manager._register_agent_prompts("agent1", agent_data)
+        
+        # Verify register_prompt was called twice
+        self.assertEqual(self.manager.server.register_prompt.call_count, 2)
+        
+        # Get the first prompt that was registered
+        prompt1 = self.manager.server.register_prompt.call_args_list[0][0][0]
+        
+        # Verify prompt1 properties
+        self.assertEqual(prompt1.name, "agent1.greeting")
+        self.assertEqual(prompt1.description, "A greeting prompt (from agent agent1)")
+        self.assertEqual(len(prompt1.arguments), 1)
+        self.assertEqual(prompt1.arguments[0].name, "name")
+        self.assertEqual(prompt1.arguments[0].description, "Name to greet")
+        self.assertTrue(prompt1.arguments[0].required)
+        
+        # Get the second prompt that was registered
+        prompt2 = self.manager.server.register_prompt.call_args_list[1][0][0]
+        
+        # Verify prompt2 properties
+        self.assertEqual(prompt2.name, "agent1.farewell")
+        self.assertEqual(prompt2.description, "A farewell prompt (from agent agent1)")
+        self.assertEqual(len(prompt2.arguments), 1)
+        self.assertEqual(prompt2.arguments[0].name, "name")
+        self.assertEqual(prompt2.arguments[0].description, "Name to bid farewell")
+        self.assertFalse(prompt2.arguments[0].required)
+        
+    def test_handle_prompt_get(self):
+        """Test handling a prompt get request."""
+        # Mock agent_registry.get_agent
+        self.agent_registry.get_agent.return_value = {
+            "agent_name": "agent1",
+            "description": "Agent 1",
+            "prompts": [
+                {
+                    "name": "greeting",
+                    "description": "A greeting prompt",
+                    "template": "Hello, {name}!",
+                    "arguments": [
+                        {
+                            "name": "name",
+                            "description": "Name to greet",
+                            "required": True
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        # Call _handle_prompt_get with valid parameters
+        result = self.manager._handle_prompt_get("agent1", "greeting", {"name": "World"})
+        
+        # Verify result
+        self.assertEqual(len(result.messages), 1)
+        self.assertEqual(result.messages[0]["role"], "user")
+        self.assertEqual(result.messages[0]["content"]["type"], "text")
+        self.assertEqual(result.messages[0]["content"]["text"], "Hello, World!")
+        
+        # Test with missing required parameter
+        result = self.manager._handle_prompt_get("agent1", "greeting", {})
+        
+        # Verify error result
+        self.assertEqual(len(result.messages), 0)
+        self.assertTrue("Missing required argument" in result.description)
+        
+        # Test with non-existent agent
+        self.agent_registry.get_agent.return_value = None
+        result = self.manager._handle_prompt_get("non_existent", "greeting", {"name": "World"})
+        
+        # Verify empty result
+        self.assertEqual(len(result.messages), 0)
+        
+        # Test with non-existent prompt
+        self.agent_registry.get_agent.return_value = {
+            "agent_name": "agent1",
+            "description": "Agent 1",
+            "prompts": []
+        }
+        result = self.manager._handle_prompt_get("agent1", "non_existent", {"name": "World"})
+        
+        # Verify empty result
+        self.assertEqual(len(result.messages), 0)
+        
     @patch('time.time')
     def test_handle_action_response(self, mock_time):
         """Test handling an action response."""

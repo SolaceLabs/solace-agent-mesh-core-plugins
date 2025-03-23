@@ -167,6 +167,9 @@ class MCPServerManager:
                 
             # Register file resources for the agent if it has any
             self._register_agent_resources(agent_name, agent_data)
+            
+            # Register prompts for the agent if it has any
+            self._register_agent_prompts(agent_name, agent_data)
                 
     def _create_tool_from_action(self, agent_name: str, action: Dict[str, Any]) -> Tool:
         """Create an MCP tool from an agent action.
@@ -493,6 +496,73 @@ class MCPServerManager:
                 contents=[]
             )
             
+    def _register_agent_prompts(self, agent_name: str, agent_data: Dict[str, Any]) -> None:
+        """Register agent prompts as MCP prompts.
+        
+        Args:
+            agent_name: Name of the agent.
+            agent_data: Agent data.
+        """
+        if not self.server:
+            return
+            
+        # Check if agent has prompts
+        prompts = agent_data.get("prompts", [])
+        if not prompts:
+            return
+            
+        for prompt_data in prompts:
+            if not prompt_data:
+                continue
+                
+            prompt_name = prompt_data.get("name")
+            prompt_description = prompt_data.get("description", "")
+            prompt_arguments = prompt_data.get("arguments", [])
+            
+            if not prompt_name:
+                continue
+                
+            # Convert prompt arguments to MCP format
+            mcp_arguments = []
+            for arg in prompt_arguments:
+                if not arg:
+                    continue
+                    
+                arg_name = arg.get("name")
+                arg_description = arg.get("description", "")
+                arg_required = arg.get("required", False)
+                
+                if not arg_name:
+                    continue
+                    
+                mcp_arguments.append(
+                    PromptArgument(
+                        name=arg_name,
+                        description=arg_description,
+                        required=arg_required
+                    )
+                )
+                
+            # Create MCP prompt
+            mcp_prompt = Prompt(
+                name=f"{agent_name}.{prompt_name}",
+                description=f"{prompt_description} (from agent {agent_name})",
+                arguments=mcp_arguments
+            )
+            
+            # Create a closure to capture the current agent_name and prompt_name
+            def create_handler(a_name, p_name):
+                return lambda args: self._handle_prompt_get(a_name, p_name, args)
+                
+            # Register prompt with server
+            handler = create_handler(agent_name, prompt_name)
+            self.server.register_prompt(mcp_prompt, handler)
+            
+            log.info(
+                f"{self.log_identifier}Registered prompt {mcp_prompt.name} "
+                f"for agent {agent_name}"
+            )
+            
     def update_agent_registry(self) -> None:
         """Update the server with the latest agent registry."""
         with self.lock:
@@ -501,6 +571,82 @@ class MCPServerManager:
                 
             # Re-register tools and resources
             self._register_agent_tools()
+            
+    def _handle_prompt_get(self, agent_name: str, prompt_name: str, args: Dict[str, Any]) -> GetPromptResult:
+        """Handle a prompt get request.
+        
+        Args:
+            agent_name: Name of the agent.
+            prompt_name: Name of the prompt.
+            args: Arguments for the prompt.
+            
+        Returns:
+            The prompt get result.
+        """
+        try:
+            # Validate agent exists
+            agent = self.agent_registry.get_agent(agent_name)
+            if not agent:
+                return GetPromptResult(
+                    messages=[]
+                )
+                
+            # Validate prompt exists
+            prompt = None
+            for p in agent.get("prompts", []):
+                if p and p.get("name") == prompt_name:
+                    prompt = p
+                    break
+                    
+            if not prompt:
+                return GetPromptResult(
+                    messages=[]
+                )
+                
+            # Validate arguments
+            prompt_arguments = prompt.get("arguments", [])
+            for arg in prompt_arguments:
+                arg_name = arg.get("name")
+                arg_required = arg.get("required", False)
+                
+                if arg_required and arg_name not in args:
+                    return GetPromptResult(
+                        messages=[],
+                        description=f"Missing required argument: {arg_name}"
+                    )
+                    
+            # Get prompt template
+            template = prompt.get("template", "")
+            
+            # Substitute arguments in template
+            for arg_name, arg_value in args.items():
+                template = template.replace(f"{{{arg_name}}}", str(arg_value))
+                
+            # Create prompt messages
+            messages = [
+                {
+                    "role": "user",
+                    "content": {
+                        "type": "text",
+                        "text": template
+                    }
+                }
+            ]
+            
+            # Return the result
+            return GetPromptResult(
+                messages=messages,
+                description=prompt.get("description", "")
+            )
+        except Exception as e:
+            log.error(
+                f"{self.log_identifier}Error getting prompt {agent_name}/{prompt_name}: {str(e)}",
+                exc_info=True
+            )
+            return GetPromptResult(
+                messages=[],
+                description=f"Error: {str(e)}"
+            )
             
     def handle_action_response(self, correlation_id: str, response_data: Dict[str, Any]) -> bool:
         """Handle an action response from an agent.
