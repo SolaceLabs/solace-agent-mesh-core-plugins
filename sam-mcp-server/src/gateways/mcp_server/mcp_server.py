@@ -41,14 +41,32 @@ class TextContent:
         self.type = type
         self.text = text
 
+class CallToolRequest:
+    def __init__(self, params=None):
+        self.params = params or type('obj', (object,), {
+            'name': '',
+            'arguments': {}
+        })
+
 class CallToolResult:
     def __init__(self, content=None, isError=False):
         self.content = content or []
         self.isError = isError
 
+class ReadResourceRequest:
+    def __init__(self, params=None):
+        self.params = params or type('obj', (object,), {'uri': ''})
+
 class ReadResourceResult:
     def __init__(self, contents=None):
         self.contents = contents or []
+
+class GetPromptRequest:
+    def __init__(self, params=None):
+        self.params = params or type('obj', (object,), {
+            'name': '',
+            'arguments': {}
+        })
 
 class GetPromptResult:
     def __init__(self, messages=None, description=None):
