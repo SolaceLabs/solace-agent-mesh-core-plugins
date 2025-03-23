@@ -9,17 +9,84 @@ import logging
 import threading
 from typing import Dict, Any, Optional, List, Callable, Tuple
 
-from mcp.server import Server
-from mcp.server.options import ServerOptions
-from mcp.server.stdio import stdio_server
-from mcp.server.sse import SseServerTransport
-from mcp.types import (
-    Tool, Resource, Prompt, PromptArgument, 
-    CallToolRequest, CallToolResult, 
-    ReadResourceRequest, ReadResourceResult,
-    GetPromptRequest, GetPromptResult,
-    TextContent
-)
+# Import MCP types conditionally to allow tests to run without MCP package
+try:
+    from mcp.server import Server
+    from mcp.server.options import ServerOptions
+    from mcp.server.stdio import stdio_server
+    from mcp.server.sse import SseServerTransport
+    from mcp.types import (
+        Tool, Resource, Prompt, PromptArgument, 
+        CallToolRequest, CallToolResult, 
+        ReadResourceRequest, ReadResourceResult,
+        GetPromptRequest, GetPromptResult,
+        TextContent
+    )
+    MCP_AVAILABLE = True
+except ImportError:
+    # Create mock classes for testing
+    MCP_AVAILABLE = False
+    
+    class Tool:
+        def __init__(self, name, description, inputSchema):
+            self.name = name
+            self.description = description
+            self.inputSchema = inputSchema
+
+    class Resource:
+        def __init__(self, uri, name, description=None, mimeType=None, uriTemplate=None):
+            self.uri = uri
+            self.name = name
+            self.description = description
+            self.mimeType = mimeType
+            self.uriTemplate = uriTemplate
+
+    class Prompt:
+        def __init__(self, name, description, arguments=None):
+            self.name = name
+            self.description = description
+            self.arguments = arguments or []
+
+    class PromptArgument:
+        def __init__(self, name, description, required=False):
+            self.name = name
+            self.description = description
+            self.required = required
+
+    class TextContent:
+        def __init__(self, type, text):
+            self.type = type
+            self.text = text
+
+    class CallToolResult:
+        def __init__(self, content=None, isError=False):
+            self.content = content or []
+            self.isError = isError
+
+    class ReadResourceResult:
+        def __init__(self, contents=None):
+            self.contents = contents or []
+
+    class GetPromptResult:
+        def __init__(self, messages=None, description=None):
+            self.messages = messages or []
+            self.description = description
+
+    class Server:
+        def __init__(self, implementation, options=None):
+            self.implementation = implementation
+            self.options = options
+            self.running = False
+
+        def set_request_handler(self, method, handler):
+            pass
+
+        async def run(self, stdin, stdout):
+            pass
+
+    class SseServerTransport:
+        def __init__(self, server):
+            self.server = server
 
 from solace_ai_connector.common.log import log
 

@@ -3,7 +3,8 @@
 import unittest
 from unittest.mock import patch, MagicMock
 
-from src.gateways.mcp_server.mcp_server import MCPServer
+# Import directly from our mocked classes
+from src.gateways.mcp_server.mcp_server import MCPServer, Tool, CallToolResult, TextContent
 from src.gateways.mcp_server.mcp_server_factory import MCPServerFactory
 from src.gateways.mcp_server.mcp_server_manager import MCPServerManager
 from src.gateways.mcp_server.agent_registry import AgentRegistry

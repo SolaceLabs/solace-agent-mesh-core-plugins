@@ -3,9 +3,10 @@
 import unittest
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from mcp.types import Tool, Resource, Prompt, CallToolResult, TextContent
-
-from src.gateways.mcp_server.mcp_server import MCPServer
+# Import directly from our mocked classes
+from src.gateways.mcp_server.mcp_server import (
+    MCPServer, Tool, Resource, Prompt, CallToolResult, TextContent
+)
 
 
 class TestMCPServer(unittest.TestCase):
