@@ -40,6 +40,9 @@ class TestResponseListener(unittest.TestCase):
         
         # Mock the agent registry
         self.gateway_output.agent_registry = MagicMock(spec=AgentRegistry)
+        
+        # Initialize server_managers dictionary
+        self.gateway_output.server_managers = {}
 
     @patch("src.gateways.mcp_server.mcp_server_gateway_output.MCPServerGatewayOutput._get_server_manager")
     @patch("solace_agent_mesh.gateway.components.gateway_output.GatewayOutput.invoke")
