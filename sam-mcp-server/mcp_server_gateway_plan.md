@@ -232,7 +232,7 @@ The queues will be managed as follows:
    - Implement direct agent action invocation [DONE]
    - Create correlation ID tracking [DONE]
    - Add request timeout handling [DONE]
-   - Test: Verify requests are sent to correct agents
+   - Test: Verify requests are sent to correct agents [DONE]
 
 9. **Task 3.2: Response Listener**
    - Subscribe to action response topics
