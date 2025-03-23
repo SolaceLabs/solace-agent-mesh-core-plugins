@@ -96,26 +96,32 @@ And provide the following environment variables:
 To use multiple MCP servers, create a new agent for each server:
 
 ```sh
-solace-agent-mesh add agent mcp_server --copy-from sam_mcp_server
+solace-agent-mesh add agent <mcp_server_name> --copy-from sam_mcp_server:mcp_server
 ```
 
-This will create a new config file in your agent config directory. Rename this file to your MCP server name.
-You can also rename or hard-code the following environment variables:
-- `MCP_SERVER_NAME`
-- `MCP_SERVER_COMMAND`
+This will create a new config file in your agent config directory with the name that you specify in the command above.
+You must also rename or hard-code the following environment variable in order to specify how to start the server:
+- `<name>_SERVER_COMMAND`
+
+Note that the `<name>_SERVER_NAME` environment variable would have <name> substituted with the name you gave on creation. Whatever name you provided will be converted to uppercase and used as the prefix for the environment variables.
+
+For example, if you create an agent with the name `filesystem`, the environment variables should be:
+- `FILESYSTEM_SERVER_COMMAND`
 
 ### Example Configuration
 
 ```
-MCP_SERVER_NAME=filesystem
-MCP_SERVER_COMMAND=npx -y @modelcontextprotocol/server-filesystem /Path/To/Allow/Access
+% solace-agent-mesh add agent mcp_filesystem --copy-from sam_mcp_server:mcp_server
+
+MCP_FILESYSTEM_SERVER_COMMAND=npx -y @modelcontextprotocol/server-filesystem /Path/To/Allow/Access
 ```
 
 or
 
 ```
-MCP_SERVER_NAME=server-everything
-MCP_SERVER_COMMAND=npx -y @modelcontextprotocol/server-everything
+% solace-agent-mesh add agent mcp_server_everything --copy-from sam_mcp_server:mcp_server
+
+MCP_SERVER_EVERYTHING_SERVER_COMMAND=npx -y @modelcontextprotocol/server-everything
 ```
 
 ### Advanced Configuration
@@ -165,6 +171,10 @@ The MCP Server Gateway and Agent log to the standard Solace Agent Mesh log files
 ## Examples
 
 ### Example 1: Using the Filesystem MCP Server
+
+<inst>
+Fix these examples to comply with above. You no longer need to specify the server name in the environment variable.
+</inst>
 
 ```
 MCP_SERVER_NAME=filesystem
