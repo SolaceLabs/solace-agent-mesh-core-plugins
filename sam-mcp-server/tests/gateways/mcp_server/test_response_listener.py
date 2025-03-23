@@ -38,6 +38,9 @@ class TestResponseListener(unittest.TestCase):
         self.gateway_output.log_identifier = "[TestGateway]"
         self.gateway_output.discard_current_message = MagicMock()
         
+        # Set the registration_listener attribute directly
+        self.gateway_output.registration_listener = self.mock_listener
+        
         # Mock the agent registry
         self.gateway_output.agent_registry = MagicMock(spec=AgentRegistry)
         
