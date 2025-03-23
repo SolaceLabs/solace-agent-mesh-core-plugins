@@ -82,7 +82,7 @@ class TestMCPServerGatewayOutput(unittest.TestCase):
 
         # Mock agent registry get_agent method
         self.gateway_output.agent_registry.get_agent = MagicMock(
-            return_value={"name": "test_agent", "description": "Test agent description"}
+            return_value={"agent_name": "test_agent", "description": "Test agent description"}
         )
 
         # Call _handle_agent_response method
