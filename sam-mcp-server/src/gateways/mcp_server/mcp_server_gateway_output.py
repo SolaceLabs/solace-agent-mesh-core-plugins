@@ -51,10 +51,12 @@ class MCPServerGatewayOutput(GatewayOutput):
         # Initialize agent registry
         self.agent_registry = {}
         
-        log.info(
-            f"{self.log_identifier} Initialized MCP Server Gateway output component "
-            f"with scopes={self.scopes}"
-        )
+        # Only log if log_identifier is available (it may not be during testing)
+        if hasattr(self, 'log_identifier'):
+            log.info(
+                f"{self.log_identifier} Initialized MCP Server Gateway output component "
+                f"with scopes={self.scopes}"
+            )
 
     def invoke(self, message: Message, data: Dict[str, Any]) -> Dict[str, Any]:
         """Process responses from agents.

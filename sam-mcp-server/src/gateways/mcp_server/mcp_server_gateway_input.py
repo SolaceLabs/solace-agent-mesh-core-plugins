@@ -76,11 +76,13 @@ class MCPServerGatewayInput(GatewayInput):
         self.host = self.get_config("mcp_server_host", "0.0.0.0")
         self.transport = self.get_config("mcp_server_transport", "sse")
         
-        log.info(
-            f"{self.log_identifier} Initialized MCP Server Gateway input component "
-            f"with scopes={self.scopes}, port={self.port}, host={self.host}, "
-            f"transport={self.transport}"
-        )
+        # Only log if log_identifier is available (it may not be during testing)
+        if hasattr(self, 'log_identifier'):
+            log.info(
+                f"{self.log_identifier} Initialized MCP Server Gateway input component "
+                f"with scopes={self.scopes}, port={self.port}, host={self.host}, "
+                f"transport={self.transport}"
+            )
 
     def invoke(self, message: Message, data: Dict[str, Any]) -> Dict[str, Any]:
         """Process incoming MCP client requests.
