@@ -1,17 +1,8 @@
 # MCP Server Gateway Interface Default Configuration
 # This file defines the default configuration for the MCP Server Gateway interface
 
-# Gateway configuration
-- gateway_config: &gateway_config
-    gateway_id: ${GATEWAY_ID, mcp-server}
-    system_purpose: ${SYSTEM_PURPOSE, "You are a helpful assistant that can use tools to accomplish tasks."}
-    interaction_type: interactive
-    identity_key_field: identity
-    identity:
-      type: simple
-      module: solace_agent_mesh.gateway.identity.simple_identity_provider
-      configuration:
-        key_field: identity
+# Import gateway configuration
+- import: &gateway_config !include gateway.yaml:gateway_config
 
 # MCP server configuration
 - mcp_server_config: &mcp_server_config

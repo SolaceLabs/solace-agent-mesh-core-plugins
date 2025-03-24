@@ -1,0 +1,14 @@
+# MCP Server Gateway Configuration
+# This file defines the gateway configuration for the MCP Server Gateway interface
+
+# Gateway configuration
+gateway_config:
+  gateway_id: ${GATEWAY_ID, mcp-server}
+  system_purpose: ${SYSTEM_PURPOSE, "You are a helpful assistant that can use tools to accomplish tasks."}
+  interaction_type: interactive
+  identity_key_field: identity
+  identity:
+    type: simple
+    module: solace_agent_mesh.gateway.identity.simple_identity_provider
+    configuration:
+      key_field: identity
