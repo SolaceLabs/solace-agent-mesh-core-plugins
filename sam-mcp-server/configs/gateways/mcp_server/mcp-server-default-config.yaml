@@ -1,16 +1,25 @@
 # MCP Server Gateway Interface Default Configuration
 # This file defines the default configuration for the MCP Server Gateway interface
 
-# Gateway ID
-GATEWAY_ID: mcp-server
-
-# System purpose for the gateway
-SYSTEM_PURPOSE: "You are a helpful assistant that can use tools to accomplish tasks."
-
-# Scopes to filter agents by
-MCP_SERVER_SCOPES: "*:*:*"
+# Gateway configuration
+- gateway_config: &gateway_config
+    gateway_id: ${GATEWAY_ID, mcp-server}
+    system_purpose: ${SYSTEM_PURPOSE, "You are a helpful assistant that can use tools to accomplish tasks."}
+    interaction_type: interactive
+    identity_key_field: identity
+    identity:
+      type: simple
+      module: solace_agent_mesh.gateway.identity.simple_identity_provider
+      configuration:
+        key_field: identity
 
 # MCP server configuration
-MCP_SERVER_PORT: 8080
-MCP_SERVER_HOST: 0.0.0.0
-MCP_SERVER_TRANSPORT: sse
+- mcp_server_config: &mcp_server_config
+    mcp_server_scopes: ${MCP_SERVER_SCOPES, "*:*:*"}
+    mcp_server_port: ${MCP_SERVER_PORT, 8080}
+    mcp_server_host: ${MCP_SERVER_HOST, 0.0.0.0}
+    mcp_server_transport: ${MCP_SERVER_TRANSPORT, sse}
+
+# Response format prompt
+- response_format_prompt: &response_format_prompt >
+    Please provide clear, concise responses.

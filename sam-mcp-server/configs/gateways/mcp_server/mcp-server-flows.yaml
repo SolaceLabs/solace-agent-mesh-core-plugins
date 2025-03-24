@@ -24,16 +24,8 @@ flows:
       - component_name: mcp_server_gateway_input
         component_module: src.gateways.mcp_server.mcp_server_gateway_input
         component_config:
-          gateway_config:
-            gateway_id: ${GATEWAY_ID, mcp-server}
-            system_purpose: ${SYSTEM_PURPOSE, "You are a helpful assistant that can use tools to accomplish tasks."}
-            interaction_type: interactive
-            identity_key_field: identity
-            identity:
-              type: simple
-              module: solace_agent_mesh.gateway.identity.simple_identity_provider
-              configuration:
-                key_field: identity
+          <<: *gateway_config
+          <<: *mcp_server_config
 
       # Output to a Solace broker
       - component_name: broker_output
