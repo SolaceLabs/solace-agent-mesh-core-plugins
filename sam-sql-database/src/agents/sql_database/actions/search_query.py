@@ -40,7 +40,7 @@ class SearchQuery(Action):
                     },
                     {
                         "name": "response_format",
-                        "desc": "Format of the response (yaml, markdown, json or csv)",
+                        "desc": "Format of the response (yaml, json or csv)",
                         "type": "string",
                         "required": False,
                         "default": "yaml",
@@ -74,8 +74,8 @@ class SearchQuery(Action):
                 raise ValueError("Natural language query is required")
 
             response_format = params.get("response_format", "yaml").lower()
-            if response_format not in ["yaml", "markdown", "json", "csv"]:
-                raise ValueError("Invalid response format. Choose 'yaml', 'markdown', 'json', or 'csv'")
+            if response_format not in ["yaml", "json", "csv"]:
+                raise ValueError("Invalid response format. Choose 'yaml', 'json', or 'csv'")
 
             # Get the SQL queries from the natural language query
             sql_queries = self._generate_sql_queries(query)
@@ -260,9 +260,6 @@ Ensure that all SQL queries are compatible with {db_type}.
             if response_format == "yaml":
                 content = yaml.dump(updated_results)
                 file_extension = "yaml"
-            elif response_format == "markdown":
-                content = self._format_markdown_table(updated_results)
-                file_extension = "md"
             elif response_format == "json":
                 content = json.dumps(updated_results, indent=2, default=str)
                 file_extension = "json"
@@ -294,25 +291,6 @@ Ensure that all SQL queries are compatible with {db_type}.
             files=files if files else None,
             inline_files=inline_files if inline_files else None,
         )
-
-    def _format_markdown_table(self, results: List[Dict[str, Any]]) -> str:
-        """Format results as a Markdown table."""
-        if not results:
-            return "No results found."
-
-        # Get all unique keys from all documents
-        headers = set()
-        for result in results:
-            headers.update(result.keys())
-        headers = sorted(list(headers))
-
-        markdown = "| " + " | ".join(headers) + " |\n"
-        markdown += "| " + " | ".join(["---" for _ in headers]) + " |\n"
-
-        for row in results:
-            markdown += "| " + " | ".join(str(row.get(header, "")) for header in headers) + " |\n"
-
-        return markdown
 
     def _format_csv(self, results: List[Dict[str, Any]]) -> str:
         """Format results as a CSV string."""

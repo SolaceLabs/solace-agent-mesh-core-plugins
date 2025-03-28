@@ -2,6 +2,7 @@
 
 import copy
 from typing import Dict, Any, Optional, List
+import yaml
 
 from solace_ai_connector.common.log import log
 from solace_agent_mesh.agents.base_agent_component import (
@@ -159,9 +160,20 @@ class SQLDatabaseAgentComponent(BaseAgentComponent):
 
         # Get schema information
         if self.auto_detect_schema:
-            self.detailed_schema = self._detect_schema()
+            schema_dict = self._detect_schema()
+            # Convert dictionary to YAML string
+            self.detailed_schema = yaml.dump(schema_dict, default_flow_style=False)
         else:
-            self.detailed_schema = self.get_config("database_schema")
+            # Get schema from config
+            schema = self.get_config("database_schema")
+            if schema is None:
+                self.detailed_schema = ""
+            elif isinstance(schema, dict):
+                # Convert dictionary to YAML string
+                self.detailed_schema = yaml.dump(schema, default_flow_style=False)
+            else:
+                # Already a string, use as is
+                self.detailed_schema = str(schema)
             
         # Generate schema summary for action description
         self.schema_summary = self._get_schema_summary()
@@ -259,14 +271,23 @@ class SQLDatabaseAgentComponent(BaseAgentComponent):
         if not self.detailed_schema:
             return "Schema information not available."
             
-        summary_lines = []
-        
-        for table_name, table_info in self.detailed_schema.items():
-            # Get all column names
-            columns = list(table_info["columns"].keys())
-            summary_lines.append(f"{table_name}: {', '.join(columns)}")
-            
-        return "\n".join(summary_lines)
+        try:
+            if isinstance(self.detailed_schema, str):
+                schema_dict = yaml.safe_load(self.detailed_schema)
+                if isinstance(schema_dict, dict):
+                    summary_lines = []
+                    for table_name, table_info in schema_dict.items():
+                        # Get all column names
+                        columns = list(table_info["columns"].keys())
+                        summary_lines.append(f"{table_name}: {', '.join(columns)}")
+                    return "\n".join(summary_lines)
+                else:
+                    return ("Schema information not available in a valid format")
+            else:
+                return ("Schema information not available in a valid format")
+        except yaml.YAMLError:
+            return self.detailed_schema
+
 
     def get_db_handler(self) -> DatabaseService:
         """Get the database handler instance."""
@@ -282,13 +303,24 @@ class SQLDatabaseAgentComponent(BaseAgentComponent):
         if self.data_description:
             description += f"Data Description:\n{self.data_description}\n"
         else:
-            # Just mention the tables without the full schema
-            tables = list(self.detailed_schema.keys()) if self.detailed_schema else []
-            if tables:
-                description += f"Contains {len(tables)} tables: {', '.join(tables)}\n"
-            else:
-                description += "No tables found in database.\n"
-
+            try:
+                # Only try to parse as YAML if we have a string that might be YAML
+                if isinstance(self.detailed_schema, str):
+                    schema_dict = yaml.safe_load(self.detailed_schema)
+                    if isinstance(schema_dict, dict):
+                        tables = list(schema_dict.keys())
+                        if tables:
+                            description += f"Contains {len(tables)} tables: {', '.join(tables)}\n"
+                        else:
+                            description += "No tables found in database.\n"
+                    else:
+                        description += "Schema information not available in a valid format"
+                else:
+                    description += "Schema information not available in a valid format"
+            except yaml.YAMLError:
+                # If not valid YAML, don't show anything
+                pass
+                
         return {
             "agent_name": self.agent_name,
             "description": description,
