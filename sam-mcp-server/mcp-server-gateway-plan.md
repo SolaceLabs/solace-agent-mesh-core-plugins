@@ -1,38 +1,53 @@
 ## Building an MCP Server Gateway for Agent Mesh
 
-We are planning out how to build a Gateway for Agent Mesh that will act as an MCP server to MCP clients. 
+The plan is to build a Solace Agent Mesh (SAM) Gateway that acts as a Model Context Protocol (MCP) server. This gateway will allow MCP clients (like Claude Desktop) to connect via Server-Sent Events (SSE) and interact with the agents registered within the SAM instance.
 
-This gateway is going to be a bit different from other Solace Agent Mesh gateways. This gateway will act
-as an MCP server so that MCP clients can connect to it via SSE (Server-Sent Events) and this gateway will
-learn about all the agents in the Agent Mesh and will provide all those agents' actions as MCP tools.
+Key functionalities:
 
-The gateway will take in a JWT token in the header and will use that token to authenticate the client
-using a secret key that is provided in the .yaml configuration file for the gateway. The JWT token will
-contain the email address of the client and the secret key will be used to verify the token. 
+1.  **MCP Server Implementation:** The gateway will expose SAM agents' actions as MCP tools.
+2.  **SSE Transport:** Communication with MCP clients will use SSE for server-to-client messages and HTTP POST for client-to-server messages.
+3.  **Agent Discovery:** The gateway will listen for agent registration messages to dynamically discover available agents and their actions.
+4.  **Action Mapping:** Discovered agent actions will be mapped to MCP tools.
+5.  **Authentication:** MCP clients will authenticate using a JWT token provided in the request header. The gateway will validate this token using a configured secret key. The JWT should contain user identity information (e.g., email).
+6.  **Authorization (Scopes):** The gateway configuration will allow defining scopes to filter which agent actions (MCP tools) are exposed to connected clients based on the authenticated user's permissions (derived from the JWT or configuration).
+7.  **Orchestrator/Agent Interaction:**
+    *   When an MCP client invokes a tool, the gateway will need to formulate a request (potentially bypassing the usual LLM planning step) to the SAM orchestrator or directly to the target agent.
+    *   The gateway must listen for action responses destined for the orchestrator to capture results and forward them back to the appropriate MCP client via SSE.
+8.  **Component Structure:** The gateway will likely consist of several `solace-ai-connector` components:
+    *   `mcp_server_app.py`: Manages the gateway's flows.
+    *   `mcp_server_input.py`: Handles incoming SSE/HTTP connections and client requests.
+    *   `mcp_server_output.py`: Sends responses and notifications back to clients via SSE.
+    *   Components for listening to agent registrations and action responses.
 
-The gateway can be configured with a list of scopes that will control which actions are provided to the MCP clients. The scopes
-will be used to filter the agents that are available to the MCP clients. 
-
-In addition to listening to the agent register messages, the gateway will have to listen to agent response messages that would be destined for
-the orchestrator so that it can transform them into MCP responses.
-
-The basic structure of the gateway will be as follows:
- - mcp_server_app.py - this is a solace-ai-connector app (inheriting from app.py) that contains all the flows for the gateways
- - mcp_server_input.py - this is a solace-ai-connector component that will handle the SSE input from the MCP clients and pass
-   the messages to gateway_input
- - mcp_server_output.py - this is a solace-ai-connector component that will handle the SSE output to the MCP clients and receive
-   messages from the gateway_output
-
-
-In order for this to work, the solace-agent-mesh orchestrator (and gateway components) will also need some changes so that
-the gateway can direct it to call the exact agent with the correct action and parameters. Then the orchestrator will need to
-send that agent's response back to the gateway so that it can be sent to the MCP client. We won't be changing the orchestrator
-or gateway components now since they live in other repos, but we should include in this file a description of the changes that will be needed
-to those components so that we can make sure that the gateway is able to work with them.
+**Note:** This design requires modifications to the core SAM orchestrator and potentially gateway components to handle direct action invocation requests from this MCP gateway and to route responses back correctly. These changes are outside the scope of this specific gateway implementation but are necessary for end-to-end functionality.
 
 ## Clarifying Questions
 
-<inst>
-Review and edit the description above to make it more clear and concise. Then fill in this section with any clarifying questions
-that you have about the gateway and how it will work. Let's make sure we are all on the same page before we start building this thing.
-</inst>
+1.  **Authentication (JWT):**
+    *   What specific claims are expected within the JWT (e.g., `email`, `sub`, `scopes`)?
+    *   How will the secret key for JWT validation be managed and configured? Is it a single key, or per-client?
+    *   What is the expected token expiration handling?
+    *   How should authentication failures be reported back to the MCP client (e.g., HTTP error code, MCP error response)?
+2.  **Authorization (Scopes):**
+    *   Where are the user's allowed scopes defined? Within the JWT, or mapped via gateway configuration based on email/user ID?
+    *   How exactly will the scope filtering work? Will it filter the list of tools sent during initialization (`tools/list`), or just reject unauthorized `tools/call` requests at runtime?
+    *   What is the proposed format for scopes (e.g., `agent_name:action_name:permission`)?
+3.  **Orchestrator/Agent Interaction:**
+    *   What is the proposed message format and topic structure for the gateway to request direct action execution from an agent (bypassing the orchestrator's LLM planning)?
+    *   How will the gateway correlate incoming action responses (originally intended for the orchestrator) with the originating MCP client request? Will a unique ID (e.g., MCP request ID) be added to the message user properties when the gateway forwards the request?
+    *   What specific changes are anticipated in the orchestrator to support this gateway? (e.g., new input topic for direct requests, modified response routing logic based on user properties).
+4.  **MCP Protocol Implementation:**
+    *   Which specific MCP capabilities will this gateway support initially? (Tools are primary, but what about Resources, Prompts, Sampling, Logging)?
+    *   How will MCP errors (e.g., `METHOD_NOT_FOUND`, `INVALID_PARAMS`) be handled and reported back to the client?
+    *   How will agent action errors (received in the action response) be translated into MCP tool call error responses (e.g., `isError: true` with details in `content`)?
+5.  **SSE Transport:**
+    *   How will multiple simultaneous client connections via SSE be managed within the `solace-ai-connector` framework?
+    *   What is the expected behavior if an MCP client disconnects unexpectedly? How is connection state and potential pending requests cleaned up?
+6.  **State Management:**
+    *   Does the gateway need to maintain session state for each connected MCP client? If so, what information needs to be stored (e.g., authenticated user info, correlation IDs)?
+    *   How will the list of available agents/tools be kept up-to-date? Will it rely solely on registration messages, or periodically refresh/expire agents?
+7.  **Configuration:**
+    *   What are the essential configuration parameters vs. optional ones for the gateway (e.g., JWT secret, scopes, SSE endpoint paths, Solace connection details)?
+8.  **Error Handling:**
+    *   How should errors originating from the target agent (during action execution) be propagated back to the MCP client?
+    *   How should timeouts (e.g., waiting for an agent response) be handled and reported to the MCP client?
