@@ -202,3 +202,17 @@ sequenceDiagram
     *   Agent action errors: `ActionResponse.error_info` is mapped to MCP `CallToolResult` with `isError: true` and the error message in `content`.
     *   Timeouts: If the gateway doesn't receive a response from the agent within a configured timeout, `mcp_request_handler` (or a dedicated timeout mechanism) should generate an MCP error response (e.g., `INTERNAL_ERROR` code -32603) indicating the timeout and send it via `mcp_server_output`.
 
+
+<inst>
+I want to simplify this architecture for the input and output flows. 
+
+Full flow (success)
+
+(mcp_server_input -> gateway_input -> broker_output) -> [Broker] -> orchestrator_stimulus_input -> [Broker] -> agent -> orchestrator_action_response -> [Broker] -> (broker_input -> gateway_output -> mcp_server_output)
+
+Note that the bracketed parts are showing all the individual components in the flow, while the rest are the flow names or just the broker or agent.
+
+This is more like the rest api flow and more typical of gateways in the solace-agent-mesh. Note that gateway_input and gateway_output are in the solace-agent-mesh repo, so we can't modify them. They will, however, need to be modified to support sending a slightly different message format to the orchestrator (via broker) so that it can tell the orchestrator to just perform action requests.
+
+Please update the arch above with these changes. And in the mermaid diagram, don't bother deactivating the components that are not in the flow.
+</inst>
