@@ -82,137 +82,122 @@ Key functionalities:
 
 ## Architecture
 
-This MCP Server Gateway acts as a bridge between MCP clients and the Solace Agent Mesh (SAM). It exposes registered SAM agent actions as MCP tools, allowing MCP clients to interact with the agent mesh using the standard MCP protocol over an SSE/HTTP transport.
+This MCP Server Gateway acts as a bridge between MCP clients and the Solace Agent Mesh (SAM). It exposes registered SAM agent actions as MCP tools, allowing MCP clients to interact with the agent mesh using the standard MCP protocol over an SSE/HTTP transport. This architecture follows the standard SAM gateway pattern.
 
 ### Components
 
 The gateway is built using the `solace-ai-connector` framework and consists of several interconnected flows and components:
 
-1.  **MCP Connection Handling Flow (`mcp_connection_flow`):**
+1.  **MCP Input Flow (`mcp_input_flow`):**
     *   **`mcp_server_input` (Custom Component):**
         *   Acts as an HTTP server listening for incoming connections.
         *   Handles the SSE handshake (`/sse` endpoint) for server-to-client communication.
         *   Handles HTTP POST requests (`/messages` endpoint) for client-to-server communication.
-        *   Performs JWT authentication based on the `Authorization: Bearer <token>` header using a configured secret key. Extracts user identity (email) and potentially scopes.
-        *   Manages client sessions, storing session state (user info, SSE stream reference, correlation IDs) likely using the flow's Key-Value store, keyed by a unique `mcp_client_session_id`.
+        *   Performs JWT authentication based on the `Authorization: Bearer <token>` header using configured secret keys (per-client). Extracts user identity (email).
+        *   Manages client sessions, storing session state (user info, SSE stream reference, `mcp_client_session_id`) likely using the flow's Key-Value store.
         *   Parses incoming MCP JSON-RPC messages (requests and notifications) from POST requests.
-        *   Forwards valid MCP requests (like `tools/call`, `tools/list`) to the `mcp_processing_flow`.
-        *   Handles MCP initialization (`initialize`, `initialized`).
-        *   Manages SSE connection lifecycle and cleanup on disconnect.
-    *   **`mcp_server_output` (Custom Component):**
-        *   Receives processed responses or notifications destined for a specific MCP client (identified by `mcp_client_session_id` in message properties).
-        *   Retrieves the corresponding client session state (including the SSE stream reference) from the KV store.
-        *   Formats the data as MCP JSON-RPC messages (responses or notifications).
-        *   Sends the messages to the client via the established SSE connection.
-
-2.  **MCP Request Processing Flow (`mcp_processing_flow`):**
-    *   **`broker_input` (Standard Component):** Receives MCP requests forwarded from `mcp_server_input`.
-    *   **`mcp_request_handler` (Custom Component):**
-        *   Processes specific MCP requests.
-        *   **`initialize`:** Responds with server capabilities (dynamically generated tool list based on registered agents and user scopes).
-        *   **`tools/list`:** Retrieves the current list of registered agents/actions from the `agent_registry`, filters based on user scopes (from session state), formats them as MCP tools, and sends the list back via `mcp_server_output`.
-        *   **`tools/call`:**
-            *   Validates the requested tool/action against the user's scopes.
+        *   Handles MCP initialization (`initialize`, `initialized`), responding directly via `mcp_server_output` for capability negotiation (including the tool list).
+        *   For `tools/call` requests:
+            *   Validates the request against the user's scopes (retrieved based on email/JWT).
             *   Generates a unique `mcp_request_id` for correlation.
-            *   Stores correlation info (MCP request ID -> `mcp_client_session_id`) in the KV store.
-            *   Formats a direct action request message for the target agent. Adds `mcp_request_id` and `mcp_client_session_id` to user properties.
-            *   Publishes the action request to a dedicated Solace topic (e.g., `${SAM_NAMESPACE}mcp-gateway/v1/actionRequest/agent/{agent_name}/{action_name}`).
-        *   **Other MCP Requests (Resources, Prompts):** Handles these based on supported capabilities (initially basic file resources might be mapped).
-    *   **`broker_output` (Standard Component):** Publishes direct action requests to the Solace broker.
+            *   Stores correlation info (`mcp_request_id` -> `mcp_client_session_id`) in the KV store.
+            *   Formats the request into a standard SAM stimulus format (similar to REST gateway input), including the tool name, arguments, user identity, `mcp_request_id`, and `mcp_client_session_id` in user properties.
+            *   Passes the formatted stimulus message to the next component (`gateway_input`).
+        *   Handles other MCP requests (e.g., `tools/list`) by interacting with the `agent_registry` and responding via `mcp_server_output`.
+        *   Manages SSE connection lifecycle and cleanup on disconnect.
+    *   **`gateway_input` (Standard SAM Component):**
+        *   Receives the formatted stimulus from `mcp_server_input`.
+        *   Handles history management (if configured).
+        *   Applies identity provider logic (using email from JWT).
+        *   Prepares the final stimulus message for the orchestrator, ensuring `mcp_request_id` and `mcp_client_session_id` are preserved in user properties.
+    *   **`broker_output` (Standard SAM Component):**
+        *   Publishes the stimulus message to the standard orchestrator input topic (e.g., `${SAM_NAMESPACE}solace-agent-mesh/v1/stimulus/gateway/{gateway_id}`).
+
+2.  **MCP Output Flow (`mcp_output_flow`):**
+    *   **`broker_input` (Standard SAM Component):**
+        *   Subscribes to the standard gateway output topics for this gateway ID (e.g., `${SAM_NAMESPACE}solace-agent-mesh/v1/response/orchestrator/{gateway_id}`, `.../streamingResponse/...`, `.../responseComplete/...`).
+        *   Receives responses from the orchestrator.
+    *   **`gateway_output` (Standard SAM Component):**
+        *   Processes the orchestrator response (e.g., handles history updates).
+        *   Passes the processed response payload and user properties (including `mcp_request_id`, `mcp_client_session_id`) to the next component.
+    *   **`mcp_server_output` (Custom Component):**
+        *   Receives the processed response from `gateway_output`.
+        *   Extracts `mcp_client_session_id` and `mcp_request_id` from user properties.
+        *   Retrieves the corresponding client session state (including the SSE stream reference) from the KV store using `mcp_client_session_id`.
+        *   Formats the payload into an MCP `tools/call` result (JSON-RPC response), including the original `mcp_request_id`. Handles streaming responses and the final `responseComplete` message. Translates any `error_info` from the payload into an MCP error format (`isError: true`).
+        *   Sends the MCP message to the correct client via the established SSE connection.
+        *   Handles `tools/list_changed` notifications triggered by the `agent_registry`.
 
 3.  **Agent Registration Flow (`agent_registration_flow`):**
     *   **`broker_input` (Standard Component):** Subscribes to agent registration topics (`${SAM_NAMESPACE}solace-agent-mesh/v1/register/>`).
     *   **`agent_registry` (Custom Component):**
         *   Maintains an in-memory or KV-store-backed registry of active agents and their actions.
         *   Updates the registry based on incoming registration messages.
-        *   Compares new registrations with the current state. If the list of available tools changes, it triggers a `tools/list_changed` notification.
+        *   Compares new registrations with the current state. If the list of available tools changes, it triggers a `tools/list_changed` notification by sending a message to the `mcp_output_flow`.
         *   Handles agent expiry/deregistration based on TTL in registration messages or lack thereof.
-    *   **`mcp_notification_output` (Custom Component):** If `tools/list_changed` is triggered, this component iterates through all active client sessions (from the KV store) and sends the `notifications/tools/list_changed` message via the `mcp_server_output` component.
-
-4.  **Action Response Flow (`action_response_flow`):**
-    *   **`broker_input` (Standard Component):** Subscribes to the standard agent action response topic (`${SAM_NAMESPACE}solace-agent-mesh/v1/actionResponse/>`).
-    *   **`mcp_response_correlator` (Custom Component):**
-        *   Inspects the user properties of incoming action responses.
-        *   If `mcp_client_session_id` and `mcp_request_id` are present:
-            *   Retrieves the original MCP request ID using the correlation data stored in the KV store.
-            *   Formats the agent response (success or error) into an MCP `tools/call` result (JSON-RPC response). Handles translation of `ActionResponse` fields (including `error_info`) to MCP format (`isError`, `content`).
-            *   Forwards the formatted MCP response to the `mcp_server_output` component, including the target `mcp_client_session_id` in properties.
-            *   Acknowledges the message to prevent the orchestrator from processing it.
-        *   If MCP properties are not present, the message is simply passed through (or discarded if no downstream component exists in this flow), allowing the orchestrator to handle it as usual.
 
 ### Data Flow Diagram (Simplified Tool Call)
 
 ```mermaid
 sequenceDiagram
     participant Client as MCP Client
-    participant GatewayIn as mcp_server_input (HTTP/SSE)
-    participant GatewayProc as mcp_request_handler
+    participant MCPInput as mcp_server_input (HTTP/SSE)
+    participant GWInput as gateway_input
+    participant BrokerOut as broker_output (Input Flow)
     participant Broker as Solace Broker
+    participant Orch as SAM Orchestrator
     participant Agent as Target SAM Agent
-    participant GatewayResp as mcp_response_correlator
-    participant GatewayOut as mcp_server_output (SSE)
+    participant BrokerIn as broker_input (Output Flow)
+    participant GWOutput as gateway_output
+    participant MCPOutput as mcp_server_output (SSE)
 
-    Client->>+GatewayIn: POST /messages (tools/call Request, JWT)
-    GatewayIn->>GatewayIn: Validate JWT, Authz Check
+    Client->>+MCPInput: POST /messages (tools/call Request, JWT)
+    MCPInput->>MCPInput: Validate JWT, Authz Check
     alt Auth Failure
-        GatewayIn-->>Client: HTTP 401 / MCP Error
+        MCPInput-->>Client: HTTP 401 / MCP Error
     else Auth Success
-        GatewayIn->>Broker: Publish MCP Request (Internal Topic)
+        MCPInput->>MCPInput: Generate mcp_request_id, Store Correlation (MCP ID -> Client Session ID)
+        MCPInput->>GWInput: Forward Formatted Stimulus (incl. MCP IDs)
+        GWInput->>GWInput: Process History/Identity
+        GWInput->>BrokerOut: Pass Stimulus
+        BrokerOut->>Broker: Publish Stimulus (Orchestrator Topic)
     end
-    Broker->>+GatewayProc: Consume MCP Request
-    GatewayProc->>GatewayProc: Generate mcp_request_id, Store Correlation (MCP ID -> Client Session ID)
-    GatewayProc->>Broker: Publish Direct Action Request (Agent Topic, incl. mcp_request_id, mcp_client_session_id)
-    Broker->>+Agent: Consume Direct Action Request
+
+    Broker->>+Orch: Consume Stimulus
+    Orch->>Orch: Process Stimulus, Plan Action
+    Orch->>Broker: Publish Action Request (Agent Topic)
+    Broker->>+Agent: Consume Action Request
     Agent->>Agent: Execute Action
-    Agent->>Broker: Publish Action Response (Standard Response Topic, incl. mcp_request_id, mcp_client_session_id)
-    Broker->>+GatewayResp: Consume Action Response
-    GatewayResp->>GatewayResp: Check for MCP properties, Correlate mcp_request_id
-    alt Is MCP Response
-        GatewayResp->>GatewayResp: Format MCP Result/Error
-        GatewayResp->>Broker: Publish Formatted MCP Response (Internal Topic)
-        Broker->>+GatewayOut: Consume Formatted MCP Response
-        GatewayOut->>GatewayOut: Retrieve Client SSE Stream
-        GatewayOut-->>-Client: Send MCP Result/Error via SSE
-        GatewayResp-->>Broker: ACK Action Response
-    else Is Not MCP Response
-        GatewayResp-->>Broker: NACK/Ignore Action Response (Orchestrator handles)
-    end
-    deactivate Agent
-    deactivate GatewayProc
-    deactivate GatewayResp
-    deactivate GatewayOut
+    Agent->>Broker: Publish Action Response (Orch Response Topic)
+    Broker->>Orch: Consume Action Response
+    Orch->>Orch: Process Response
+    Orch->>Broker: Publish Gateway Response (incl. MCP IDs)
+
+    Broker->>+BrokerIn: Consume Gateway Response
+    BrokerIn->>GWOutput: Forward Response
+    GWOutput->>GWOutput: Process History
+    GWOutput->>MCPOutput: Pass Processed Response (incl. MCP IDs)
+    MCPOutput->>MCPOutput: Retrieve Client Session ID, Format MCP Result/Error
+    MCPOutput-->>-Client: Send MCP Result/Error via SSE
+
 ```
 
 ### Key Interactions & Concepts
 
 *   **SSE/HTTP Transport:** `mcp_server_input` manages the dual nature of SSE (server->client) and HTTP POST (client->server). Each client connection establishes an SSE stream for receiving messages and uses POST requests to a specific endpoint (containing a session ID) to send messages.
-*   **Authentication:** Performed by `mcp_server_input` on every incoming HTTP POST request using the JWT Bearer token. The validated user identity (email) and potentially scopes are stored in the client's session state.
+*   **Authentication:** Performed by `mcp_server_input` on every incoming HTTP POST request using the JWT Bearer token and configured secrets. The validated user identity (email) is stored in the client's session state.
 *   **Authorization:**
-    *   `mcp_request_handler` filters the tool list in `tools/list` based on the user's scopes stored in the session state.
-    *   `mcp_request_handler` re-validates scopes before publishing a direct action request for `tools/call`. Unauthorized calls result in an MCP error sent back via `mcp_server_output`.
-*   **Agent Discovery & Tool Mapping:** The `agent_registry` component listens for standard SAM registration messages. It maps the `agent_name` and `action_name` to MCP tool names (e.g., `agent_name.action_name`). Action parameters are mapped to the MCP tool's `inputSchema`. Changes trigger `tools/list_changed` notifications.
-*   **Direct Action Invocation:** Instead of sending a stimulus to the orchestrator, `mcp_request_handler` constructs a message mimicking an `ActionRequest` payload and publishes it to a topic targeting the specific agent directly (e.g., `${SAM_NAMESPACE}mcp-gateway/v1/actionRequest/agent/{agent_name}/{action_name}`). Crucially, it adds `mcp_request_id` and `mcp_client_session_id` to the user properties.
-*   **Response Correlation:** `mcp_response_correlator` intercepts *all* action responses. It checks for the presence of `mcp_client_session_id` and `mcp_request_id`. If found, it uses this information to look up the original MCP client session and request ID, formats the response for MCP, and sends it to `mcp_server_output`. It then ACKs the message so the orchestrator doesn't see it.
-*   **State Management:** The `solace-ai-connector` KV store is used extensively:
-    *   `mcp_server_input`: Stores client session state (SSE stream reference, user info, scopes) keyed by `mcp_client_session_id`.
-    *   `mcp_request_handler`: Stores correlation map (`mcp_request_id` -> `mcp_client_session_id`) to link agent responses back to MCP requests.
+    *   `mcp_server_input` filters the tool list during the `initialize` response based on the user's scopes (retrieved during authentication).
+    *   `mcp_server_input` re-validates scopes before formatting a stimulus for `tools/call`. Unauthorized calls result in an MCP error response sent directly back via `mcp_server_output`.
+*   **Agent Discovery & Tool Mapping:** The `agent_registry` component listens for standard SAM registration messages. It maps the `agent_name` and `action_name` to MCP tool names (e.g., `agent_name.action_name`). Action parameters are mapped to the MCP tool's `inputSchema`. Changes trigger `tools/list_changed` notifications sent via the `mcp_output_flow`.
+*   **Stimulus Formatting:** `mcp_server_input` converts an MCP `tools/call` request into a standard SAM stimulus format, passing tool name, arguments, and user identity. Crucially, it adds `mcp_request_id` and `mcp_client_session_id` to the user properties for later correlation.
+*   **Standard Gateway Processing:** `gateway_input` and `gateway_output` handle standard SAM gateway functions like history and identity, preserving the MCP-specific user properties.
+*   **Response Correlation:** `mcp_server_output` uses the `mcp_client_session_id` (passed through the orchestrator and `gateway_output`) to identify the correct client SSE stream. It uses the `mcp_request_id` to format the MCP JSON-RPC response correctly.
+*   **State Management:** The `solace-ai-connector` KV store is used:
+    *   `mcp_server_input`: Stores client session state (SSE stream reference, user info, scopes) keyed by `mcp_client_session_id`. Stores correlation map (`mcp_request_id` -> `mcp_client_session_id`).
     *   `agent_registry`: Stores the current list of agents and their actions.
 *   **Error Handling:**
-    *   Authentication/Authorization errors: HTTP 401 or MCP `INVALID_PARAMS`/`INTERNAL_ERROR`.
-    *   Agent action errors: `ActionResponse.error_info` is mapped to MCP `CallToolResult` with `isError: true` and the error message in `content`.
-    *   Timeouts: If the gateway doesn't receive a response from the agent within a configured timeout, `mcp_request_handler` (or a dedicated timeout mechanism) should generate an MCP error response (e.g., `INTERNAL_ERROR` code -32603) indicating the timeout and send it via `mcp_server_output`.
+    *   Authentication/Authorization errors: Handled by `mcp_server_input`, returning HTTP 401 or MCP `INVALID_PARAMS`/`INTERNAL_ERROR`.
+    *   Agent action errors: Propagated through the orchestrator and `gateway_output`. `mcp_server_output` translates `error_info` in the payload to an MCP `CallToolResult` with `isError: true`.
+    *   Timeouts: Orchestrator/Agent timeouts are handled by the standard SAM mechanisms. If an error response indicating a timeout reaches `mcp_server_output`, it's translated into an appropriate MCP error response. Direct timeouts within the MCP gateway (e.g., waiting for auth) should also result in MCP errors.
 
-
-<inst>
-I want to simplify this architecture for the input and output flows. 
-
-Full flow (success)
-
-(mcp_server_input -> gateway_input -> broker_output) -> [Broker] -> orchestrator_stimulus_input -> [Broker] -> agent -> orchestrator_action_response -> [Broker] -> (broker_input -> gateway_output -> mcp_server_output)
-
-Note that the bracketed parts are showing all the individual components in the flow, while the rest are the flow names or just the broker or agent.
-
-This is more like the rest api flow and more typical of gateways in the solace-agent-mesh. Note that gateway_input and gateway_output are in the solace-agent-mesh repo, so we can't modify them. They will, however, need to be modified to support sending a slightly different message format to the orchestrator (via broker) so that it can tell the orchestrator to just perform action requests.
-
-Please update the arch above with these changes. And in the mermaid diagram, don't bother deactivating the components that are not in the flow.
-</inst>
