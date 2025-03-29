@@ -180,12 +180,18 @@ class MCPServerAction(Action):
                 if isinstance(item, types.TextContent):
                     contents.append(item.text)
                 elif isinstance(item, types.ImageContent):
-                    contents.append(f"[Image: {item.mime_type}]")
+                    # Represent image content with a placeholder string
+                    contents.append(f"[Image Content: {item.mime_type}]")
                 elif isinstance(item, types.EmbeddedResource):
-                    contents.append(f"[Resource: {item.name}]")
+                    # Represent embedded resource with a placeholder string
+                    # Assuming item.resource has a 'name' attribute or similar identifier
+                    resource_name = getattr(item.resource, 'name', str(item.resource.uri))
+                    contents.append(f"[Embedded Resource: {resource_name}]")
                 else:
+                    # Fallback for unknown content types
                     contents.append(str(item))
             response_text = "\n".join(contents)
+
 
             if respond_as == "file":
                 # Save response text to a file
