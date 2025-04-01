@@ -1,5 +1,5 @@
 # solace-agent-mesh-core-plugins
-Solace [Solace-Agent-Mesh](https://github.com/SolaceDev/solace-agent-mesh) official core plugins
+Solace [Solace-Agent-Mesh](https://github.com/SolaceLabs/solace-agent-mesh) official core plugins
 
 ## Install a plugin
 To install one of the official core plugins into your solace-agent-mesh project, use the following command.
