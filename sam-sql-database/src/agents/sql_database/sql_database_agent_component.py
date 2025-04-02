@@ -3,6 +3,7 @@
 import copy
 from typing import Dict, Any, Optional, List
 import yaml
+import os
 
 from solace_ai_connector.common.log import log
 from solace_agent_mesh.agents.base_agent_component import (
@@ -17,6 +18,7 @@ from .services.database_service import (
     SQLiteService
 )
 from .actions.search_query import SearchQuery
+from solace_ai_connector.common.message import Message
 
 
 info = copy.deepcopy(agent_info)
@@ -358,5 +360,27 @@ class SQLDatabaseAgentComponent(BaseAgentComponent):
     def get_db_handler(self) -> DatabaseService:
         """Get the database handler instance."""
         return self.db_handler
+
+    def handle_timer_event(self, timer_data):
+        """Handle the timer event for agent registration."""
+        try:
+            registration_message = self.get_agent_summary()
+            registration_topic = f"{os.getenv('SOLACE_AGENT_MESH_NAMESPACE')}solace-agent-mesh/v1/register/agent/{self.info['agent_name']}"
+
+            message = Message(
+                topic=registration_topic,
+                payload=registration_message,
+            )
+
+            message.set_previous(
+                {"topic": registration_topic, "payload": registration_message}
+            )
+
+            self.send_message(message)
+        except Exception as e:
+            log.error("Failed to send registration message: %s", str(e))
+        finally:
+            # Always re-schedule the timer regardless of whether the send succeeded
+            self.add_timer(self.registration_interval * 1000, "agent_registration")
 
 
