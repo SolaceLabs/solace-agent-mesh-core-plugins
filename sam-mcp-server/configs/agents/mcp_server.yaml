@@ -1,9 +1,6 @@
 # This is the configuration file for the mcp server agent
 #
 # It fulfills a few functions:
-# Configuration file for the MCP server agent.
-#
-# It fulfills a few functions:
 # 1. A flow to do periodic registration of this agent with the orchestrator (if enabled)
 # 2. A flow to process action requests and produce action responses
 #    This requires a custom component (mcp_server_agent_component) to interact with the MCP server.

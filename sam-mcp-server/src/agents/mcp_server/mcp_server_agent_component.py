@@ -23,14 +23,14 @@ from .actions.mcp_server_action import MCPServerAction
 info = copy.deepcopy(agent_info)
 info.update(
     {
-        "agent_name": "{{SNAKE_CASE_NAME}}", # Template variable replaced at agent creation
+        "agent_name": None,  # Replaced at agent creation
         "class_name": "McpServerAgentComponent",
-        "description": "Exposes an MCP (Model Context Protocol) server as a SAM agent.", # Base description, updated after init
+        "description": None,  # Updated after init
         "config_parameters": [
             {
                 "name": "server_name",
                 "required": True,
-                "description": "Name of this MCP server agent instance (used for topics, queues, etc.)",
+                "description": "Name of this MCP server agent instance",
                 "type": "string",
             },
             {
@@ -76,13 +76,13 @@ info.update(
             },
             {
                 "name": "server_description",
-                "required": False, # Now optional, defaults in config
+                "required": False,  # Now optional, defaults in config
                 "description": "Description of the MCP server's purpose",
                 "type": "string",
             },
             {
                 "name": "server_command",
-                "required": True, # Required for stdio mode
+                "required": False,
                 "description": "Shell command to start the MCP server process (e.g., 'npx -y @modelcontextprotocol/server-filesystem /path')",
                 "type": "string",
             },
@@ -136,13 +136,17 @@ class McpServerAgentComponent(BaseAgentComponent):
 
         # Get core config values
         self.agent_name = self.get_config("server_name")
-        self.agent_description = self.get_config("server_description") # Fetches default if env var not set
-        self.enable_sampling = self.get_config("enable_sampling", False) # Default to false if not specified
+        self.agent_description = self.get_config(
+            "server_description"
+        )  # Fetches default if env var not set
+        self.enable_sampling = self.get_config(
+            "enable_sampling", False
+        )  # Default to false if not specified
 
         # Update component info with specific instance details
         module_info["agent_name"] = self.agent_name
-        module_info["description"] = self.agent_description # Set initial description
-        self.info = module_info # Ensure self.info uses the updated module_info
+        module_info["description"] = self.agent_description  # Set initial description
+        self.info = module_info  # Ensure self.info uses the updated module_info
 
         # Initialize these in run()
         self.client_session = None
@@ -205,11 +209,15 @@ class McpServerAgentComponent(BaseAgentComponent):
                 raise e
 
             # Convert server's capabilities into solace-agent-mesh actions
-            self.action_list = self.get_actions_list(agent=self, config_fn=self.get_config)
+            self.action_list = self.get_actions_list(
+                agent=self, config_fn=self.get_config
+            )
 
             # Wait for server initialization to complete with timeout
             if not self.server_thread.initialized.wait(timeout=timeout):
-                raise TimeoutError(f"Server initialization timed out after {timeout} seconds")
+                raise TimeoutError(
+                    f"Server initialization timed out after {timeout} seconds"
+                )
 
             # Convert tools to actions
             for tool in self.server_thread.tools:
@@ -348,10 +356,12 @@ class McpServerAgentComponent(BaseAgentComponent):
             elif isinstance(content, types.ImageContent):
                 mime_type = content.mimeType or "image/png"
                 data = content.data
-                entry["content"] = [{
-                    "type": "image_url",
-                    "text": f"data:{mime_type};base64,{data}",
-                }]
+                entry["content"] = [
+                    {
+                        "type": "image_url",
+                        "text": f"data:{mime_type};base64,{data}",
+                    }
+                ]
             else:
                 raise ValueError("Invalid message content format")
             messages.append(entry)
