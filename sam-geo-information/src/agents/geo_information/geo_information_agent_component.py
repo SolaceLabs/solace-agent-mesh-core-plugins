@@ -81,15 +81,15 @@ class GeoInformationAgentComponent(BaseAgentComponent):
     def get_agent_summary(self):
         """Get a summary of the agent's capabilities."""
         # Use the updated description from self.info
-        return {
+        summary = {
             "agent_name": self.agent_name,
-            "description": (
-                "This agent provides comprehensive geographic information services including:\n"
-                "- Location Services: Converting city names to precise coordinates\n"
-                "- Timezone Information: Looking up timezone data, UTC offsets, and DST status\n"
-                "- Weather Services: Current conditions, forecasts, and historical weather data\n\n"
-                "All of these services work together to provide detailed geographic insights for any location."
-            ),
+            "description": self.info.get("description", "Provides geographic information services."), # Use dynamic description
             "always_open": self.info.get("always_open", False),
             "actions": self.get_actions_summary(),
         }
+        # Add details about API keys if they are configured
+        if self.geocoding_api_key:
+            summary["description"] += "\nGeocoding API key is configured."
+        if self.weather_api_key:
+             summary["description"] += "\nWeather API key is configured."
+        return summary
