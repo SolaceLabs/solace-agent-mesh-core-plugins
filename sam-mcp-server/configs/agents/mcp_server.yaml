@@ -1,21 +1,24 @@
 # This is the configuration file for the mcp server agent
 #
 # It fulfills a few functions:
-# 1. A flow to do periodic registration of this agent with the orchestrator
-# 2. A flow to process action requests and produce action responses
-#    This requires a custom component to process the action requests
+# Configuration file for the MCP server agent.
 #
-# To add multiple MCP server agents, duplicate the file, and update the flow name, and mcp_server_info
+# It fulfills a few functions:
+# 1. A flow to do periodic registration of this agent with the orchestrator (if enabled)
+# 2. A flow to process action requests and produce action responses
+#    This requires a custom component (mcp_server_agent_component) to interact with the MCP server.
+#
+# When creating a new agent instance using `solace-agent-mesh add agent <new_agent_name> --copy-from sam_mcp_server:mcp_server`,
+# the placeholders {{SNAKE_CASE_NAME}} and {{SNAKE_UPPER_CASE_NAME}} will be replaced with the new agent name.
+#
 # Requires the following environment variables:
 # - SOLACE_BROKER_URL
 # - SOLACE_BROKER_USERNAME
 # - SOLACE_BROKER_PASSWORD
-# - SOLACE_AGENT_MESH_NAMESPACE
 # - SOLACE_BROKER_VPN
-# - MCP_SERVER_NAME
-# - MCP_SERVER_COMMAND
-#
-# You can hard-code the MCP_SERVER_NAME and MCP_SERVER_COMMAND values in the file if you have multiple MCP agents
+# - SOLACE_AGENT_MESH_NAMESPACE
+# - {{SNAKE_UPPER_CASE_NAME}}_SERVER_COMMAND - The command to start the MCP server process.
+# - {{SNAKE_UPPER_CASE_NAME}}_SERVER_DESCRIPTION (Optional) - Description of the server, defaults to "Provides access to the {{SNAKE_CASE_NAME}} MCP server".
 
 ---
 log:
@@ -49,10 +52,10 @@ flows:
           <<: *broker_connection
           payload_encoding: utf-8
           payload_format: json
-          broker_queue_name: ${SOLACE_AGENT_MESH_NAMESPACE}agent_mcp_server_action_request
+          broker_queue_name: ${SOLACE_AGENT_MESH_NAMESPACE}agent_{{SNAKE_CASE_NAME}}_action_request
           broker_subscriptions:
-            # Subscribe to all mcp_server actions - note that if we
-            # wanted to handle some mcp_server actions elsewhere, we would
+            # Subscribe to all actions for this specific agent instance.
+            # Note: If you wanted to handle some actions elsewhere, you would
             # need to be more specific here
             - topic: *mcp_sub_topic
               qos: 1
@@ -62,15 +65,15 @@ flows:
          # path is completed at build time
         component_module: {{MODULE_DIRECTORY}}.agents.mcp_server.mcp_server_agent_component
         component_config:
+          <<: *mcp_server_info # Include server name, description, command from anchor
           llm_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/llm-service/request/general-good/
           embedding_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/embedding-service/request/text/
-          server_name: *mcp_server_name
-          server_description: *mcp_server_description
-          mode: stdio
-          server_command: *mcp_server_command
-          enable_sampling: false # to allow LLM access to the server
+          mode: stdio # Currently only stdio is supported by the async handler
+          enable_sampling: false # Set to true to allow the MCP server to make LLM requests back through SAM
 
-          # Pass required configuration to the component
+          # Optional timeouts and retry settings can be added here if needed
+          # timeout: 90
+          # server_startup_timeout: 30
         broker_request_response:
           enabled: true
           broker_config: *broker_connection

@@ -23,20 +23,14 @@ from .actions.mcp_server_action import MCPServerAction
 info = copy.deepcopy(agent_info)
 info.update(
     {
-        "agent_name": None,  # Will be set from configuration
+        "agent_name": "{{SNAKE_CASE_NAME}}", # Template variable replaced at agent creation
         "class_name": "McpServerAgentComponent",
-        "description": None,  # Will be set from configuration
+        "description": "Exposes an MCP (Model Context Protocol) server as a SAM agent.", # Base description, updated after init
         "config_parameters": [
             {
                 "name": "server_name",
                 "required": True,
-                "description": "Name of the MCP server",
-                "type": "string",
-            },
-            {
-                "name": "server_description",
-                "required": True,
-                "description": "Description of the MCP server",
+                "description": "Name of this MCP server agent instance (used for topics, queues, etc.)",
                 "type": "string",
             },
             {
@@ -81,9 +75,15 @@ info.update(
                 "default": 30,
             },
             {
+                "name": "server_description",
+                "required": False, # Now optional, defaults in config
+                "description": "Description of the MCP server's purpose",
+                "type": "string",
+            },
+            {
                 "name": "server_command",
-                "required": False,
-                "description": "Shell command to start the MCP server (required for stdio mode)",
+                "required": True, # Required for stdio mode
+                "description": "Shell command to start the MCP server process (e.g., 'npx -y @modelcontextprotocol/server-filesystem /path')",
                 "type": "string",
             },
             {
@@ -134,11 +134,15 @@ class McpServerAgentComponent(BaseAgentComponent):
         # Call the parent constructor
         super().__init__(module_info, **kwargs)
 
+        # Get core config values
         self.agent_name = self.get_config("server_name")
-        self.agent_description = self.get_config("server_description")
-        self.enable_sampling = self.get_config("enable_sampling")
-        self.info["agent_name"] = self.agent_name
-        self.info["description"] = self.agent_description
+        self.agent_description = self.get_config("server_description") # Fetches default if env var not set
+        self.enable_sampling = self.get_config("enable_sampling", False) # Default to false if not specified
+
+        # Update component info with specific instance details
+        module_info["agent_name"] = self.agent_name
+        module_info["description"] = self.agent_description # Set initial description
+        self.info = module_info # Ensure self.info uses the updated module_info
 
         # Initialize these in run()
         self.client_session = None
