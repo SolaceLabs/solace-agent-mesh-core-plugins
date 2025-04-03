@@ -75,7 +75,7 @@ class MCPServerAction(Action):
                 "name": name,
                 "prompt_directive": description,
                 "params": params,
-                "required_scopes": [f"<agent_name>:{name}:execute"],π
+                "required_scopes": [f"<agent_name>:{name}:execute"],
             },
             **kwargs,
         )
