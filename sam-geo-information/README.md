@@ -16,50 +16,34 @@ Add the plugin to your SAM instance:
 solace-agent-mesh plugin add sam_geo_information --pip -u git+https://github.com/SolaceLabs/solace-agent-mesh-core-plugins#subdirectory=sam-geo-information
 ```
 
-To instantiate the agent, you can edit the SAM configuration file solace-agent-mesh.yaml:
-
-```
-  ...
-  plugins:
-  - name: sam_geo_information
-    load_unspecified_files: false
-    includes_gateway_interface: false
-    load:
-      agents: 
-        - geo_information  # Add this line
-      gateways: []
-      overwrites: []
-    from_url: 
-      git+https://github.com/SolaceDev/solace-agent-mesh-core-plugins@ed/add-geo-info-agent#subdirectory=sam-geo-information
-  ...
-```
-
-or this will create a new agent config file in your agent config directory:
-
-```sh
-solace-agent-mesh add agent geo_information --copy-from sam_geo_information
-```
-
-This will create a new config file in your agent config directory. Rename this file to the agent name you want to use.
-Also update the following fields in the config file:
-- **agent_name**
-- **name (flow name)**
-- **broker_subscriptions.topic**
+2.  **Instantiate the Agent:**
+    Use the `solace-agent-mesh add agent` command to create a configuration file for your specific geographic information agent instance. Replace `<new_agent_name>` with a descriptive name (e.g., `geo_info_primary`, `weather_lookup`).
+    ```sh
+    solace-agent-mesh add agent <new_agent_name> --copy-from sam_geo_information:geo_information
+    ```
+    This command creates a new YAML file in `configs/agents/` named `<new_agent_name>.yaml`. The template variables (`{{SNAKE_CASE_NAME}}`, `{{SNAKE_UPPER_CASE_NAME}}`) inside the copied file will be automatically replaced with your chosen agent name.
 
 ## Environment Variables
 
-The following environment variables are required:
+The following environment variables are required for **Solace connection** (used by all agents):
 - **SOLACE_BROKER_URL**
 - **SOLACE_BROKER_USERNAME**
 - **SOLACE_BROKER_PASSWORD**
 - **SOLACE_BROKER_VPN**
 - **SOLACE_AGENT_MESH_NAMESPACE**
 
-For the GeoCode API:
-- **GEOCODING_API_KEY**
+For **each Geographic Information agent instance**, you may need to set the following environment variables, replacing `<AGENT_NAME>` with the uppercase version of the name you chose during the `add agent` step (e.g., `GEO_INFO_PRIMARY`, `WEATHER_LOOKUP`):
 
-For the Weather API (require for commercial use only):
-- **WEATHER_API_KEY**
+- **`<AGENT_NAME>_GEOCODING_API_KEY`** (Optional): API key for the geocode.maps.co service. Required for substantial volume usage.
+- **`<AGENT_NAME>_WEATHER_API_KEY`** (Optional): API key for the open-meteo.com service. Required only for commercial use.
+
+**Example Environment Variables:**
+
+For an agent named `geo_info_primary`:
+```bash
+# Optional: export GEO_INFO_PRIMARY_GEOCODING_API_KEY="your_maps.co_api_key"
+# Optional: export GEO_INFO_PRIMARY_WEATHER_API_KEY="your_open-meteo_api_key"
+```
 
 ## Actions
 
