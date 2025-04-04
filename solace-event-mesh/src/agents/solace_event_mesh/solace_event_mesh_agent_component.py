@@ -12,9 +12,9 @@ from solace_agent_mesh.agents.base_agent_component import (
 info = copy.deepcopy(agent_info)
 info.update(
     {
-        "agent_name": "{{SNAKE_CASE_NAME}}", # Template variable replaced at agent creation
+        "agent_name": None,  # Template variable replaced at agent creation
         "class_name": "SolaceEventMeshAgentComponent",
-        "description": "Agent that dynamically creates actions to interact with the Solace Event Mesh via request/reply.", # Base description
+        "description": "Event Mesh agent for publishing requests to and receiving responses from the Solace event mesh",  # Base description
         "config_parameters": [
             {
                 "name": "agent_name",
@@ -26,20 +26,20 @@ info.update(
                 "required": False,
                 "description": "Maximum response payload size in bytes before forcing file output",
                 "type": "integer",
-                "default": 1024
+                "default": 1024,
             },
             {
-                "name": "agent_description", # Keep for manual override if needed
+                "name": "agent_description",  # Keep for manual override if needed
                 "required": False,
                 "description": "Optional description override for this Event Mesh agent instance.",
-                "default": None, # Default description is generated dynamically
+                "default": None,  # Default description is generated dynamically
             },
             {
                 "name": "always_open",
                 "required": False,
                 "description": "Whether this agent should always be open",
                 "type": "boolean",
-                "default": False
+                "default": False,
             },
             {
                 "name": "actions",
@@ -49,13 +49,10 @@ info.update(
                 "items": {
                     "type": "object",
                     "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": "Name of the action"
-                        },
+                        "name": {"type": "string", "description": "Name of the action"},
                         "description": {
                             "type": "string",
-                            "description": "Description of what the action does"
+                            "description": "Description of what the action does",
                         },
                         "parameters": {
                             "type": "array",
@@ -64,58 +61,71 @@ info.update(
                                 "properties": {
                                     "name": {
                                         "type": "string",
-                                        "description": "Name of the parameter"
+                                        "description": "Name of the parameter",
                                     },
                                     "required": {
                                         "type": "boolean",
-                                        "description": "Whether this parameter is required"
+                                        "description": "Whether this parameter is required",
                                     },
                                     "description": {
                                         "type": "string",
-                                        "description": "Description of the parameter"
+                                        "description": "Description of the parameter",
                                     },
                                     "default": {
                                         "description": "Default value for the parameter"
                                     },
                                     "type": {
                                         "type": "string",
-                                        "description": "Data type of the parameter"
+                                        "description": "Data type of the parameter",
                                     },
                                     "payload_path": {
                                         "type": "string",
-                                        "description": "Path in the payload where this parameter value should be placed"
+                                        "description": "Path in the payload where this parameter value should be placed",
                                     },
                                 },
-                                "required": ["name", "required", "description", "type", "payload_path"]
-                            }
+                                "required": [
+                                    "name",
+                                    "required",
+                                    "description",
+                                    "type",
+                                    "payload_path",
+                                ],
+                            },
                         },
                         "topic": {
                             "type": "string",
-                            "description": "Topic to publish the action request to"
+                            "description": "Topic to publish the action request to",
                         },
                         "response_timeout": {
                             "type": "number",
-                            "description": "Timeout in seconds to wait for a response"
+                            "description": "Timeout in seconds to wait for a response",
                         },
                         "response_format": {
                             "type": "string",
                             "description": "Expected format of response payload (json, yaml, text, or none)",
-                            "default": "json"
+                            "default": "json",
                         },
                         "return_as_file": {
                             "type": "boolean",
                             "description": "Whether to return the response as a file using FileService",
-                            "default": False
+                            "default": False,
                         },
                         "required_scope": {
                             "type": "string",
                             "description": "Scope required to access this parameter",
-                            "default": "<agent_name>:<action_name>:write"
+                            "default": "<agent_name>:<action_name>:write",
                         },
                     },
-                    "required": ["name", "description", "parameters", "topic", "response_topic", "response_timeout"]
-                }
-            }
+                    "required": [
+                        "name",
+                        "description",
+                        "parameters",
+                        "topic",
+                        "response_topic",
+                        "response_timeout",
+                    ],
+                },
+            },
         ],
     }
 )
@@ -143,14 +153,16 @@ class SolaceEventMeshAgentComponent(BaseAgentComponent):
         self.agent_name = self.get_config("agent_name")
         # Use provided description or generate a default one
         self.agent_description = self.get_config("agent_description") or (
-             f"Event Mesh agent '{self.agent_name}' for publishing requests to and receiving responses from the Solace event mesh."
+            f"Event Mesh agent '{self.agent_name}' for publishing requests to and receiving responses from the Solace event mesh."
         )
 
         # Update component info with specific instance details
         module_info["agent_name"] = self.agent_name
         module_info["description"] = self.agent_description
-        self.info = module_info # Ensure self.info uses the updated module_info
-        self.info["always_open"] = self.get_config("always_open", False) # Apply always_open setting
+        self.info = copy.deepcopy(module_info)
+        self.info["always_open"] = self.get_config(
+            "always_open", False
+        )  # Apply always_open setting
 
         # Create action instances from configuration
         actions_config = self.get_config("actions", [])
@@ -158,12 +170,14 @@ class SolaceEventMeshAgentComponent(BaseAgentComponent):
             raise ValueError("No actions configured for Event Mesh agent")
 
         from .actions.broker_request_response import BrokerRequestResponse
-        
+
         self.action_list = self.get_actions_list(agent=self, config_fn=self.get_config)
 
         for action_config in actions_config:
             # Create a new action instance for each configured action
-            action = BrokerRequestResponse(action_config, agent=self, config_fn=self.get_config)
+            action = BrokerRequestResponse(
+                action_config, agent=self, config_fn=self.get_config
+            )
             # Validate payload paths at startup
             action._validate_payload_paths()
             self.action_list.add_action(action)
@@ -180,7 +194,9 @@ class SolaceEventMeshAgentComponent(BaseAgentComponent):
         """
         summary = {
             "agent_name": self.agent_name,
-            "description": self.info.get("description", "Solace Event Mesh Agent"), # Use dynamic description
+            "description": self.info.get(
+                "description", "Solace Event Mesh Agent"
+            ),  # Use dynamic description
             "always_open": self.info.get("always_open", False),
             "actions": self.get_actions_summary(),
         }
