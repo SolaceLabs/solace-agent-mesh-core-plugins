@@ -164,12 +164,10 @@ class MongoDBAgentComponent(BaseAgentComponent):
             try:
                 self.detailed_schema, self.summary_schema = self._detect_schema()
             except Exception as e:
-                # Log error but continue, agent might still be usable with manual queries or if schema is provided later
-                log.error(
-                    f"Failed to auto-detect schema for agent {self.agent_name}: {e}"
-                )
-                self.detailed_schema = {"error": f"Schema detection failed: {e}"}
-                self.summary_schema = {"error": f"Schema detection failed: {e}"}
+                # Raise error as the agent cannot function without a schema
+                error_msg = f"Failed to auto-detect schema for agent {self.agent_name}: {e}"
+                log.error(error_msg)
+                raise ValueError(error_msg) from e
         else:
             # Try to load manual schema if provided
             manual_schema = self.get_config("database_schema")
@@ -179,11 +177,10 @@ class MongoDBAgentComponent(BaseAgentComponent):
                 self.detailed_schema = {"manual_schema": manual_schema}
                 self.summary_schema = {"manual_schema": manual_schema}
             else:
-                log.error(
-                    f"Auto-detect schema is off for agent {self.agent_name}, but no manual schema provided."
-                )
-                self.detailed_schema = {"warning": "No schema available."}
-                self.summary_schema = {"warning": "No schema available."}
+                # Raise error as auto-detect is off and no manual schema was provided
+                error_msg = f"Auto-detect schema is off for agent {self.agent_name}, but no manual schema provided via 'database_schema' config."
+                log.error(error_msg)
+                raise ValueError(error_msg)
 
     def _detect_schema(self) -> Tuple[Dict[str, Dict[str, List[str]]], Dict[str, str]]:
         """Detect the database schema and include sample data. Returns detailed and summary schemas.
