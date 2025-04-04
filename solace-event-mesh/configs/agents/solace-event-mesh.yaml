@@ -3,10 +3,6 @@
 # Dynamically creates actions based on configuration to send requests
 # to the Solace Event Mesh and receive responses.
 #
-# When creating a new agent instance using `solace-agent-mesh add agent <new_agent_name> --copy-from solace-event-mesh:solace_event_mesh`,
-# the placeholder {{SNAKE_CASE_NAME}} will be replaced with the new agent name.
-# However, this agent is typically used as a single instance.
-#
 # Requires the following environment variables:
 # - SOLACE_BROKER_URL
 # - SOLACE_BROKER_USERNAME
