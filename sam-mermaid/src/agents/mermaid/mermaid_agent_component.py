@@ -53,7 +53,15 @@ class MermaidAgentComponent(BaseAgentComponent):
 
         # Get core config values
         self.agent_name = self.get_config("agent_name")
-        # mermaid_server_url is retrieved via get_config but not stored directly on self
+        mermaid_server_url = self.get_config("mermaid_server_url")
+
+        # Validate required configuration
+        if not mermaid_server_url:
+            raise ValueError(
+                f"Mermaid server URL is not configured for agent '{self.agent_name}'. "
+                f"Please set the {self.agent_name.upper()}_MERMAID_SERVER_URL environment variable."
+            )
+        # Note: mermaid_server_url is retrieved via get_config but not stored directly on self
         # Actions will retrieve it via self.parent_component.get_config()
 
         # Update component info with specific instance details
