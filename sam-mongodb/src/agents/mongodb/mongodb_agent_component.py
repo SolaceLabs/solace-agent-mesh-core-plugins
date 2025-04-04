@@ -176,7 +176,7 @@ class MongoDBAgentComponent(BaseAgentComponent):
 
 
     def _detect_schema(self) -> Tuple[Dict[str, Dict[str, List[str]]], Dict[str, str]]:
-        """Detect the database schema and include sample data. Returns detailed and summary schemas."""
+        """Detect the database schema and include sample data. Returns detailed and summary schemas.
 
         Returns:
             A tuple containing:
