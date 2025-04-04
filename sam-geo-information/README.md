@@ -17,11 +17,32 @@ solace-agent-mesh plugin add sam_geo_information --pip -u git+https://github.com
 ```
 
 2.  **Instantiate the Agent:**
-    Use the `solace-agent-mesh add agent` command to create a configuration file for your specific geographic information agent instance. Replace `<new_agent_name>` with a descriptive name (e.g., `geo_info_primary`, `weather_lookup`).
-    ```sh
-    solace-agent-mesh add agent <new_agent_name> --copy-from sam_geo_information:geo_information
-    ```
-    This command creates a new YAML file in `configs/agents/` named `<new_agent_name>.yaml`. The template variables (`{{SNAKE_CASE_NAME}}`, `{{SNAKE_UPPER_CASE_NAME}}`) inside the copied file will be automatically replaced with your chosen agent name.
+
+To instantiate the agent, you can edit the SAM configuration file solace-agent-mesh.yaml:
+
+```
+  ...
+  plugins:
+  - name: sam_geo_information
+    load_unspecified_files: false
+    includes_gateway_interface: false
+    load:
+      agents: 
+        - geo_information  # Add this line
+      gateways: []
+      overwrites: []
+    from_url: 
+      git+https://github.com/SolaceDev/solace-agent-mesh-core-plugins@ed/add-geo-info-agent#subdirectory=sam-geo-information
+  ...
+```
+
+or use the `solace-agent-mesh add agent` command to create a configuration file for your specific geographic information agent instance. Replace `<new_agent_name>` with a descriptive name (e.g., `geo_info_primary`, `weather_lookup`).
+
+```sh
+solace-agent-mesh add agent <new_agent_name> --copy-from sam_geo_information:geo_information
+```
+
+This command creates a new YAML file in `configs/agents/` named `<new_agent_name>.yaml`.
 
 ## Environment Variables
 
