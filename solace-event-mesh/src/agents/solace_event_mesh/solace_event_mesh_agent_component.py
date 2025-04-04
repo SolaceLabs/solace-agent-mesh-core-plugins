@@ -12,14 +12,14 @@ from solace_agent_mesh.agents.base_agent_component import (
 info = copy.deepcopy(agent_info)
 info.update(
     {
-        "agent_name": "event_mesh",  # Default name, can be overridden in config
+        "agent_name": "{{SNAKE_CASE_NAME}}", # Template variable replaced at agent creation
         "class_name": "SolaceEventMeshAgentComponent",
-        "description": "Event Mesh agent for publishing requests to and receiving responses from the Solace event mesh",
+        "description": "Agent that dynamically creates actions to interact with the Solace Event Mesh via request/reply.", # Base description
         "config_parameters": [
             {
-                "name": "agent_name", 
+                "name": "agent_name",
                 "required": True,
-                "description": "Name of this Event Mesh agent",
+                "description": "Name of this Event Mesh agent instance (used for topics, queues, etc.)",
             },
             {
                 "name": "max_response_size_before_file",
@@ -29,10 +29,10 @@ info.update(
                 "default": 1024
             },
             {
-                "name": "agent_description",
+                "name": "agent_description", # Keep for manual override if needed
                 "required": False,
-                "description": "Description of this Event Mesh agent's purpose",
-                "default": "Event Mesh agent for publishing requests to and receiving responses from the Solace event mesh",
+                "description": "Optional description override for this Event Mesh agent instance.",
+                "default": None, # Default description is generated dynamically
             },
             {
                 "name": "always_open",
@@ -138,13 +138,19 @@ class SolaceEventMeshAgentComponent(BaseAgentComponent):
         """
         module_info = module_info or info
         super().__init__(module_info, **kwargs)
-        self.info = copy.deepcopy(module_info)
 
+        # Get core config values
         self.agent_name = self.get_config("agent_name")
+        # Use provided description or generate a default one
+        self.agent_description = self.get_config("agent_description") or (
+             f"Event Mesh agent '{self.agent_name}' for publishing requests to and receiving responses from the Solace event mesh."
+        )
 
-        self.agent_description = self.get_config("agent_description")
+        # Update component info with specific instance details
         module_info["agent_name"] = self.agent_name
-        self.info["always_open"] = self.get_config("always_open", False)
+        module_info["description"] = self.agent_description
+        self.info = module_info # Ensure self.info uses the updated module_info
+        self.info["always_open"] = self.get_config("always_open", False) # Apply always_open setting
 
         # Create action instances from configuration
         actions_config = self.get_config("actions", [])
@@ -170,11 +176,12 @@ class SolaceEventMeshAgentComponent(BaseAgentComponent):
         """Get a summary of the agent's capabilities.
 
         Returns:
-            Dict containing the agent's name, description and available actions.
+            Dict containing the agent's name, description, and available actions.
         """
-        return {
+        summary = {
             "agent_name": self.agent_name,
-            "description": self.agent_description,
+            "description": self.info.get("description", "Solace Event Mesh Agent"), # Use dynamic description
             "always_open": self.info.get("always_open", False),
             "actions": self.get_actions_summary(),
         }
+        return summary
