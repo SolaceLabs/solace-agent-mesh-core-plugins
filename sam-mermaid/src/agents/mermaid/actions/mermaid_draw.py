@@ -31,14 +31,24 @@ class DrawAction(Action):
         )
 
     def invoke(self, params, meta={}) -> ActionResponse:
-        log.debug("Doing mermaid draw action: %s", params["mermaid_code"])
+        log.debug("Invoking mermaid draw action for agent %s", self.parent_component.agent_name)
         session_id = meta.get("session_id")
-        return self.do_action(params["mermaid_code"], session_id)
+        mermaid_code = params.get("mermaid_code")
+        if not mermaid_code:
+            return ActionResponse(message="Error: 'mermaid_code' parameter is required.", status_code=400)
 
-    def do_action(self, mermaid_code, session_id) -> ActionResponse:
+        # Retrieve mermaid_server_url from the parent component's config
+        mermaid_server_url = self.parent_component.get_config("mermaid_server_url")
+        if not mermaid_server_url:
+             log.error("Mermaid server URL not configured for agent %s", self.parent_component.agent_name)
+             return ActionResponse(message="Error: Mermaid server URL is not configured.", status_code=500)
+
+        return self.do_action(mermaid_code, mermaid_server_url, session_id)
+
+    def do_action(self, mermaid_code, mermaid_server_url, session_id) -> ActionResponse:
         # Generate the diagram as PNG
         output_filename = f"{str(uuid.uuid4())[:6]}_diagram.png"
-        mermaid_response = generate_mermaid_png(mermaid_code, output_filename, session_id)
+        mermaid_response = self._generate_mermaid_png(mermaid_code, mermaid_server_url, output_filename, session_id)
 
         # Check if error is raised when generating mermaid png
         if isinstance(mermaid_response, str):
@@ -46,15 +56,16 @@ class DrawAction(Action):
 
         return ActionResponse(files=[mermaid_response])
 
-def generate_mermaid_png(mermaid_code, output_file, session_id):
-    try:
-        # Do a POST to the mermaid server to get a PNG
-        mermaidServerService = os.getenv("MERMAID_SERVER_URL")
-        
-        # Handle URLs with or without trailing slash
-        base_url = mermaidServerService.rstrip('/')
-        request_url = f"{base_url}/generate?type=png"
-        response = requests.post(request_url, data=mermaid_code)
+    def _generate_mermaid_png(self, mermaid_code, mermaid_server_url, output_file, session_id):
+        """Generates PNG using the configured mermaid server."""
+        try:
+            # Do a POST to the mermaid server to get a PNG
+            # Handle URLs with or without trailing slash
+            base_url = mermaid_server_url.rstrip('/')
+            request_url = f"{base_url}/generate?type=png"
+            log.debug("Sending request to Mermaid server: %s", request_url)
+            response = requests.post(request_url, data=mermaid_code, timeout=30) # Added timeout
+            response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
 
         # Upload the PNG file to the file service
         file_service = FileService()
