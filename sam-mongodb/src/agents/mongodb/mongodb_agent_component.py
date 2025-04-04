@@ -3,6 +3,7 @@
 import copy
 from typing import Dict, Any, List, Tuple
 
+from solace_ai_connector.common.log import log # Added log import
 from solace_agent_mesh.agents.base_agent_component import (
     agent_info,
     BaseAgentComponent,
