@@ -3,7 +3,7 @@
 import copy
 from typing import Dict, Any, List, Tuple
 
-from solace_ai_connector.common.log import log # Added log import
+from solace_ai_connector.common.log import log  # Added log import
 from solace_agent_mesh.agents.base_agent_component import (
     agent_info,
     BaseAgentComponent,
@@ -15,9 +15,9 @@ from .actions.search_query import SearchQuery
 info = copy.deepcopy(agent_info)
 info.update(
     {
-        "agent_name": "{{SNAKE_CASE_NAME}}", # Template variable replaced at agent creation
+        "agent_name": None,  # Template variable replaced at agent creation
         "class_name": "MongoDBAgentComponent",
-        "description": "Provides natural language query access to a MongoDB database.", # Base description
+        "description": "Provides natural language query access to a MongoDB database.",  # Base description
         "config_parameters": [
             {
                 "name": "agent_name",
@@ -26,69 +26,69 @@ info.update(
                 "type": "string",
             },
             {
-                "name": "always_open", # Keep this for backward compatibility if needed, but not templated
+                "name": "always_open",  # Keep this for backward compatibility if needed, but not templated
                 "required": False,
                 "description": "Whether this agent should always be open",
                 "type": "boolean",
-                "default": False
+                "default": False,
             },
             {
                 "name": "database_host",
                 "required": True,
-                "description": "MongoDB host. Set via {{SNAKE_UPPER_CASE_NAME}}_MONGO_HOST env var.",
+                "description": "MongoDB host. Set via <AGENT_NAME>_MONGO_HOST env var.",
                 "type": "string",
             },
             {
                 "name": "database_port",
                 "required": True,
-                "description": "MongoDB port. Set via {{SNAKE_UPPER_CASE_NAME}}_MONGO_PORT env var.",
+                "description": "MongoDB port. Set via <AGENT_NAME>_MONGO_PORT env var.",
                 "type": "integer",
             },
             {
                 "name": "database_user",
                 "required": False,
-                "description": "MongoDB user. Set via {{SNAKE_UPPER_CASE_NAME}}_MONGO_USER env var.",
+                "description": "MongoDB user. Set via <AGENT_NAME>_MONGO_USER env var.",
                 "type": "string",
             },
             {
                 "name": "database_password",
                 "required": False,
-                "description": "MongoDB password. Set via {{SNAKE_UPPER_CASE_NAME}}_MONGO_PASSWORD env var.",
+                "description": "MongoDB password. Set via <AGENT_NAME>_MONGO_PASSWORD env var.",
                 "type": "string",
             },
             {
                 "name": "database_name",
                 "required": True,
-                "description": "Database name. Set via {{SNAKE_UPPER_CASE_NAME}}_MONGO_DB env var.",
+                "description": "Database name. Set via <AGENT_NAME>_MONGO_DB env var.",
                 "type": "string",
             },
             {
                 "name": "database_collection",
                 "required": False,
-                "description": "Collection name. If not provided, agent accesses all collections. Set via {{SNAKE_UPPER_CASE_NAME}}_MONGO_COLLECTION env var.",
+                "description": "Collection name. If not provided, agent accesses all collections. Set via <AGENT_NAME>_MONGO_COLLECTION env var.",
                 "type": "string",
             },
             {
                 "name": "database_purpose",
                 "required": True,
-                "description": "Purpose of the database. Set via {{SNAKE_UPPER_CASE_NAME}}_DB_PURPOSE env var.",
+                "description": "Purpose of the database. Set via <AGENT_NAME>_DB_PURPOSE env var.",
                 "type": "string",
             },
             {
                 "name": "data_description",
                 "required": True,
-                "description": "Detailed description of the data. Set via {{SNAKE_UPPER_CASE_NAME}}_DB_DESCRIPTION env var.",
+                "description": "Detailed description of the data. Set via <AGENT_NAME>_DB_DESCRIPTION env var.",
                 "type": "string",
             },
             {
                 "name": "auto_detect_schema",
                 "required": False,
-                "description": "Automatically detect schema. Set via {{SNAKE_UPPER_CASE_NAME}}_AUTO_DETECT_SCHEMA env var.",
+                "description": "Automatically detect schema. Set via <AGENT_NAME>_AUTO_DETECT_SCHEMA env var.",
                 "type": "boolean",
-                "default": True, # Changed default to True
+                "default": True,  # Changed default to True
             },
             {
-                "name": "database_schema", # Keep for manual override if needed
+                "name": "database_schema",  # Keep for manual override if needed
                 "required": False,
                 "description": "Manually defined database schema if auto_detect_schema is False.",
                 "type": "string",
@@ -127,16 +127,22 @@ class MongoDBAgentComponent(BaseAgentComponent):
         self.agent_name = self.get_config("agent_name")
         self.database_purpose = self.get_config("database_purpose")
         self.data_description = self.get_config("data_description")
-        self.database_collection = self.get_config("database_collection") # Can be "" if not set
-        self.auto_detect_schema = self.get_config("auto_detect_schema", True) # Default true
+        self.database_collection = self.get_config(
+            "database_collection"
+        )  # Can be "" if not set
+        self.auto_detect_schema = self.get_config(
+            "auto_detect_schema", True
+        )  # Default true
 
         # Update component info with specific instance details
         module_info["agent_name"] = self.agent_name
-        module_info["description"] = ( # Update description with instance name and purpose
+        module_info[
+            "description"
+        ] = (  # Update description with instance name and purpose
             f"Provides natural language query access to the '{self.agent_name}' MongoDB database. "
             f"Purpose: {self.database_purpose}"
         )
-        self.info = module_info # Ensure self.info uses the updated module_info
+        self.info = module_info  # Ensure self.info uses the updated module_info
 
         # Update action scopes
         self.action_list.fix_scopes("<agent_name>", self.agent_name)
@@ -159,7 +165,9 @@ class MongoDBAgentComponent(BaseAgentComponent):
                 self.detailed_schema, self.summary_schema = self._detect_schema()
             except Exception as e:
                 # Log error but continue, agent might still be usable with manual queries or if schema is provided later
-                log.error(f"Failed to auto-detect schema for agent {self.agent_name}: {e}")
+                log.error(
+                    f"Failed to auto-detect schema for agent {self.agent_name}: {e}"
+                )
                 self.detailed_schema = {"error": f"Schema detection failed: {e}"}
                 self.summary_schema = {"error": f"Schema detection failed: {e}"}
         else:
@@ -171,10 +179,11 @@ class MongoDBAgentComponent(BaseAgentComponent):
                 self.detailed_schema = {"manual_schema": manual_schema}
                 self.summary_schema = {"manual_schema": manual_schema}
             else:
-                log.warning(f"Auto-detect schema is off for agent {self.agent_name}, but no manual schema provided.")
+                log.error(
+                    f"Auto-detect schema is off for agent {self.agent_name}, but no manual schema provided."
+                )
                 self.detailed_schema = {"warning": "No schema available."}
                 self.summary_schema = {"warning": "No schema available."}
-
 
     def _detect_schema(self) -> Tuple[Dict[str, Dict[str, List[str]]], Dict[str, str]]:
         """Detect the database schema and include sample data. Returns detailed and summary schemas.
@@ -193,13 +202,13 @@ class MongoDBAgentComponent(BaseAgentComponent):
             collections = [self.database_collection]
         else:
             collections = self.db_handler.get_collections()
-        
+
         for collection in collections:
             fields = self.db_handler.get_fields(collection)
             sample_data = self._get_sample_data(collection, fields)
             detailed_schema[collection] = sample_data
             summary_schema[collection] = ", ".join(fields)
-            
+
         return detailed_schema, summary_schema
 
     def _get_sample_data(self, collection: str, fields: List[str]) -> Dict[str, str]:
@@ -215,9 +224,14 @@ class MongoDBAgentComponent(BaseAgentComponent):
         sample_data = {}
         for field in fields:
             unique_values, all = self.db_handler.get_sample_values(collection, field)
-            truncated_values = [value if len(value) <= 40 else value[:37] + "..." for value in unique_values]
+            truncated_values = [
+                value if len(value) <= 40 else value[:37] + "..."
+                for value in unique_values
+            ]
             if all:
-                sample_data[field] = f"(all unique values: {', '.join(truncated_values)})"
+                sample_data[field] = (
+                    f"(all unique values: {', '.join(truncated_values)})"
+                )
             else:
                 sample_data[field] = f"(examples: {', '.join(truncated_values)})"
 
@@ -231,12 +245,14 @@ class MongoDBAgentComponent(BaseAgentComponent):
         """Get a summary of the agent's capabilities."""
         summary = {
             "agent_name": self.agent_name,
-            "description": self.info.get("description", "Provides access to a MongoDB database."), # Use dynamic description
+            "description": self.info.get(
+                "description", "Provides access to a MongoDB database."
+            ),  # Use dynamic description
             "detailed_description": (
                 f"Agent Name: {self.agent_name}\n"
                 f"Purpose: {self.database_purpose}\n\n"
                 f"Data Description:\n{self.data_description}\n\n"
-                f"Schema Summary:\n{self.summary_schema}\n" # Use the potentially detected/loaded schema
+                f"Schema Summary:\n{self.summary_schema}\n"  # Use the potentially detected/loaded schema
             ),
             "always_open": self.info.get("always_open", False),
             "actions": self.get_actions_summary(),
