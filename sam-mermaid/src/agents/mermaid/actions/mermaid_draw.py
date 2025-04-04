@@ -67,15 +67,16 @@ class DrawAction(Action):
             response = requests.post(request_url, data=mermaid_code, timeout=30) # Added timeout
             response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
 
-        # Upload the PNG file to the file service
-        file_service = FileService()
-        image_meta = file_service.upload_from_buffer(
-            response.content,
-            file_name=output_file,
-            session_id=session_id,
-            data_source="Mermaid Agent - Draw Action",
-        )
-        return image_meta
-    except Exception as e:
-        log.error("Error generating Mermaid diagram: %s", str(e))
-        return f"Error generating Mermaid diagram: {str(e)}"
+            # Upload the PNG file to the file service
+            file_service = FileService()
+            image_meta = file_service.upload_from_buffer(
+                response.content,
+                file_name=output_file,
+                session_id=session_id,
+                data_source="Mermaid Agent - Draw Action",
+            )
+            return image_meta
+        except Exception as e:
+            log.error("Error generating or uploading Mermaid diagram: %s", str(e))
+            # Return the error message string instead of the image metadata
+            return f"Error generating or uploading Mermaid diagram: {str(e)}"
