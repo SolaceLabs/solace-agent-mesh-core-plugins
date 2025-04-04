@@ -1,8 +1,21 @@
-# Configuration file for the geographic information agent that provides:
+# Configuration file for the geographic information agent.
+#
+# Provides:
 # - Location Services: City to coordinates conversion
 # - Timezone Services: Timezone lookup, UTC offsets, and DST information
 # - Weather Services: Current conditions, forecasts, and historical data
-
+#
+# When creating a new agent instance using `solace-agent-mesh add agent <new_agent_name> --copy-from sam_geo_information:geo_information`,
+# the placeholders {{SNAKE_CASE_NAME}} and {{SNAKE_UPPER_CASE_NAME}} will be replaced with the new agent name.
+#
+# Requires the following environment variables:
+# - SOLACE_BROKER_URL
+# - SOLACE_BROKER_USERNAME
+# - SOLACE_BROKER_PASSWORD
+# - SOLACE_BROKER_VPN
+# - SOLACE_AGENT_MESH_NAMESPACE
+# - {{SNAKE_UPPER_CASE_NAME}}_GEOCODING_API_KEY (Optional) - API key for geocode.maps.co
+# - {{SNAKE_UPPER_CASE_NAME}}_WEATHER_API_KEY (Optional) - API key for open-meteo.com (required for commercial use)
 
 ---
 log:
@@ -20,7 +33,7 @@ shared_config:
 
 flows:
   # Flow to handle action requests
-  - name: geo_information_action_request_processor
+  - name: {{SNAKE_CASE_NAME}}_action_request_processor
     components:
       # Input from a Solace broker
       - component_name: broker_input
@@ -29,9 +42,9 @@ flows:
           <<: *broker_connection
           payload_encoding: utf-8
           payload_format: json
-          broker_queue_name: ${SOLACE_AGENT_MESH_NAMESPACE}agent_geo_information_action_request
+          broker_queue_name: ${SOLACE_AGENT_MESH_NAMESPACE}agent_{{SNAKE_CASE_NAME}}_action_request
           broker_subscriptions:
-            - topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/actionRequest/*/*/geo_information/>
+            - topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/actionRequest/*/*/{{SNAKE_CASE_NAME}}/>
               qos: 1
 
       # Custom component to process the action request
@@ -41,10 +54,9 @@ flows:
         component_config:
           llm_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/llm-service/request/general-good/
           embedding_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/embedding-service/request/text/
-          agent_name: geo_information
-          geocoding_api_key: ${GEOCODING_API_KEY}
-          weather_api_key: ${WEATHER_API_KEY}
-          # Pass required configuration to the component
+          agent_name: {{SNAKE_CASE_NAME}}
+          geocoding_api_key: ${{{SNAKE_UPPER_CASE_NAME}}_GEOCODING_API_KEY, ""} # Optional, defaults to empty string
+          weather_api_key: ${{{SNAKE_UPPER_CASE_NAME}}_WEATHER_API_KEY, ""} # Optional, defaults to empty string
         broker_request_response:
           enabled: true
           broker_config: *broker_connection

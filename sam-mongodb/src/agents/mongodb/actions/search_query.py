@@ -152,7 +152,8 @@ class SearchQuery(Action):
                     + "\n\nFinal results:\n\n"
                 )
 
-            max_inline_results = self.get_config("max_inline_results")
+            # Retrieve max_inline_results from the parent component's config
+            max_inline_results = self.parent_component.get_config("max_inline_results", 10) # Default 10
             use_file = len(results) > max_inline_results
 
             response = self._create_response(

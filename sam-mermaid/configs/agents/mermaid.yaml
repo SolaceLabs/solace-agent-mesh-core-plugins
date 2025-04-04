@@ -1,9 +1,17 @@
-# This is the configuration file for the mermaid agent
+# Configuration file for the Mermaid agent.
 #
-# It fulfills a few functions:
-# 1. A flow to do periodic registration of this agent with the orchestrator
-# 2. A flow to process action requests and produce action responses
-#    This requires a custom component to process the action requests
+# Generates diagrams from Mermaid.js syntax.
+#
+# When creating a new agent instance using `solace-agent-mesh add agent <new_agent_name> --copy-from sam_mermaid:mermaid`,
+# the placeholders {{SNAKE_CASE_NAME}} and {{SNAKE_UPPER_CASE_NAME}} will be replaced with the new agent name.
+#
+# Requires the following environment variables:
+# - SOLACE_BROKER_URL
+# - SOLACE_BROKER_USERNAME
+# - SOLACE_BROKER_PASSWORD
+# - SOLACE_BROKER_VPN
+# - SOLACE_AGENT_MESH_NAMESPACE
+# - {{SNAKE_UPPER_CASE_NAME}}_MERMAID_SERVER_URL - URL of the mermaid-server instance.
 
 ---
 log:
@@ -23,7 +31,7 @@ shared_config:
 flows:
 
   # Flow to handle action requests
-  - name: mermaid_action_request_processor
+  - name: {{SNAKE_CASE_NAME}}_action_request_processor
     components:
       # Input from a Solace broker
       - component_name: broker_input
@@ -32,31 +40,30 @@ flows:
           <<: *broker_connection
           payload_encoding: utf-8
           payload_format: json
-          broker_queue_name: ${SOLACE_AGENT_MESH_NAMESPACE}agent_mermaid_action_request
+          broker_queue_name: ${SOLACE_AGENT_MESH_NAMESPACE}agent_{{SNAKE_CASE_NAME}}_action_request
           broker_subscriptions:
-            # Subscribe to all mermaid actions - note that if we
-            # wanted to handle some mermaid actions elsewhere, we would
-            # need to be more specific here
-            - topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/actionRequest/*/*/mermaid/>
+            # Subscribe to all actions for this specific agent instance.
+            - topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/actionRequest/*/*/{{SNAKE_CASE_NAME}}/>
               qos: 1
 
       # Custom component to process the action request
       - component_name: action_request_processor
         component_base_path: .
-         # path is completed at build time
+        # path is completed at build time
         component_module: {{MODULE_DIRECTORY}}.agents.mermaid.mermaid_agent_component
         component_config:
-          llm_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/llm-service/request/general-good/
-          embedding_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/embedding-service/request/text/
-          # Pass required configuration to the component
+          agent_name: {{SNAKE_CASE_NAME}}
+          mermaid_server_url: ${{{SNAKE_UPPER_CASE_NAME}}_MERMAID_SERVER_URL}
+          llm_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/llm-service/request/general-good/
+          embedding_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/embedding-service/request/text/
         broker_request_response:
           enabled: true
           broker_config: *broker_connection
           request_expiry_ms: 120000
           payload_encoding: utf-8
           payload_format: json
-          response_topic_prefix: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh
-          response_queue_prefix: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh
+          response_topic_prefix: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1
+          response_queue_prefix: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1
         component_input:
           source_expression: input.payload
 

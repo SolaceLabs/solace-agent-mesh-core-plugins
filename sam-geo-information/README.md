@@ -16,6 +16,8 @@ Add the plugin to your SAM instance:
 solace-agent-mesh plugin add sam_geo_information --pip -u git+https://github.com/SolaceLabs/solace-agent-mesh-core-plugins#subdirectory=sam-geo-information
 ```
 
+2.  **Instantiate the Agent:**
+
 To instantiate the agent, you can edit the SAM configuration file solace-agent-mesh.yaml:
 
 ```
@@ -34,32 +36,35 @@ To instantiate the agent, you can edit the SAM configuration file solace-agent-m
   ...
 ```
 
-or this will create a new agent config file in your agent config directory:
+or use the `solace-agent-mesh add agent` command to create a configuration file for your specific geographic information agent instance. Replace `<new_agent_name>` with a descriptive name (e.g., `geo_info_primary`, `weather_lookup`).
 
 ```sh
-solace-agent-mesh add agent geo_information --copy-from sam_geo_information
+solace-agent-mesh add agent <new_agent_name> --copy-from sam_geo_information:geo_information
 ```
 
-This will create a new config file in your agent config directory. Rename this file to the agent name you want to use.
-Also update the following fields in the config file:
-- **agent_name**
-- **name (flow name)**
-- **broker_subscriptions.topic**
+This command creates a new YAML file in `configs/agents/` named `<new_agent_name>.yaml`.
 
 ## Environment Variables
 
-The following environment variables are required:
+The following environment variables are required for **Solace connection** (used by all agents):
 - **SOLACE_BROKER_URL**
 - **SOLACE_BROKER_USERNAME**
 - **SOLACE_BROKER_PASSWORD**
 - **SOLACE_BROKER_VPN**
 - **SOLACE_AGENT_MESH_NAMESPACE**
 
-For the GeoCode API:
-- **GEOCODING_API_KEY**
+For **each Geographic Information agent instance**, you may need to set the following environment variables, replacing `<AGENT_NAME>` with the uppercase version of the name you chose during the `add agent` step (e.g., `GEO_INFO_PRIMARY`, `WEATHER_LOOKUP`):
 
-For the Weather API (require for commercial use only):
-- **WEATHER_API_KEY**
+- **`<AGENT_NAME>_GEOCODING_API_KEY`** (Optional): API key for the geocode.maps.co service. Required for substantial volume usage.
+- **`<AGENT_NAME>_WEATHER_API_KEY`** (Optional): API key for the open-meteo.com service. Required only for commercial use.
+
+**Example Environment Variables:**
+
+For an agent named `geo_info_primary`:
+```bash
+# Optional: export GEO_INFO_PRIMARY_GEOCODING_API_KEY="your_maps.co_api_key"
+# Optional: export GEO_INFO_PRIMARY_WEATHER_API_KEY="your_open-meteo_api_key"
+```
 
 ## Actions
 
