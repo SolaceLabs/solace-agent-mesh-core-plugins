@@ -165,7 +165,9 @@ class MongoDBAgentComponent(BaseAgentComponent):
                 self.detailed_schema, self.summary_schema = self._detect_schema()
             except Exception as e:
                 # Raise error as the agent cannot function without a schema
-                error_msg = f"Failed to auto-detect schema for agent {self.agent_name}: {e}"
+                error_msg = (
+                    f"Failed to auto-detect schema for agent {self.agent_name}: {e}"
+                )
                 log.error(error_msg)
                 raise ValueError(error_msg) from e
         else:
@@ -243,7 +245,7 @@ class MongoDBAgentComponent(BaseAgentComponent):
         summary = {
             "agent_name": self.agent_name,
             "description": self.info.get(
-                "description", "Provides access to a MongoDB database."
+                "description", "Provides read-only access to a MongoDB database."
             ),  # Use dynamic description
             "detailed_description": (
                 f"Agent Name: {self.agent_name}\n"
