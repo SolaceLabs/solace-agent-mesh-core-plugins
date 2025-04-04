@@ -1,0 +1,121 @@
+# Configuration file for the Solace Event Mesh agent.
+#
+# Dynamically creates actions based on configuration to send requests
+# to the Solace Event Mesh and receive responses.
+#
+# This file is used when the agent is loaded directly via solace-agent-mesh.yaml.
+# For multiple instances, use `solace-agent-mesh add agent ...` which uses
+# configs/agents/solace_event_mesh.yaml as a template.
+#
+# Requires the following environment variables:
+# - SOLACE_BROKER_URL
+# - SOLACE_BROKER_USERNAME
+# - SOLACE_BROKER_PASSWORD
+# - SOLACE_BROKER_VPN
+# - SOLACE_AGENT_MESH_NAMESPACE
+# (No agent-specific environment variables are typically needed unless used within action configurations)
+
+---
+log:
+  stdout_log_level: INFO
+  log_file_level: INFO
+  log_file: solace_ai_connector.log
+
+shared_config:
+  - broker_config: &broker_connection
+      dev_mode: ${SOLACE_DEV_MODE, false}
+      broker_url: ${SOLACE_BROKER_URL}
+      broker_username: ${SOLACE_BROKER_USERNAME}
+      broker_password: ${SOLACE_BROKER_PASSWORD}
+      broker_vpn: ${SOLACE_BROKER_VPN}
+
+flows:
+
+  # Flow to handle action requests
+  - name: solace_event_mesh_action_request_processor
+    components:
+      # Input from a Solace broker
+      - component_name: broker_input
+        component_module: broker_input
+        component_config:
+          <<: *broker_connection
+          payload_encoding: utf-8
+          payload_format: json
+          broker_queue_name: ${SOLACE_AGENT_MESH_NAMESPACE}agent_solace_event_mesh_action_request
+          broker_subscriptions:
+            # Subscribe to all actions for this specific agent instance.
+            - topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/actionRequest/*/*/solace_event_mesh/>
+              qos: 1
+
+      # Custom component to process the action request
+      - component_name: action_request_processor
+        # path is completed at build time
+        component_module: {{MODULE_DIRECTORY}}.agents.solace_event_mesh.solace_event_mesh_agent_component
+        component_config:
+          agent_name: solace_event_mesh # Default agent name
+          llm_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/llm-service/request/general-good/
+          embedding_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/embedding-service/request/text/
+          # Define the actions this agent will expose.
+          # Each action sends a request to the event mesh and waits for a response.
+          actions:
+            # --- Example Action: Create Jira Issue ---
+            - name: create_jira_issue # Action name exposed by SAM
+              description: Create a new Jira issue # Description for LLM/user
+              parameters:                           # Parameters the action accepts
+                - name: summary
+                  required: true
+                  description: The summary or title of the Jira issue
+                  type: string
+                  payload_path: summary # Dot notation path in the outgoing JSON payload
+                - name: description
+                  required: true
+                  description: Detailed description of the Jira issue
+                  type: string
+                  payload_path: description
+                - name: project_key
+                  required: true
+                  description: The key of the Jira project (e.g., 'EPT')
+                  type: string
+                  payload_path: project.key
+                - name: issue_type
+                  required: true
+                  description: The type of issue (e.g., 'Task', 'Bug')
+                  type: string
+                  payload_path: issuetype.name
+              topic: jira/requests/create # Topic to publish the request to
+              response_timeout: 30 # Seconds to wait for a response
+              response_format: json # Expected format of the response payload (json, yaml, text, none)
+              # required_scope: "<agent_name>:create_jira_issue:write" # Optional: Override default scope if needed
+
+            # --- Add more actions here following the same structure ---
+            # - name: another_action
+            #   description: Description of another action
+            #   parameters:
+            #     - name: param1
+            #       required: true
+            #       description: Description of param1
+            #       type: string
+            #       payload_path: path.to.param1
+            #   topic: some/request/topic
+            #   response_timeout: 15
+            #   response_format: text
+
+        broker_request_response:
+          enabled: true # Must be true for this agent to function
+          broker_config: *broker_connection
+          request_expiry_ms: 120000
+          payload_encoding: utf-8
+          payload_format: json
+          response_topic_prefix: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1
+          response_queue_prefix: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1
+        component_input:
+          source_expression: input.payload
+
+      # Output to a Solace broker
+      - component_name: broker_output
+        component_module: broker_output
+        component_config:
+          <<: *broker_connection
+          payload_encoding: utf-8
+          payload_format: json
+          copy_user_properties: true
