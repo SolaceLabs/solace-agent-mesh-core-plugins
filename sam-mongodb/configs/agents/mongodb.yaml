@@ -1,10 +1,7 @@
 # Configuration file for the MongoDB agent.
 #
 # Provides natural language query capabilities for a MongoDB database.
-#
-# When creating a new agent instance using `solace-agent-mesh add agent <new_agent_name> --copy-from sam_mongodb:mongodb`,
-# the placeholders {{SNAKE_CASE_NAME}} and {{SNAKE_UPPER_CASE_NAME}} will be replaced with the new agent name.
-#
+##
 # Requires the following environment variables:
 # - SOLACE_BROKER_URL
 # - SOLACE_BROKER_USERNAME
