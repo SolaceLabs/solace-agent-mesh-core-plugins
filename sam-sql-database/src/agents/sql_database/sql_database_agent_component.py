@@ -107,6 +107,12 @@ info.update(
                 "type": "string",
             },
             {
+                "name": "query_examples",
+                "required": False,
+                "description": "Natural language to SQL query examples to help the agent understand how to query the database. Format: 'Natural Language Query: SQL Query' pairs, one per line. Will be attached to the schema when auto_detect_schema is False.",
+                "type": "string",
+            },
+            {
                 "name": "csv_files",
                 "required": False,
                 "description": "List of CSV files to import as tables on startup",
@@ -189,6 +195,25 @@ class SQLDatabaseAgentComponent(BaseAgentComponent):
             else:
                 # Already a string, use as is
                 self.detailed_schema = str(schema)
+            
+            # Get query examples if provided
+            query_examples = self.get_config("query_examples")
+            if query_examples:
+                # Format query examples with clear separation and structure
+                formatted_examples = "EXAMPLE QUERIES:\n"
+                formatted_examples += "=================\n\n"
+                
+                # Split examples by newlines and format each one
+                examples = query_examples.strip().split('\n')
+                for i, example in enumerate(examples, 1):
+                    if ':' in example:
+                        nl_query, sql_query = example.split(':', 1)
+                        formatted_examples += f"Example {i}:\n"
+                        formatted_examples += f"Natural Language: {nl_query.strip()}\n"
+                        formatted_examples += f"SQL Query: {sql_query.strip()}\n\n"
+                
+                # Attach formatted examples to the schema
+                self.detailed_schema = f"{self.detailed_schema}\n\n{formatted_examples}"
             
             # Only use provided schema_summary, don't try to generate one
             self.schema_summary = self.get_config("schema_summary")
