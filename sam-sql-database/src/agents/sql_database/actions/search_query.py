@@ -19,7 +19,7 @@ from solace_agent_mesh.common.action_response import (
     InlineFile,
 )
 
-MAX_INLINE_FILE_SIZE = 100000  # 100KB
+MAX_TOTAL_INLINE_FILE_SIZE = 100000  # 100KB
 
 
 class SearchQuery(Action):
@@ -274,6 +274,7 @@ Ensure that all SQL queries are compatible with {db_type}.
         # Create files for each successful query
         files = []
         inline_files = []
+        total_size = 0
 
         for i, (purpose, sql_query, results) in enumerate(query_results, 1):
             updated_results = self._stringify_non_standard_objects(results)
@@ -297,7 +298,11 @@ Ensure that all SQL queries are compatible with {db_type}.
                 f"query_{i}_results_{random.randint(100000, 999999)}.{file_extension}"
             )
 
-            if inline_result and len(content) < MAX_INLINE_FILE_SIZE:
+            total_size += len(content)
+            if total_size > MAX_TOTAL_INLINE_FILE_SIZE:
+                inline_result = False
+
+            if inline_result:
                 inline_files.append(InlineFile(content, file_name))
             else:
                 data_source = f"SQL Agent - Search Query {i} - {purpose}"
