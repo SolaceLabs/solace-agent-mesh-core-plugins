@@ -56,6 +56,35 @@ class CsvImportService:
             except Exception as e:
                 log.error("Error importing CSV file %s: %s", csv_file, str(e))
 
+
+    @staticmethod
+    def convert_headers_to_snake_case(headers: List[str]) -> List[str]:
+        """Convert a list of headers to snake_case.
+
+        Args:
+            headers: List of header strings
+
+        Returns:
+            List of converted header strings
+        """
+        converted_headers = []
+
+        for header in headers:
+            header = header.strip().replace(' ', '_')  # replace spaces with underscores
+            new_header = ""
+            if "_" in header:  # assume it is already in snake_case
+                new_header += header.lower()
+            else:  # do reformat to snake_case
+                for c in header:
+                    if c.isupper():
+                        new_header += "_" + c.lower()
+                    else:
+                        new_header += c
+                new_header = new_header.lstrip('_')
+            converted_headers.append(new_header)
+
+        return converted_headers
+
     def _import_csv_file(self, file_path: str) -> None:
         """Import a single CSV file into a database table.
         
@@ -75,13 +104,11 @@ class CsvImportService:
         try:
             # Read CSV headers and first row
             with open(file_path, 'r', encoding='utf-8') as f:
-                reader = csv.reader(f)
+                reader = csv.reader(f, skipinitialspace=True) # remove spaces after commas
                 headers = next(reader)
                 
                 # Convert headers to snake_case
-                headers = [''.join(['_' + c.lower() if c.isupper() else c 
-                                  for c in header]).lstrip('_') 
-                         for header in headers]
+                headers = self.convert_headers_to_snake_case(headers)
 
                 # Create table
                 columns = []
