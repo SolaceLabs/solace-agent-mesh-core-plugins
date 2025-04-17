@@ -379,7 +379,7 @@ class TestA2AClientAgentComponent(unittest.TestCase):
         component.a2a_process = mock_process
         # Mock thread instance
         mock_thread = MagicMock(spec=threading.Thread)
-        mock_thread.is_alive.return_value = False # Assume thread finishes quickly
+        mock_thread.is_alive.return_value = True # Simulate thread is alive
         component.monitor_thread = mock_thread
 
         component.stop_component()
@@ -390,6 +390,7 @@ class TestA2AClientAgentComponent(unittest.TestCase):
         mock_process.wait.assert_called_once_with(timeout=5)
         mock_process.kill.assert_not_called()
         # Assert calls on the mock_thread instance
+        mock_thread.is_alive.assert_called_once() # Check that is_alive was called
         mock_thread.join.assert_called_once_with(timeout=5)
         mock_super_stop.assert_called_once()
         self.assertIsNone(component.a2a_process) # Should be cleared
@@ -406,7 +407,7 @@ class TestA2AClientAgentComponent(unittest.TestCase):
         component.a2a_process = mock_process
         # Mock thread instance
         mock_thread = MagicMock(spec=threading.Thread)
-        mock_thread.is_alive.return_value = False
+        mock_thread.is_alive.return_value = True # Simulate thread is alive
         component.monitor_thread = mock_thread
 
         # Simulate wait timing out after terminate, then succeeding after kill
@@ -420,6 +421,7 @@ class TestA2AClientAgentComponent(unittest.TestCase):
         self.assertEqual(mock_process.wait.call_count, 2) # Called after terminate and after kill
         mock_process.kill.assert_called_once()
         # Assert calls on the mock_thread instance
+        mock_thread.is_alive.assert_called_once() # Check that is_alive was called
         mock_thread.join.assert_called_once_with(timeout=5)
         mock_super_stop.assert_called_once()
         self.assertIsNone(component.a2a_process)
