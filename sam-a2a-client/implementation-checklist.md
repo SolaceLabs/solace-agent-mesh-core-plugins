@@ -7,7 +7,7 @@ This checklist tracks the progress of implementing the `sam-a2a-client` plugin b
 - [x] **Step 1.1.1:** Create the directory structure.
 - [x] **Step 1.1.2:** Create initial project files (`pyproject.toml`, `README.md`, `solace-agent-mesh-plugin.yaml`, `__init__.py` files).
 - [x] **Step 1.1.3:** Testing for Step 1.1 (None).
-- [ ] **Step 1.2.1:** Define `A2AClientAgentComponent` skeleton class.
+- [x] **Step 1.2.1:** Define `A2AClientAgentComponent` skeleton class.
 - [ ] **Step 1.2.2:** Define the `info` class variable in `A2AClientAgentComponent`.
 - [ ] **Step 1.2.3:** Implement `A2AClientAgentComponent.__init__`.
 - [ ] **Step 1.2.4:** Implement basic `A2AClientAgentComponent.run`.
