@@ -9,11 +9,11 @@ allow-direct-references = true
 name = "sam-mcp-server"
 dynamic = ["version"]
 authors = [
-  { name="edward.funnekotter@solace.com", email="" },
+  { name="Edward Funnekotter", email="edward.funnekotter@solace.com" },
 ]
 description = "This adds both an agent to talk to MCP servers and a gateway for SAM to act as an MCP server"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10.16"
 dependencies = [
   "mcp>=0.9.1"
 ]

@@ -3,7 +3,6 @@ from solace_ai_connector.test_utils.utils_for_test_files import create_test_flow
 
 
 class TestEventMeshInput(unittest.TestCase):
-
     def setUp(self):
         self.maxDiff = None
         config = {
@@ -117,9 +116,9 @@ class TestEventMeshInput(unittest.TestCase):
         )
 
     def test_process_message_invalid_input_expression(self):
-        self.event_mesh_input.event_handlers[0][
-            "input_expression"
-        ] = "invalid://expression"
+        self.event_mesh_input.event_handlers[0]["input_expression"] = (
+            "invalid://expression"
+        )
         broker_message = {
             "topic": "ed_test/jira/issue/create/789",
             "payload": b'{"issue": "Test issue"}',

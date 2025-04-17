@@ -253,7 +253,6 @@ class SQLiteService(DatabaseService):
         return sa.create_engine(
             connection_url,
             pool_size=1,  # SQLite doesn't support concurrent connections
-            pool_timeout=30,
             pool_recycle=1800,
             pool_pre_ping=True,
             connect_args={"timeout": self.query_timeout}

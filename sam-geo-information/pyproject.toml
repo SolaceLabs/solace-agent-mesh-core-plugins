@@ -13,7 +13,8 @@ authors = [
 ]
 description = "A plugin that provides comprehensive geographic information services including location, timezone, and weather data"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10.16"
+
 dependencies = [
     "requests>=2.31.0",
     "timezonefinder>=6.2.0",

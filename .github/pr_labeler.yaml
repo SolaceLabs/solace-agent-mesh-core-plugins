@@ -1,0 +1,18 @@
+sam-geo-information:
+  - changed-files:
+      - any-glob-to-any-file: sam-geo-information/**
+sam-mcp-server:
+  - changed-files:
+      - any-glob-to-any-file: sam-mcp-server/**
+sam-mermaid:
+  - changed-files:
+      - any-glob-to-any-file: sam-mermaid/**
+sam-mongodb:
+  - changed-files:
+      - any-glob-to-any-file: sam-mongodb/**
+sam-sql-database:
+  - changed-files:
+      - any-glob-to-any-file: sam-sql-database/**
+solace-event-mesh:
+  - changed-files:
+      - any-glob-to-any-file: solace-event-mesh/**

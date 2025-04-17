@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - ".github/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  label-pr:
+    runs-on: ubuntu-24.04
+    outputs:
+      all_plugins: ${{ steps.format-labels.outputs.all-plugins }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Lable PR based on changes
+        id: label-pr
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          sync-labels: true
+          configuration-path: .github/pr_labeler.yaml
+
+      - name: Format labels for matrix
+        id: format-labels
+        run: |
+          # Debug output
+          echo "Raw labels: ${{ steps.label-pr.outputs.all-labels }}"
+
+          # Convert comma-separated list to JSON array of objects using pure bash
+          LABELS="${{ steps.label-pr.outputs.all-labels }}"
+          JSON="["
+          FIRST=true
+          IFS=',' read -ra LABEL_ARRAY <<< "$LABELS"
+          for label in "${LABEL_ARRAY[@]}"; do
+            if [ "$FIRST" = true ] ; then
+              FIRST=false
+            else
+              JSON="$JSON,"
+            fi
+            JSON="$JSON{\"plugin_directory\":\"$label\"}"
+          done
+          JSON="$JSON]"
+
+          echo "Generated JSON: $JSON"
+          echo "all-plugins=$JSON" >> $GITHUB_OUTPUT
+
+  builds:
+    needs: label-pr
+    if: ${{ needs.label-pr.outputs.all_plugins != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.label-pr.outputs.all_plugins) }}
+    name: Build Plugin - ${{matrix.plugin_directory}}
+    uses: ./.github/workflows/build-plugin.yaml
+    with:
+      plugin_directory: ${{matrix.plugin_directory}}
+    secrets:
+      COMMIT_KEY: ${{ secrets.COMMIT_KEY }}

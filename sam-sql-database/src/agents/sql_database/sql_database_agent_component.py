@@ -2,6 +2,7 @@
 
 import copy
 from typing import Dict, Any, Optional, List
+import yaml
 
 from solace_ai_connector.common.log import log
 from solace_agent_mesh.agents.base_agent_component import (
@@ -100,16 +101,34 @@ info.update(
                 "type": "string",
             },
             {
+                "name": "schema_summary",
+                "required": False,
+                "description": "Summary of the database schema if auto_detect_schema is False. Will be used in agent description.",
+                "type": "string",
+            },
+            {
+                "name": "query_examples",
+                "required": False,
+                "description": "Natural language to SQL query examples to help the agent understand how to query the database. Format: List of objects with 'natural_language' and 'sql_query' keys. Will be attached to the schema when auto_detect_schema is False.",
+                "type": "list",
+            },
+            {
                 "name": "csv_files",
                 "required": False,
                 "description": "List of CSV files to import as tables on startup",
                 "type": "list",
             },
             {
-                "name": "csv_directories", 
+                "name": "csv_directories",
                 "required": False,
                 "description": "List of directories to scan for CSV files to import as tables on startup",
                 "type": "list",
+            },
+            {
+                "name": "response_guidelines",
+                "required": False,
+                "description": "Guidelines to be attached to action responses. These will be included in the response message.",
+                "type": "string",
             }
         ],
     }
@@ -141,6 +160,7 @@ class SQLDatabaseAgentComponent(BaseAgentComponent):
         self.data_description = self.get_config("data_description")
         self.auto_detect_schema = self.get_config("auto_detect_schema", True)
         self.query_timeout = self.get_config("query_timeout", 30)
+        self.response_guidelines = self.get_config("response_guidelines", "")
 
         self.action_list.fix_scopes("<agent_name>", self.agent_name)
         module_info["agent_name"] = self.agent_name
@@ -159,22 +179,65 @@ class SQLDatabaseAgentComponent(BaseAgentComponent):
 
         # Get schema information
         if self.auto_detect_schema:
-            self.detailed_schema = self._detect_schema()
+            schema_dict = self._detect_schema()
+            # Clean the schema before converting to YAML
+            schema_dict_cleaned = self._clean_schema(schema_dict)
+            # Convert dictionary to YAML string
+            self.detailed_schema = yaml.dump(schema_dict_cleaned, default_flow_style=False, allow_unicode=True)
+            # Generate schema prompt from detected schema
+            self.schema_summary = self._get_schema_summary()
+            if not self.schema_summary:
+                raise ValueError("Failed to generate schema summary from auto-detected schema")
         else:
-            self.detailed_schema = self.get_config("database_schema")
+            # Get schema from config
+            schema = self.get_config("database_schema")
+            if schema is None:
+                raise ValueError(
+                    "database_schema is required when auto_detect_schema is False. "
+                    "This text should describe the database structure."
+                )
+            elif isinstance(schema, dict):
+                # Convert dictionary to YAML string
+                self.detailed_schema = yaml.dump(schema, default_flow_style=False)
+            else:
+                # Already a string, use as is
+                self.detailed_schema = str(schema)
+            # Get query examples if provided
+            query_examples = self.get_config("query_examples")
+            if query_examples:
+                # Format query examples with clear separation and structure
+                formatted_examples = "EXAMPLE QUERIES:\n"
+                formatted_examples += "=================\n\n"
+                
+                # Process examples from the list of dictionaries
+                for i, example in enumerate(query_examples, 1):
+                    if isinstance(example, dict) and "natural_language" in example and "sql_query" in example:
+                        formatted_examples += f"Example {i}:\n"
+                        formatted_examples += f"Natural Language: {example['natural_language'].strip()}\n"
+                        formatted_examples += f"SQL Query: {example['sql_query'].strip()}\n\n"
+                
+                # Attach formatted examples to the schema
+                self.detailed_schema = f"{self.detailed_schema}\n\n{formatted_examples}"
             
-        # Generate schema summary for action description
-        self.schema_summary = self._get_schema_summary()
+            # Only use provided schema_summary, don't try to generate one
+            self.schema_summary = self.get_config("schema_summary")
+            if not self.schema_summary:
+                raise ValueError(
+                    "schema_summary is required when auto_detect_schema is False. "
+                    "This text should describe the database schema in natural language "
+                    "to help the agent understand how to query the database."
+                )
         
         # Update the search_query action with schema information
         for action in self.action_list.actions:
             if action.name == "search_query":
-                # Access the action's configuration dictionary instead of the prompt_directive attribute
                 current_directive = action._prompt_directive
                 schema_info = f"\n\nDatabase Schema:\n{self.schema_summary}"
-                # Update the prompt_directive in the action's configuration
                 action._prompt_directive = current_directive + schema_info
                 break
+
+        # Generate and store the agent description
+        self._generate_agent_description()
 
     def _create_db_handler(self) -> DatabaseService:
         """Create appropriate database handler based on configuration.
@@ -250,30 +313,49 @@ class SQLDatabaseAgentComponent(BaseAgentComponent):
 
         return schema
 
+    def _clean_schema(self, schema_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean the schema dictionary by removing problematic fields.
+        
+        Args:
+            schema_dict: The schema dictionary to clean
+            
+        Returns:
+            Cleaned schema dictionary
+        """
+        for table, table_data in schema_dict.items():
+            for column, column_data in table_data["columns"].items():
+                # Remove problematic fields (if they exist)
+                column_data.pop("statistics", None)
+        return schema_dict
+
     def _get_schema_summary(self) -> str:
         """Gets a terse formatted summary of the database schema.
 
         Returns:
-            A string containing a one-line summary of each table and its columns.
+            A string with a one-line summary of each table and its columns.
         """
         if not self.detailed_schema:
             return "Schema information not available."
-            
+
+        try:
+            schema_dict = yaml.safe_load(self.detailed_schema)  # Convert YAML to dictionary
+            if not isinstance(schema_dict, dict):
+                raise ValueError("Error: Parsed schema is not a valid dictionary.")
+
+        except yaml.YAMLError as exc:
+            raise ValueError(f"Error: Failed to parse schema. Invalid YAML format. Details: {exc}") from exc
+
+        # Construct summary lines
         summary_lines = []
-        
-        for table_name, table_info in self.detailed_schema.items():
-            # Get all column names
-            columns = list(table_info["columns"].keys())
-            summary_lines.append(f"{table_name}: {', '.join(columns)}")
-            
+        for table_name, table_info in schema_dict.items():
+            columns = table_info.get("columns")
+            if isinstance(columns, dict):
+                summary_lines.append(f"{table_name}: {', '.join(columns.keys())}")
+
         return "\n".join(summary_lines)
 
-    def get_db_handler(self) -> DatabaseService:
-        """Get the database handler instance."""
-        return self.db_handler
-
-    def get_agent_summary(self):
-        """Get a summary of the agent's capabilities."""
+    def _generate_agent_description(self):
+        """Generate and store the agent description."""
         description = f"This agent provides read-only access to a {self.db_type} database.\n\n"
 
         if self.database_purpose:
@@ -281,17 +363,29 @@ class SQLDatabaseAgentComponent(BaseAgentComponent):
 
         if self.data_description:
             description += f"Data Description:\n{self.data_description}\n"
-        else:
-            # Just mention the tables without the full schema
-            tables = list(self.detailed_schema.keys()) if self.detailed_schema else []
-            if tables:
+        
+        # Extract table information if schema exists
+        try:
+            schema_dict = yaml.safe_load(self.detailed_schema)
+            if isinstance(schema_dict, dict) and schema_dict:
+                tables = list(schema_dict.keys())
                 description += f"Contains {len(tables)} tables: {', '.join(tables)}\n"
-            else:
-                description += "No tables found in database.\n"
+        except yaml.YAMLError:
+            pass  # Silently fail if YAML parsing fails
 
-        return {
+        self._agent_description = {
             "agent_name": self.agent_name,
-            "description": description,
+            "description": description.strip(),
             "always_open": self.info.get("always_open", False),
             "actions": self.get_actions_summary(),
         }
+
+    def get_agent_summary(self):
+        """Get a summary of the agent's capabilities."""
+        return self._agent_description
+    
+    def get_db_handler(self) -> DatabaseService:
+        """Get the database handler instance."""
+        return self.db_handler
+
+

@@ -1,0 +1,79 @@
+name: Build Plugin
+
+on:
+  workflow_call:
+    inputs:
+      plugin_directory:
+        description: "Directory of the plugin"
+        required: true
+        type: string
+    secrets:
+      COMMIT_KEY:
+        required: true
+  workflow_dispatch:
+    inputs:
+      plugin_directory:
+        description: "Directory of the plugin"
+        required: true
+        type: choice
+        options:
+          - solace-event-mesh
+          - sam-geo-information
+          - sam-mcp-server
+          - sam-mermaid
+          - sam-mongodb
+          - sam-sql-database
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+  statuses: write
+  checks: write
+  repository-projects: read
+
+jobs:
+  build-plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+          sparse-checkout: ${{ inputs.plugin_directory }}
+      - name: Set up Python
+        uses: actions/setup-python@v5.5.0
+        with:
+          python-version: "3.12"
+      - name: Cache pip
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
+      - name: Install Hatch
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip -q
+          pip install hatch -q
+          pip install virtualenv pipdeptree -q
+
+      - name: Test Plugin
+        shell: bash
+        run: |
+          cd ${{ inputs.plugin_directory }}/
+          ls -la
+          dir=$(pwd)
+          echo "Directory: $dir"
+          hatch run pip install solace-agent-mesh twine -q
+          hatch run solace-agent-mesh plugin add ${{ inputs.plugin_directory }} -u $dir
+          hatch test
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          cd ${{ inputs.plugin_directory }}
+          hatch build
+          ls dist/*.tar.gz | xargs -n1 hatch run python -m twine check
+          ls dist/*.whl | xargs -n1 hatch run python -m twine check

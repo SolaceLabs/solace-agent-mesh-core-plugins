@@ -7,7 +7,7 @@ sam-sql-database-old/*
 
 # C extensions
 *.so
-
+**/solace-agent-mesh.yaml
 # Distribution / packaging
 .Python
 build/
