@@ -11,6 +11,7 @@ import subprocess # Added import
 import shlex
 import os
 import platform
+import time # Added import
 from typing import Dict, Any, Optional
 
 from solace_agent_mesh.agents.base_agent_component import BaseAgentComponent, agent_info as base_agent_info
@@ -166,6 +167,48 @@ class A2AClientAgentComponent(BaseAgentComponent):
             logger.error(f"Failed to launch A2A agent process: {e}", exc_info=True)
             self.a2a_process = None # Ensure process is None on failure
             raise # Re-raise after logging
+
+    def _monitor_a2a_process(self):
+        """Monitors the managed A2A process and restarts it if configured."""
+        logger.info(f"Starting monitor thread for A2A process '{self.agent_name}'.")
+        while not self.stop_monitor.is_set():
+            if not self.a2a_process:
+                logger.warning("Monitor thread: No A2A process to monitor. Exiting.")
+                break
+
+            return_code = self.a2a_process.poll()
+
+            if return_code is not None: # Process terminated
+                log_func = logger.info if return_code == 0 else logger.error
+                log_func(f"Managed A2A process (PID: {self.a2a_process.pid}) terminated with code {return_code}.")
+
+                if self.a2a_server_restart_on_crash and return_code != 0 and not self.stop_monitor.is_set():
+                    logger.info("Attempting to restart the A2A process...")
+                    # Wait a moment before restarting
+                    self.stop_monitor.wait(2)
+                    if self.stop_monitor.is_set(): break # Check again after wait
+
+                    try:
+                        self._launch_a2a_process()
+                        if not self.a2a_process:
+                            logger.error("Failed to restart A2A process. Stopping monitor.")
+                            break
+                        # If launch succeeded, continue monitoring the new process
+                        logger.info("A2A process restarted successfully.")
+                        continue # Go back to polling the new process
+                    except Exception as e:
+                        logger.error(f"Exception during A2A process restart: {e}. Stopping monitor.", exc_info=True)
+                        break # Stop monitoring if restart fails critically
+                else:
+                    # No restart configured, or clean exit, or stopping
+                    break # Exit monitor loop
+
+            # Wait for a few seconds before checking again, but check stop_monitor frequently
+            wait_interval = 5 # seconds
+            if self.stop_monitor.wait(timeout=wait_interval):
+                 break # Exit if stop signal is set during wait
+
+        logger.info(f"Stopping monitor thread for A2A process '{self.agent_name}'.")
 
 
     def run(self):
