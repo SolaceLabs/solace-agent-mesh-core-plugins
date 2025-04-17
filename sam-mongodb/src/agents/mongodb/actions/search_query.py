@@ -14,7 +14,11 @@ import dateutil.parser
 from solace_ai_connector.common.log import log
 
 from solace_agent_mesh.common.action import Action
-from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo, InlineFile
+from solace_agent_mesh.common.action_response import (
+    ActionResponse,
+    ErrorInfo,
+    InlineFile,
+)
 from solace_agent_mesh.services.file_service import FileService
 
 
@@ -55,58 +59,71 @@ class SearchQuery(Action):
         self, natural_language_query: str, max_retries: int = 3
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, str]]]:
         """Execute MongoDB query with LLM retries on failure.
-        
+
         Args:
             natural_language_query: The natural language query to execute
             max_retries: Maximum number of retry attempts
-            
+
         Returns:
             Tuple containing:
             - List of query results
             - List of LLM messages exchanged during retries
             - executed query
-            
+
         Raises:
             ValueError: If all retry attempts fail
         """
         messages = []
         db_handler = self.get_agent().get_db_handler()
-        
+
         raw_response = None
         for attempt in range(max_retries):
             try:
                 # Generate and execute query, passing accumulated messages
-                mongo_query, raw_response = self._generate_mongo_query(natural_language_query, messages)
+                mongo_query, raw_response = self._generate_mongo_query(
+                    natural_language_query, messages
+                )
                 log.debug("Evaluating MongoDB query: %s", mongo_query)
                 collection = mongo_query["collection"]
-                pipeline = self._convert_iso_dates_to_datetime(copy.deepcopy(mongo_query["pipeline"]))
-                results = db_handler.execute_query(collection=collection, pipeline=pipeline)
+                pipeline = self._convert_iso_dates_to_datetime(
+                    copy.deepcopy(mongo_query["pipeline"])
+                )
+                results = db_handler.execute_query(
+                    collection=collection, pipeline=pipeline
+                )
                 log.debug("Query results: %s", results)
                 return results, messages, mongo_query
-                
+
             except Exception as e:
                 error_msg = str(e)
                 log.error("Attempt %d failed: %s", attempt + 1, error_msg)
-                
+
                 # Add error context to messages
-                messages.append({"role": "assistant", "content": raw_response or "Failed to generate MongoDB query"})
-                
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": raw_response or "Failed to generate MongoDB query",
+                    }
+                )
+
                 if attempt < max_retries - 1:
                     # Add retry request
-                    messages.append({
-                        "role": "user",
-                        "content": (
-                            f"The previous query failed with error: {error_msg}\n"
-                            "Please revise the query to fix this error and try again."
-                        )
-                    })
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                f"The previous query failed with error: {error_msg}\n"
+                                "Please revise the query to fix this error and try again."
+                            ),
+                        }
+                    )
                 else:
                     # Last attempt failed
                     raise ValueError(
                         f"Failed to execute query after {max_retries} attempts. "
                         f"Last error: {error_msg}"
                     )
-        
+
         raise ValueError("Unexpected code path in query retry logic")
 
     def invoke(
@@ -140,8 +157,8 @@ class SearchQuery(Action):
 
         log.debug("Executing search query: %s", query)
         try:
-            results, messages, mongo_query= self._execute_query_with_retries(query)
-            
+            results, messages, mongo_query = self._execute_query_with_retries(query)
+
             # Include retry attempts in response if any occurred
             message_prefix = ""
             if len(messages) > 0:
@@ -153,18 +170,18 @@ class SearchQuery(Action):
                 )
 
             # Retrieve max_inline_results from the parent component's config
-            max_inline_results = self.parent_component.get_config("max_inline_results", 10) # Default 10
+            max_inline_results = self.get_config("max_inline_results", 10)  # Default 10
             use_file = len(results) > max_inline_results
 
             response = self._create_response(
                 results, response_format, inline_result, meta, use_file, mongo_query
             )
-            
+
             if message_prefix:
                 response.message = message_prefix + response.message
-                
+
             return response
-            
+
         except Exception as e:
 
             log.error("Error executing search query: %s", str(e))
@@ -179,7 +196,9 @@ class SearchQuery(Action):
                 error_info=ErrorInfo(error_message),
             )
 
-    def _generate_mongo_query(self, natural_language_query: str, messages: List[Dict[str, str]] = None) -> Dict[str, Any]:
+    def _generate_mongo_query(
+        self, natural_language_query: str, messages: List[Dict[str, str]] = None
+    ) -> Dict[str, Any]:
         """Generate MongoDB query from natural language prompt.
 
         This method converts the natural language query to a MongoDB query using
@@ -195,8 +214,11 @@ class SearchQuery(Action):
         db_schema = agent.detailed_schema
         data_description = agent.data_description
         db_schema_yaml = yaml.dump(db_schema)
+        iso_timestamp = datetime.datetime.now().isoformat()
         system_prompt = f"""
 The assistant is a MongoDB expert and will convert the provided natural language query to a MongoDB aggregation pipeline for the python `pymongo` library. Requests should have a clear context to identify the documents or use the word "all" to avoid ambiguity. It is acceptable to raise an error if the context is missing or ambiguous. Your query should be a valid JSON query, avoid queries that uses functions or syntaxes that are not JSON or pymongo compatible.
+
+The current date and time is {iso_timestamp}. Use this for any date-related queries.
 
 The database schema is as follows:
 <db_schema_yaml>
@@ -283,6 +305,9 @@ Get average order value per customer in 2023
 
 The pipeline must use valid MongoDB aggregation operators ($match, $project, $group, etc).
 Each stage in the pipeline must be a dictionary with a single operator key starting with $.
+
+Once again, the current date and time is {iso_timestamp}. Use this for any date-related queries.
+
 """
 
         # Start with system prompt and initial query
@@ -290,7 +315,7 @@ Each stage in the pipeline must be a dictionary with a single operator key start
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": natural_language_query},
         ]
-        
+
         # Add any retry messages from previous attempts
         if messages:
             base_messages.extend(messages)
@@ -306,33 +331,32 @@ Each stage in the pipeline must be a dictionary with a single operator key start
             # Extract and validate MongoDB query components
             mongodb_query = self._get_all_tags(content, "mongodb_query")
             if not mongodb_query:
-                raise ValueError("Failed to generate MongoDB query - missing mongodb_query tag")
-                
+                raise ValueError(
+                    "Failed to generate MongoDB query - missing mongodb_query tag"
+                )
+
             query_text = mongodb_query[0]
-            
+
             # Extract required components
             collection = self._get_all_tags(query_text, "collection")
             if not collection:
                 raise ValueError("MongoDB query missing collection tag")
-                
+
             pipeline = self._get_all_tags(query_text, "pipeline")
             if not pipeline:
                 raise ValueError("MongoDB query missing pipeline tag")
-            
+
             # Parse components
             try:
                 pipeline = json.loads(pipeline[0])
                 if not isinstance(pipeline, list):
                     raise ValueError("Pipeline must be a list of stages")
-                    
-                query_dict = {
-                    "collection": collection[0].strip(),
-                    "pipeline": pipeline
-                }
+
+                query_dict = {"collection": collection[0].strip(), "pipeline": pipeline}
             except json.JSONDecodeError as e:
                 log.error("Error parsing JSON in MongoDB query: %s", pipeline[0])
                 raise ValueError(f"Invalid JSON in MongoDB query: {str(e)}")
-                
+
             return query_dict, content
 
         except Exception as e:
@@ -386,7 +410,12 @@ Each stage in the pipeline must be a dictionary with a single operator key start
         if inline_result and not use_file:
             inline_file = InlineFile(content, file_name)
             return ActionResponse(
-                message=f"Query results are available in the attached inline {response_format.upper()} file.",
+                message=(
+                    f"Query results are available in the attached inline {response_format.upper()} file.\n\n"
+                    "NOTE that if this data is not sufficient to answer your question, do not guess or create an answer. Either responsd with "
+                    "an explanation to the user or ask this action to run again with a different query.\n\n"
+                    f"The query used was:\n{json.dumps(mongo_query, indent=2)}"
+                ),
                 inline_files=[inline_file],
             )
         else:
@@ -395,7 +424,13 @@ Each stage in the pipeline must be a dictionary with a single operator key start
                 content.encode(), file_name, session_id, data_source=data_source
             )
             return ActionResponse(
-                message=f"Query results are available in the attached {response_format.upper()} file.",
+                message=(
+                    f"Query results are available in the attached {response_format.upper()} file.\n"
+                    "NOTE that if this data is not sufficient to answer your question, do not guess or create an answer. Either responsd with "
+                    "an explanation to the user or ask this action to run again with a different query.\n\n"
+                    "NOTE make sure you fetch and use this data rather than data from your history. The data may have changed since those past messages.\n\n"
+                    f"The query used was:\n{json.dumps(mongo_query, indent=2)}"
+                ),
                 files=[file_meta],
             )
 
@@ -414,7 +449,11 @@ Each stage in the pipeline must be a dictionary with a single operator key start
         markdown += "| " + " | ".join(["---" for _ in headers]) + " |\n"
 
         for row in results:
-            markdown += "| " + " | ".join(str(row.get(header, "")) for header in headers) + " |\n"
+            markdown += (
+                "| "
+                + " | ".join(str(row.get(header, "")) for header in headers)
+                + " |\n"
+            )
 
         return markdown
 
@@ -450,15 +489,16 @@ Each stage in the pipeline must be a dictionary with a single operator key start
 
     def _convert_iso_dates_to_datetime(self, query_json):
         """
-        Converts any occurrences of {"$date": "ISODateString"} in the JSON query to 
+        Converts any occurrences of {"$date": "ISODateString"} in the JSON query to
         datetime.datetime objects.
-        
+
         Args:
             query_json (dict or list): The JSON query to process.
-        
+
         Returns:
             dict or list: The input query with ISODate strings converted to datetime objects.
         """
+
         def convert(obj):
             if isinstance(obj, dict):
                 # If the object is a dictionary, iterate over the key-value pairs
@@ -474,6 +514,6 @@ Each stage in the pipeline must be a dictionary with a single operator key start
                 for i in range(len(obj)):
                     obj[i] = convert(obj[i])
             return obj
-        
+
         query = query_json.copy()
         return convert(query)
