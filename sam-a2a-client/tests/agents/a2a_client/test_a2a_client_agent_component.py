@@ -241,12 +241,14 @@ class TestA2AClientAgentComponent(unittest.TestCase):
         # Simulate process running then exiting cleanly
         mock_process.poll.side_effect = [None, None, 0]
         component.a2a_process = mock_process
+        # Make wait return False so the loop continues until poll() breaks it
+        mock_event_wait.side_effect = [False, False]
 
         component._monitor_a2a_process()
 
         self.assertEqual(mock_process.poll.call_count, 3)
-        # Ensure wait was called (for the sleep interval)
-        mock_event_wait.assert_called()
+        # Ensure wait was called twice (for the sleep interval before termination)
+        self.assertEqual(mock_event_wait.call_count, 2)
 
     @patch('src.agents.a2a_client.a2a_client_agent_component.time.sleep', return_value=None)
     @patch.object(threading.Event, 'wait')
@@ -262,6 +264,8 @@ class TestA2AClientAgentComponent(unittest.TestCase):
         component.a2a_process = mock_process
         # Mock _launch_a2a_process to ensure it's NOT called
         component._launch_a2a_process = MagicMock()
+        # Make wait return False
+        mock_event_wait.return_value = False
 
         component._monitor_a2a_process()
 
