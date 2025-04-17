@@ -33,7 +33,7 @@ graph TD
     subgraph SAM Framework
         Orchestrator --> A2AClientAgentComponent;
         A2AClientAgentComponent --> ActionList[Action List];
-        ActionList --> A2AClientAction[A2AClientAction (Dynamic)];
+        ActionList --> A2AClientAction["A2AClientAction (Dynamic)"];
         ActionList --> ProvideInputAction[provide_required_input (Static)];
         A2AClientAgentComponent -- Uses --> CacheService[(Cache Service)];
         A2AClientAction -- Uses --> FileService[(File Service)];
