@@ -123,9 +123,17 @@ class A2AClientAgentComponent(BaseAgentComponent):
         self.info["agent_name"] = self.agent_name
         logger.info(f"A2AClientAgentComponent '{self.agent_name}' initialized.")
 
-    # Placeholder for run method (Step 1.2.4)
     def run(self):
-        pass
+        """
+        Main execution method called by the SAM framework.
+        Initializes the A2A connection and then runs the base component loop.
+        """
+        # Initialization logic (_initialize_a2a_connection, _create_actions)
+        # will be added here in later steps.
+        logger.info(f"Starting run loop for A2AClientAgentComponent '{self.agent_name}'")
+        super().run()
+        logger.info(f"Exiting run loop for A2AClientAgentComponent '{self.agent_name}'")
+
 
     # Placeholder for stop_component method (Step 1.2.5)
     def stop_component(self):
