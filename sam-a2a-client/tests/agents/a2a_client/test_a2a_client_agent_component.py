@@ -390,7 +390,7 @@ class TestA2AClientAgentComponent(unittest.TestCase):
         mock_process.wait.assert_called_once_with(timeout=5)
         mock_process.kill.assert_not_called()
         # Assert calls on the mock_thread instance
-        mock_thread.is_alive.assert_called_once() # Check that is_alive was called
+        self.assertEqual(mock_thread.is_alive.call_count, 2) # Check that is_alive was called twice
         mock_thread.join.assert_called_once_with(timeout=5)
         mock_super_stop.assert_called_once()
         self.assertIsNone(component.a2a_process) # Should be cleared
@@ -421,7 +421,7 @@ class TestA2AClientAgentComponent(unittest.TestCase):
         self.assertEqual(mock_process.wait.call_count, 2) # Called after terminate and after kill
         mock_process.kill.assert_called_once()
         # Assert calls on the mock_thread instance
-        mock_thread.is_alive.assert_called_once() # Check that is_alive was called
+        self.assertEqual(mock_thread.is_alive.call_count, 2) # Check that is_alive was called twice
         mock_thread.join.assert_called_once_with(timeout=5)
         mock_super_stop.assert_called_once()
         self.assertIsNone(component.a2a_process)
