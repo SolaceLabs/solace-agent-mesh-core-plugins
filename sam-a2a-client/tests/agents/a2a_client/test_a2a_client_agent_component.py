@@ -11,6 +11,18 @@ import requests # Added import
 from src.agents.a2a_client.a2a_client_agent_component import A2AClientAgentComponent, info as component_info
 from solace_agent_mesh.common.action_list import ActionList
 
+# Mock A2A types if not directly importable
+try:
+    from common.client import A2AClient, A2ACardResolver
+    from common.types import AgentCard, Authentication, AuthenticationScheme
+except ImportError:
+    A2AClient = MagicMock()
+    A2ACardResolver = MagicMock()
+    AgentCard = MagicMock()
+    Authentication = MagicMock()
+    AuthenticationScheme = MagicMock()
+    AuthenticationScheme.BEARER = "bearer" # Define mock value
+
 
 # Helper to create a component instance with mocked dependencies
 def create_test_component(config_overrides=None, mock_cache=True):
@@ -563,6 +575,245 @@ class TestA2AClientAgentComponent(unittest.TestCase):
         # FIX: Request IS called once before wait detects stop
         mock_requests_get.assert_called_once()
         mock_event_wait.assert_called_once_with(timeout=1) # wait is called after the first failed request
+
+    # --- Tests for Step 2.3.3 ---
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent._launch_a2a_process')
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent._wait_for_agent_ready', return_value=True)
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2ACardResolver')
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClient')
+    @patch('src.agents.a2a_client.a2a_client_agent_component.threading.Thread')
+    def test_initialize_connection_launch_mode_success(self, mock_thread_cls, mock_a2a_client_cls, mock_resolver_cls, mock_wait_ready, mock_launch):
+        """Test successful initialization in launch mode."""
+        component = create_test_component({
+            "a2a_server_command": "run_agent",
+            "a2a_server_restart_on_crash": True
+        })
+        mock_card = MagicMock(spec=AgentCard)
+        mock_card.name = "Launched Agent"
+        mock_card.authentication = None # No auth
+        mock_resolver_instance = mock_resolver_cls.return_value
+        mock_resolver_instance.get_agent_card.return_value = mock_card
+        mock_client_instance = mock_a2a_client_cls.return_value
+
+        component._initialize_a2a_connection()
+
+        mock_launch.assert_called_once()
+        mock_wait_ready.assert_called_once()
+        mock_resolver_cls.assert_called_once_with(component.a2a_server_url)
+        mock_resolver_instance.get_agent_card.assert_called_once()
+        mock_a2a_client_cls.assert_called_once_with(agent_card=mock_card, auth_token=None)
+        mock_thread_cls.assert_called_once_with(target=component._monitor_a2a_process, daemon=True)
+        mock_thread_cls.return_value.start.assert_called_once() # Check monitor thread started
+
+        self.assertEqual(component.agent_card, mock_card)
+        self.assertEqual(component.a2a_client, mock_client_instance)
+        self.assertIsNotNone(component.monitor_thread)
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent._launch_a2a_process')
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent._wait_for_agent_ready', return_value=True)
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2ACardResolver')
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClient')
+    @patch('src.agents.a2a_client.a2a_client_agent_component.threading.Thread')
+    def test_initialize_connection_connect_mode_success(self, mock_thread_cls, mock_a2a_client_cls, mock_resolver_cls, mock_wait_ready, mock_launch):
+        """Test successful initialization in connect mode."""
+        component = create_test_component({"a2a_server_command": None}) # No command
+        mock_card = MagicMock(spec=AgentCard)
+        mock_card.name = "Existing Agent"
+        mock_card.authentication = None
+        mock_resolver_instance = mock_resolver_cls.return_value
+        mock_resolver_instance.get_agent_card.return_value = mock_card
+        mock_client_instance = mock_a2a_client_cls.return_value
+
+        component._initialize_a2a_connection()
+
+        mock_launch.assert_not_called()
+        mock_wait_ready.assert_called_once() # Still checks readiness
+        mock_resolver_cls.assert_called_once_with(component.a2a_server_url)
+        mock_resolver_instance.get_agent_card.assert_called_once()
+        mock_a2a_client_cls.assert_called_once_with(agent_card=mock_card, auth_token=None)
+        mock_thread_cls.assert_not_called() # No monitor thread in connect mode
+
+        self.assertEqual(component.agent_card, mock_card)
+        self.assertEqual(component.a2a_client, mock_client_instance)
+        self.assertIsNone(component.monitor_thread)
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent._launch_a2a_process', side_effect=FileNotFoundError("cmd not found"))
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent.stop_component') # Mock stop to prevent side effects
+    def test_initialize_connection_launch_fail(self, mock_stop, mock_launch):
+        """Test initialization fails if process launch fails."""
+        component = create_test_component({"a2a_server_command": "bad_cmd"})
+
+        with self.assertRaises(FileNotFoundError):
+            component._initialize_a2a_connection()
+
+        mock_launch.assert_called_once()
+        mock_stop.assert_called_once() # Ensure cleanup is called
+        self.assertIsNone(component.agent_card)
+        self.assertIsNone(component.a2a_client)
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent._launch_a2a_process')
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent._wait_for_agent_ready', return_value=False) # Simulate timeout
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent.stop_component')
+    def test_initialize_connection_readiness_timeout(self, mock_stop, mock_wait_ready, mock_launch):
+        """Test initialization fails if agent readiness check times out."""
+        component = create_test_component({"a2a_server_command": "run_agent"})
+
+        with self.assertRaises(TimeoutError):
+            component._initialize_a2a_connection()
+
+        mock_launch.assert_called_once()
+        mock_wait_ready.assert_called_once()
+        mock_stop.assert_called_once()
+        self.assertIsNone(component.agent_card)
+        self.assertIsNone(component.a2a_client)
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent._wait_for_agent_ready', return_value=True)
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2ACardResolver')
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent.stop_component')
+    def test_initialize_connection_card_fetch_fail(self, mock_stop, mock_resolver_cls, mock_wait_ready):
+        """Test initialization fails if Agent Card fetch fails."""
+        component = create_test_component() # Connect mode
+        mock_resolver_instance = mock_resolver_cls.return_value
+        mock_resolver_instance.get_agent_card.side_effect = ValueError("Fetch failed")
+
+        with self.assertRaises(ValueError) as cm:
+            component._initialize_a2a_connection()
+
+        self.assertIn("Failed to get Agent Card", str(cm.exception))
+        mock_wait_ready.assert_called_once()
+        mock_resolver_instance.get_agent_card.assert_called_once()
+        mock_stop.assert_called_once()
+        self.assertIsNone(component.agent_card)
+        self.assertIsNone(component.a2a_client)
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent._wait_for_agent_ready', return_value=True)
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2ACardResolver')
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClient', side_effect=Exception("Client init error")) # Mock A2AClient constructor failure
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent.stop_component')
+    def test_initialize_connection_client_init_fail(self, mock_stop, mock_a2a_client_cls, mock_resolver_cls, mock_wait_ready):
+        """Test initialization fails if A2AClient initialization fails."""
+        component = create_test_component()
+        mock_card = MagicMock(spec=AgentCard)
+        mock_card.authentication = None
+        mock_resolver_instance = mock_resolver_cls.return_value
+        mock_resolver_instance.get_agent_card.return_value = mock_card
+
+        with self.assertRaises(ValueError) as cm:
+            component._initialize_a2a_connection()
+
+        self.assertIn("Could not initialize A2AClient", str(cm.exception))
+        mock_wait_ready.assert_called_once()
+        mock_resolver_instance.get_agent_card.assert_called_once()
+        mock_a2a_client_cls.assert_called_once() # Constructor was called
+        mock_stop.assert_called_once()
+        self.assertEqual(component.agent_card, mock_card) # Card was fetched
+        self.assertIsNone(component.a2a_client) # But client init failed
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent._wait_for_agent_ready', return_value=True)
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2ACardResolver')
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClient')
+    def test_initialize_connection_bearer_auth_success(self, mock_a2a_client_cls, mock_resolver_cls, mock_wait_ready):
+        """Test initialization with bearer token required and provided."""
+        token = "my-secret-token"
+        component = create_test_component({"a2a_bearer_token": token})
+        mock_card = MagicMock(spec=AgentCard)
+        mock_card.name = "Auth Agent"
+        # Simulate AgentCard requiring bearer token
+        mock_auth = MagicMock(spec=Authentication)
+        mock_auth.schemes = [AuthenticationScheme.BEARER]
+        mock_card.authentication = mock_auth
+        mock_resolver_instance = mock_resolver_cls.return_value
+        mock_resolver_instance.get_agent_card.return_value = mock_card
+
+        component._initialize_a2a_connection()
+
+        mock_wait_ready.assert_called_once()
+        mock_resolver_instance.get_agent_card.assert_called_once()
+        # Verify A2AClient was called with the token
+        mock_a2a_client_cls.assert_called_once_with(agent_card=mock_card, auth_token=token)
+        self.assertIsNotNone(component.a2a_client)
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent._wait_for_agent_ready', return_value=True)
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2ACardResolver')
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClient')
+    @patch('logging.Logger.warning')
+    def test_initialize_connection_bearer_auth_missing(self, mock_log_warning, mock_a2a_client_cls, mock_resolver_cls, mock_wait_ready):
+        """Test initialization logs warning if bearer token required but not provided."""
+        component = create_test_component({"a2a_bearer_token": None}) # No token configured
+        mock_card = MagicMock(spec=AgentCard)
+        mock_card.name = "Auth Agent Missing Token"
+        # Simulate AgentCard requiring bearer token
+        mock_auth = MagicMock(spec=Authentication)
+        mock_auth.schemes = [AuthenticationScheme.BEARER]
+        mock_card.authentication = mock_auth
+        mock_resolver_instance = mock_resolver_cls.return_value
+        mock_resolver_instance.get_agent_card.return_value = mock_card
+
+        component._initialize_a2a_connection()
+
+        mock_wait_ready.assert_called_once()
+        mock_resolver_instance.get_agent_card.assert_called_once()
+        # Verify warning was logged
+        mock_log_warning.assert_called_with(
+            "A2A Agent Card requires Bearer token, but none configured ('a2a_bearer_token'). Proceeding without authentication."
+        )
+        # Verify A2AClient was still called, but without the token
+        mock_a2a_client_cls.assert_called_once_with(agent_card=mock_card, auth_token=None)
+        self.assertIsNotNone(component.a2a_client)
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent._wait_for_agent_ready', return_value=True)
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2ACardResolver')
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClient')
+    @patch('logging.Logger.warning')
+    def test_initialize_connection_bearer_auth_not_required(self, mock_log_warning, mock_a2a_client_cls, mock_resolver_cls, mock_wait_ready):
+        """Test initialization proceeds normally if bearer token not required."""
+        token = "my-secret-token"
+        # Token is configured but card doesn't require it
+        component = create_test_component({"a2a_bearer_token": token})
+        mock_card = MagicMock(spec=AgentCard)
+        mock_card.name = "No Auth Agent"
+        mock_card.authentication = None # No auth required
+        mock_resolver_instance = mock_resolver_cls.return_value
+        mock_resolver_instance.get_agent_card.return_value = mock_card
+
+        component._initialize_a2a_connection()
+
+        mock_wait_ready.assert_called_once()
+        mock_resolver_instance.get_agent_card.assert_called_once()
+        mock_log_warning.assert_not_called() # No warning about missing token
+        # Verify A2AClient was called without the token (as it wasn't required)
+        mock_a2a_client_cls.assert_called_once_with(agent_card=mock_card, auth_token=None)
+        self.assertIsNotNone(component.a2a_client)
+
+    # --- Test for Step 2.3.2 (Run calls initialize) ---
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent._initialize_a2a_connection')
+    @patch('src.agents.a2a_client.a2a_client_agent_component.BaseAgentComponent.run') # Mock super().run()
+    def test_run_calls_initialize_and_super(self, mock_super_run, mock_initialize):
+        """Test the run method calls _initialize_a2a_connection and super().run()."""
+        component = create_test_component()
+        component.run()
+
+        mock_initialize.assert_called_once()
+        mock_super_run.assert_called_once()
+        self.assertTrue(component._initialized.is_set()) # Check event is set on success
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent._initialize_a2a_connection', side_effect=ValueError("Init failed"))
+    @patch('src.agents.a2a_client.a2a_client_agent_component.BaseAgentComponent.run')
+    @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent.stop_component')
+    @patch('logging.Logger.critical')
+    def test_run_handles_initialization_failure(self, mock_log_critical, mock_stop, mock_super_run, mock_initialize):
+        """Test run handles exceptions during initialization."""
+        component = create_test_component()
+        component.run()
+
+        mock_initialize.assert_called_once()
+        mock_log_critical.assert_called_once() # Check critical error logged
+        self.assertIn("Initialization failed", mock_log_critical.call_args[0][0])
+        mock_stop.assert_called_once() # Ensure cleanup called
+        mock_super_run.assert_not_called() # Base run should not be called
+        self.assertFalse(component._initialized.is_set()) # Event should not be set
 
 
 if __name__ == '__main__':
