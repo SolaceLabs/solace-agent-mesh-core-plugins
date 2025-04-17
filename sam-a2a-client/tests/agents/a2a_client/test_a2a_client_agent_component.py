@@ -545,7 +545,8 @@ class TestA2AClientAgentComponent(unittest.TestCase):
         self.assertEqual(mock_requests_get.call_count, 2)
         self.assertEqual(mock_event_wait.call_count, 2) # Wait after each failed attempt
 
-    @patch('src.agents.a2a_client.a2a_client_agent_component.requests.get', side_effect=requests.exceptions.Timeout("Request timed out"))
+    # FIX: Use lambda to raise exception consistently
+    @patch('src.agents.a2a_client.a2a_client_agent_component.requests.get', side_effect=lambda *args, **kwargs: (_ for _ in ()).throw(requests.exceptions.Timeout("Request timed out")))
     @patch.object(threading.Event, 'wait', return_value=False)
     @patch('src.agents.a2a_client.a2a_client_agent_component.time.time')
     def test_wait_for_agent_ready_request_timeout(self, mock_time, mock_event_wait, mock_requests_get):
@@ -554,13 +555,12 @@ class TestA2AClientAgentComponent(unittest.TestCase):
         component = create_test_component({"a2a_server_startup_timeout": timeout})
         start_time = 1000.0
         # Time sequence: deadline check, loop1 check, loop2 check (fails), log time
-        # FIX: Added one more time value for the logger call
         mock_time.side_effect = [start_time, start_time + 0.1, start_time + 1.2, start_time + 2.3, start_time + 2.4]
 
         result = component._wait_for_agent_ready()
 
         self.assertFalse(result)
-        # FIX: Loop terminates before 2nd call
+        # Expected count based on trace
         self.assertEqual(mock_requests_get.call_count, 2)
         self.assertEqual(mock_event_wait.call_count, 2) # Wait after each failed attempt
 
