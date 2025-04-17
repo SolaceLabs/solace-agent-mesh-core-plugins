@@ -8,6 +8,9 @@ import copy
 import threading
 import logging
 import subprocess # Added import
+import shlex
+import os
+import platform
 from typing import Dict, Any, Optional
 
 from solace_agent_mesh.agents.base_agent_component import BaseAgentComponent, agent_info as base_agent_info
@@ -123,6 +126,48 @@ class A2AClientAgentComponent(BaseAgentComponent):
         self.info["agent_name"] = self.agent_name
         logger.info(f"A2AClientAgentComponent '{self.agent_name}' initialized.")
 
+    def _launch_a2a_process(self):
+        """Launches the external A2A agent process if configured."""
+        if not self.a2a_server_command:
+            logger.warning("No 'a2a_server_command' configured, cannot launch process.")
+            return
+
+        if self.a2a_process and self.a2a_process.poll() is None:
+            logger.warning(f"A2A process (PID: {self.a2a_process.pid}) seems to be already running.")
+            return
+
+        logger.info(f"Launching A2A agent process with command: {self.a2a_server_command}")
+        try:
+            # Use shlex.split for safer command parsing
+            args = shlex.split(self.a2a_server_command)
+
+            # Platform specific flags for better process group handling
+            popen_kwargs = {}
+            if platform.system() == "Windows":
+                popen_kwargs['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
+            else: # POSIX
+                popen_kwargs['start_new_session'] = True
+
+            # Redirect stdout/stderr to prevent blocking
+            with open(os.devnull, 'w') as devnull:
+                self.a2a_process = subprocess.Popen(
+                    args,
+                    stdout=devnull,
+                    stderr=devnull,
+                    **popen_kwargs
+                )
+            logger.info(f"Launched A2A agent process with PID: {self.a2a_process.pid}")
+
+        except FileNotFoundError:
+            logger.error(f"Command not found: {args[0]}. Please ensure it's in the system PATH or provide the full path.", exc_info=True)
+            self.a2a_process = None # Ensure process is None on failure
+            raise # Re-raise after logging
+        except Exception as e:
+            logger.error(f"Failed to launch A2A agent process: {e}", exc_info=True)
+            self.a2a_process = None # Ensure process is None on failure
+            raise # Re-raise after logging
+
+
     def run(self):
         """
         Main execution method called by the SAM framework.
@@ -146,14 +191,20 @@ class A2AClientAgentComponent(BaseAgentComponent):
         if self.a2a_process:
             logger.info(f"Terminating managed A2A process (PID: {self.a2a_process.pid})...")
             try:
+                # Send SIGTERM (terminate) first
                 self.a2a_process.terminate()
-                self.a2a_process.wait(timeout=5) # Wait briefly for termination
-                logger.info("Managed A2A process terminated.")
-            except subprocess.TimeoutExpired:
-                logger.warning("Managed A2A process did not terminate gracefully, killing.")
-                self.a2a_process.kill()
+                try:
+                    # Wait for a short period
+                    self.a2a_process.wait(timeout=5)
+                    logger.info("Managed A2A process terminated gracefully.")
+                except subprocess.TimeoutExpired:
+                    # If it didn't terminate, send SIGKILL (kill)
+                    logger.warning("Managed A2A process did not terminate gracefully after 5s, killing.")
+                    self.a2a_process.kill()
+                    self.a2a_process.wait() # Wait for kill to complete
+                    logger.info("Managed A2A process killed.")
             except Exception as e:
-                logger.error(f"Error terminating managed A2A process: {e}")
+                logger.error(f"Error terminating managed A2A process: {e}", exc_info=True)
             self.a2a_process = None
 
         # Wait for the monitor thread to finish
