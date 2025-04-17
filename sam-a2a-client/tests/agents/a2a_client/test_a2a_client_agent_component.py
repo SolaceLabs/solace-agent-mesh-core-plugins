@@ -156,7 +156,8 @@ class TestA2AClientAgentComponent(unittest.TestCase):
         command = "my_agent --port 1234"
         component = create_test_component({"a2a_server_command": command})
         mock_shlex_split.return_value = ["my_agent", "--port", "1234"]
-        mock_process = MagicMock(spec=subprocess.Popen)
+        # Remove spec=subprocess.Popen
+        mock_process = MagicMock()
         mock_process.pid = 9999
         mock_popen.return_value = mock_process
 
