@@ -1,10 +1,45 @@
 import unittest
-from unittest.mock import patch, MagicMock, ANY
+from unittest.mock import patch, MagicMock, ANY, call
 import threading
+import subprocess
+import time
+import os
+import platform
 
 # Adjust the import path based on how tests are run (e.g., from root)
 from src.agents.a2a_client.a2a_client_agent_component import A2AClientAgentComponent, info as component_info
 from solace_agent_mesh.common.action_list import ActionList
+
+
+# Helper to create a component instance with mocked dependencies
+def create_test_component(config_overrides=None, mock_cache=True):
+    base_config = {
+        "agent_name": "test_a2a_agent",
+        "a2a_server_url": "http://localhost:10001",
+        "a2a_server_command": None, # Default to no command
+        "a2a_server_startup_timeout": 10,
+        "a2a_server_restart_on_crash": True,
+        "a2a_bearer_token": None,
+        "input_required_ttl": 300,
+        "registration_interval": 60
+    }
+    if config_overrides:
+        base_config.update(config_overrides)
+
+    kwargs = {"cache_service": MagicMock() if mock_cache else None}
+
+    # Mock self.get_config to return values from mock_config
+    def mock_get_config(key, default=None):
+        return base_config.get(key, default)
+
+    with patch.object(A2AClientAgentComponent, 'get_config', side_effect=mock_get_config), \
+         patch('src.agents.a2a_client.a2a_client_agent_component.BaseAgentComponent.__init__'), \
+         patch('src.agents.a2a_client.a2a_client_agent_component.FileService'):
+        component = A2AClientAgentComponent(module_info=component_info, **kwargs)
+    # Restore original get_config after init if necessary, or keep patched if tests need it
+    # For simplicity here, assume tests will mock get_config as needed per test method
+    component.get_config = MagicMock(side_effect=mock_get_config) # Re-apply mock for test methods
+    return component
 
 
 class TestA2AClientAgentComponent(unittest.TestCase):
@@ -109,6 +144,309 @@ class TestA2AClientAgentComponent(unittest.TestCase):
         mock_log_warning.assert_called_once_with(
             "Cache service not provided to A2AClientAgentComponent. INPUT_REQUIRED state will not be supported."
         )
+
+    # --- Tests for Step 2.1.4 ---
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.subprocess.Popen')
+    @patch('src.agents.a2a_client.a2a_client_agent_component.shlex.split')
+    @patch('src.agents.a2a_client.a2a_client_agent_component.os.devnull', '/dev/null') # Mock devnull path
+    @patch('builtins.open', new_callable=unittest.mock.mock_open)
+    def test_launch_process_success(self, mock_open, mock_shlex_split, mock_popen):
+        """Test _launch_a2a_process successfully starts a process."""
+        command = "my_agent --port 1234"
+        component = create_test_component({"a2a_server_command": command})
+        mock_shlex_split.return_value = ["my_agent", "--port", "1234"]
+        mock_process = MagicMock(spec=subprocess.Popen)
+        mock_process.pid = 9999
+        mock_popen.return_value = mock_process
+
+        component._launch_a2a_process()
+
+        mock_shlex_split.assert_called_once_with(command)
+        popen_kwargs = {'stdout': ANY, 'stderr': ANY}
+        if platform.system() == "Windows":
+            popen_kwargs['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            popen_kwargs['start_new_session'] = True
+        mock_popen.assert_called_once_with(["my_agent", "--port", "1234"], **popen_kwargs)
+        mock_open.assert_called_once_with('/dev/null', 'w') # Check devnull was opened
+        self.assertEqual(component.a2a_process, mock_process)
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.subprocess.Popen')
+    @patch('logging.Logger.warning')
+    def test_launch_process_no_command(self, mock_log_warning, mock_popen):
+        """Test _launch_a2a_process does nothing if command is not set."""
+        component = create_test_component({"a2a_server_command": None})
+        component._launch_a2a_process()
+        mock_popen.assert_not_called()
+        mock_log_warning.assert_called_with("No 'a2a_server_command' configured, cannot launch process.")
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.subprocess.Popen')
+    @patch('logging.Logger.warning')
+    def test_launch_process_already_running(self, mock_log_warning, mock_popen):
+        """Test _launch_a2a_process does nothing if process is already running."""
+        component = create_test_component({"a2a_server_command": "run.sh"})
+        mock_existing_process = MagicMock(spec=subprocess.Popen)
+        mock_existing_process.poll.return_value = None # Indicates running
+        mock_existing_process.pid = 1234
+        component.a2a_process = mock_existing_process
+
+        component._launch_a2a_process()
+
+        mock_popen.assert_not_called()
+        mock_log_warning.assert_called_with("A2A process (PID: 1234) seems to be already running.")
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.subprocess.Popen', side_effect=FileNotFoundError("Command not found"))
+    @patch('src.agents.a2a_client.a2a_client_agent_component.shlex.split')
+    @patch('logging.Logger.error')
+    def test_launch_process_file_not_found(self, mock_log_error, mock_shlex_split, mock_popen):
+        """Test _launch_a2a_process handles FileNotFoundError."""
+        command = "non_existent_command"
+        component = create_test_component({"a2a_server_command": command})
+        mock_shlex_split.return_value = ["non_existent_command"]
+
+        with self.assertRaises(FileNotFoundError):
+            component._launch_a2a_process()
+
+        self.assertIsNone(component.a2a_process)
+        mock_log_error.assert_called_once()
+        self.assertIn("Command not found: non_existent_command", mock_log_error.call_args[0][0])
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.subprocess.Popen', side_effect=Exception("Other Popen error"))
+    @patch('src.agents.a2a_client.a2a_client_agent_component.shlex.split')
+    @patch('logging.Logger.error')
+    def test_launch_process_other_exception(self, mock_log_error, mock_shlex_split, mock_popen):
+        """Test _launch_a2a_process handles other Popen exceptions."""
+        command = "some_command"
+        component = create_test_component({"a2a_server_command": command})
+        mock_shlex_split.return_value = ["some_command"]
+
+        with self.assertRaises(Exception):
+            component._launch_a2a_process()
+
+        self.assertIsNone(component.a2a_process)
+        mock_log_error.assert_called_once()
+        self.assertIn("Failed to launch A2A agent process", mock_log_error.call_args[0][0])
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.time.sleep', return_value=None) # Avoid actual sleep
+    @patch.object(threading.Event, 'wait') # Mock wait on the Event object
+    def test_monitor_process_clean_exit(self, mock_event_wait, mock_sleep):
+        """Test _monitor_a2a_process exits loop on clean process termination."""
+        component = create_test_component()
+        mock_process = MagicMock(spec=subprocess.Popen)
+        mock_process.pid = 1234
+        # Simulate process running then exiting cleanly
+        mock_process.poll.side_effect = [None, None, 0]
+        component.a2a_process = mock_process
+
+        component._monitor_a2a_process()
+
+        self.assertEqual(mock_process.poll.call_count, 3)
+        # Ensure wait was called (for the sleep interval)
+        mock_event_wait.assert_called()
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.time.sleep', return_value=None)
+    @patch.object(threading.Event, 'wait')
+    @patch('logging.Logger.error')
+    def test_monitor_process_crash_no_restart(self, mock_log_error, mock_event_wait, mock_sleep):
+        """Test _monitor_a2a_process logs error and exits if restart is disabled."""
+        component = create_test_component({"a2a_server_restart_on_crash": False})
+        mock_process = MagicMock(spec=subprocess.Popen)
+        mock_process.pid = 1234
+        # Simulate process running then crashing
+        mock_process.poll.side_effect = [None, 1]
+        component.a2a_process = mock_process
+        # Mock _launch_a2a_process to ensure it's NOT called
+        component._launch_a2a_process = MagicMock()
+
+        component._monitor_a2a_process()
+
+        self.assertEqual(mock_process.poll.call_count, 2)
+        mock_log_error.assert_called_once_with("Managed A2A process (PID: 1234) terminated with code 1.")
+        component._launch_a2a_process.assert_not_called()
+        # wait should have been called once before the crash was detected
+        mock_event_wait.assert_called_once()
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.time.sleep', return_value=None)
+    @patch.object(threading.Event, 'wait')
+    @patch('logging.Logger.error')
+    @patch('logging.Logger.info')
+    def test_monitor_process_crash_with_restart(self, mock_log_info, mock_log_error, mock_event_wait, mock_sleep):
+        """Test _monitor_a2a_process attempts restart on crash if enabled."""
+        component = create_test_component({"a2a_server_restart_on_crash": True})
+        mock_process1 = MagicMock(spec=subprocess.Popen)
+        mock_process1.pid = 1111
+        # Simulate process 1 running then crashing
+        mock_process1.poll.side_effect = [None, 1]
+        component.a2a_process = mock_process1
+
+        # Mock _launch_a2a_process to simulate successful restart
+        mock_process2 = MagicMock(spec=subprocess.Popen)
+        mock_process2.pid = 2222
+        # Simulate process 2 running then monitor stopping
+        mock_process2.poll.side_effect = [None, None]
+        def launch_side_effect():
+            component.a2a_process = mock_process2 # Simulate setting the new process
+        component._launch_a2a_process = MagicMock(side_effect=launch_side_effect)
+
+        # Simulate stop_monitor being set after process 2 runs for a bit
+        mock_event_wait.side_effect = [False, False, False, True] # Wait before crash, wait for restart delay, wait after restart, then stop
+
+        component._monitor_a2a_process()
+
+        self.assertEqual(mock_process1.poll.call_count, 2)
+        mock_log_error.assert_called_once_with("Managed A2A process (PID: 1111) terminated with code 1.")
+        component._launch_a2a_process.assert_called_once() # Restart called
+        self.assertEqual(mock_process2.poll.call_count, 2) # New process polled
+        # Check wait calls: initial poll, restart delay, poll new process, stop
+        self.assertEqual(mock_event_wait.call_count, 4)
+        # Check restart delay wait call
+        self.assertEqual(mock_event_wait.call_args_list[1], call(2))
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.time.sleep', return_value=None)
+    @patch.object(threading.Event, 'wait')
+    @patch('logging.Logger.error')
+    def test_monitor_process_crash_restart_fail(self, mock_log_error, mock_event_wait, mock_sleep):
+        """Test _monitor_a2a_process exits if restart attempt fails."""
+        component = create_test_component({"a2a_server_restart_on_crash": True})
+        mock_process = MagicMock(spec=subprocess.Popen)
+        mock_process.pid = 1234
+        # Simulate process running then crashing
+        mock_process.poll.side_effect = [None, 1]
+        component.a2a_process = mock_process
+
+        # Mock _launch_a2a_process to simulate failure
+        component._launch_a2a_process = MagicMock(side_effect=Exception("Launch failed"))
+
+        # Simulate wait before crash and wait for restart delay
+        mock_event_wait.side_effect = [False, False, True] # Add True to stop loop eventually
+
+        component._monitor_a2a_process()
+
+        self.assertEqual(mock_process.poll.call_count, 2)
+        # Check error logs: initial crash, restart failure
+        self.assertEqual(mock_log_error.call_count, 2)
+        self.assertIn("terminated with code 1", mock_log_error.call_args_list[0][0][0])
+        self.assertIn("Exception during A2A process restart", mock_log_error.call_args_list[1][0][0])
+        component._launch_a2a_process.assert_called_once() # Restart attempted
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.time.sleep', return_value=None)
+    @patch.object(threading.Event, 'wait', return_value=True) # Simulate stop event being set immediately
+    def test_monitor_process_stop_event(self, mock_event_wait, mock_sleep):
+        """Test _monitor_a2a_process exits promptly if stop event is set."""
+        component = create_test_component()
+        mock_process = MagicMock(spec=subprocess.Popen)
+        mock_process.pid = 1234
+        mock_process.poll.return_value = None # Still running
+        component.a2a_process = mock_process
+
+        component._monitor_a2a_process()
+
+        # Poll should not be called because wait returns True immediately
+        mock_process.poll.assert_not_called()
+        mock_event_wait.assert_called_once_with(timeout=5)
+
+    @patch('logging.Logger.warning')
+    def test_monitor_process_no_process(self, mock_log_warning):
+        """Test _monitor_a2a_process exits if there's no process initially."""
+        component = create_test_component()
+        component.a2a_process = None # Explicitly set to None
+
+        component._monitor_a2a_process()
+
+        mock_log_warning.assert_called_with("Monitor thread: No A2A process to monitor. Exiting.")
+
+    @patch.object(subprocess.Popen, 'terminate')
+    @patch.object(subprocess.Popen, 'wait')
+    @patch.object(subprocess.Popen, 'kill')
+    @patch.object(threading.Thread, 'join')
+    @patch.object(threading.Thread, 'is_alive', return_value=False) # Assume thread finishes quickly
+    @patch('src.agents.a2a_client.a2a_client_agent_component.BaseAgentComponent.stop_component')
+    def test_stop_component_terminates_process(self, mock_super_stop, mock_is_alive, mock_join, mock_kill, mock_wait, mock_terminate):
+        """Test stop_component terminates the process and joins the thread."""
+        component = create_test_component()
+        mock_process = MagicMock(spec=subprocess.Popen)
+        mock_process.pid = 1234
+        component.a2a_process = mock_process
+        mock_thread = MagicMock(spec=threading.Thread)
+        component.monitor_thread = mock_thread
+
+        component.stop_component()
+
+        self.assertTrue(component.stop_monitor.is_set())
+        mock_terminate.assert_called_once()
+        mock_wait.assert_called_once_with(timeout=5)
+        mock_kill.assert_not_called()
+        mock_join.assert_called_once_with(timeout=5)
+        mock_super_stop.assert_called_once()
+        self.assertIsNone(component.a2a_process) # Should be cleared
+        self.assertIsNone(component.monitor_thread) # Should be cleared
+
+    @patch.object(subprocess.Popen, 'terminate')
+    @patch.object(subprocess.Popen, 'wait')
+    @patch.object(subprocess.Popen, 'kill')
+    @patch.object(threading.Thread, 'join')
+    @patch.object(threading.Thread, 'is_alive', return_value=False)
+    @patch('src.agents.a2a_client.a2a_client_agent_component.BaseAgentComponent.stop_component')
+    def test_stop_component_kills_process(self, mock_super_stop, mock_is_alive, mock_join, mock_kill, mock_wait, mock_terminate):
+        """Test stop_component kills the process if terminate times out."""
+        component = create_test_component()
+        mock_process = MagicMock(spec=subprocess.Popen)
+        mock_process.pid = 1234
+        component.a2a_process = mock_process
+        mock_thread = MagicMock(spec=threading.Thread)
+        component.monitor_thread = mock_thread
+
+        # Simulate wait timing out
+        mock_wait.side_effect = [subprocess.TimeoutExpired(cmd="cmd", timeout=5), None] # Timeout first, then succeed after kill
+
+        component.stop_component()
+
+        self.assertTrue(component.stop_monitor.is_set())
+        mock_terminate.assert_called_once()
+        self.assertEqual(mock_wait.call_count, 2) # Called after terminate and after kill
+        mock_kill.assert_called_once()
+        mock_join.assert_called_once_with(timeout=5)
+        mock_super_stop.assert_called_once()
+        self.assertIsNone(component.a2a_process)
+        self.assertIsNone(component.monitor_thread)
+
+    @patch.object(subprocess.Popen, 'terminate')
+    @patch.object(threading.Thread, 'join')
+    @patch.object(threading.Thread, 'is_alive', return_value=True) # Simulate thread not finishing
+    @patch('src.agents.a2a_client.a2a_client_agent_component.BaseAgentComponent.stop_component')
+    @patch('logging.Logger.warning')
+    def test_stop_component_joins_thread(self, mock_log_warning, mock_super_stop, mock_is_alive, mock_join, mock_terminate):
+        """Test stop_component attempts to join the monitor thread."""
+        component = create_test_component()
+        component.a2a_process = None # No process
+        mock_thread = MagicMock(spec=threading.Thread)
+        component.monitor_thread = mock_thread
+
+        component.stop_component()
+
+        self.assertTrue(component.stop_monitor.is_set())
+        mock_terminate.assert_not_called()
+        mock_join.assert_called_once_with(timeout=5)
+        mock_log_warning.assert_called_with("Monitor thread did not exit cleanly.") # Because is_alive is True
+        mock_super_stop.assert_called_once()
+        self.assertIsNone(component.monitor_thread) # Should be cleared even if join timed out
+
+    @patch.object(subprocess.Popen, 'terminate')
+    @patch.object(threading.Thread, 'join')
+    @patch('src.agents.a2a_client.a2a_client_agent_component.BaseAgentComponent.stop_component')
+    def test_stop_component_no_process_or_thread(self, mock_super_stop, mock_join, mock_terminate):
+        """Test stop_component handles no process or thread existing."""
+        component = create_test_component()
+        component.a2a_process = None
+        component.monitor_thread = None
+
+        component.stop_component()
+
+        self.assertTrue(component.stop_monitor.is_set())
+        mock_terminate.assert_not_called()
+        mock_join.assert_not_called()
+        mock_super_stop.assert_called_once()
 
 
 if __name__ == '__main__':
