@@ -516,7 +516,8 @@ class TestA2AClientAgentComponent(unittest.TestCase):
         mock_requests_get.return_value = mock_response_fail
 
         # Simulate time passing to exceed timeout
-        start_time = time.time()
+        start_time = 1000.0 # Use a fixed start time for easier calculation
+        # First call for deadline, subsequent calls for loop check
         mock_time.side_effect = [start_time, start_time + 1.1, start_time + 2.2, start_time + 3.3]
 
         result = component._wait_for_agent_ready()
@@ -532,7 +533,8 @@ class TestA2AClientAgentComponent(unittest.TestCase):
         """Test _wait_for_agent_ready handles ConnectionError and times out."""
         timeout = 2
         component = create_test_component({"a2a_server_startup_timeout": timeout})
-        start_time = time.time()
+        start_time = 1000.0
+        # First call for deadline, subsequent calls for loop check
         mock_time.side_effect = [start_time, start_time + 1.1, start_time + 2.2]
 
         result = component._wait_for_agent_ready()
@@ -548,7 +550,8 @@ class TestA2AClientAgentComponent(unittest.TestCase):
         """Test _wait_for_agent_ready handles requests.exceptions.Timeout and times out."""
         timeout = 2
         component = create_test_component({"a2a_server_startup_timeout": timeout})
-        start_time = time.time()
+        start_time = 1000.0
+        # First call for deadline, subsequent calls for loop check
         mock_time.side_effect = [start_time, start_time + 1.1, start_time + 2.2]
 
         result = component._wait_for_agent_ready()
