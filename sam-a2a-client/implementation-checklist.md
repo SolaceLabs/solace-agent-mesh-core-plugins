@@ -11,7 +11,7 @@ This checklist tracks the progress of implementing the `sam-a2a-client` plugin b
 - [x] **Step 1.2.2:** Define the `info` class variable in `A2AClientAgentComponent`.
 - [x] **Step 1.2.3:** Implement `A2AClientAgentComponent.__init__`.
 - [x] **Step 1.2.4:** Implement basic `A2AClientAgentComponent.run`.
-- [ ] **Step 1.2.5:** Implement basic `A2AClientAgentComponent.stop_component`.
+- [x] **Step 1.2.5:** Implement basic `A2AClientAgentComponent.stop_component`.
 - [ ] **Step 1.2.6:** Testing for Step 1.2 (Unit tests for `__init__` and `info`).
 - [ ] **Step 1.3.1:** Define `A2AClientAction` skeleton class.
 - [ ] **Step 1.3.2:** Implement `A2AClientAction.__init__`.

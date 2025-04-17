@@ -102,7 +102,7 @@ class A2AClientAgentComponent(BaseAgentComponent):
         self.input_required_ttl: int = self.get_config("input_required_ttl")
 
         # State Variables
-        self.a2a_process: Optional[subprocess.Popen] = None # type: ignore # subprocess not yet imported
+        self.a2a_process: Optional[subprocess.Popen] = None
         self.monitor_thread: Optional[threading.Thread] = None
         self.stop_monitor = threading.Event()
         self.agent_card = None  # Will be populated with AgentCard type
@@ -135,6 +135,37 @@ class A2AClientAgentComponent(BaseAgentComponent):
         logger.info(f"Exiting run loop for A2AClientAgentComponent '{self.agent_name}'")
 
 
-    # Placeholder for stop_component method (Step 1.2.5)
     def stop_component(self):
-        pass
+        """
+        Cleans up resources when the component is stopped.
+        """
+        logger.info(f"Stopping A2AClientAgentComponent '{self.agent_name}'...")
+        self.stop_monitor.set()
+
+        # Terminate the managed process if it exists
+        if self.a2a_process:
+            logger.info(f"Terminating managed A2A process (PID: {self.a2a_process.pid})...")
+            try:
+                self.a2a_process.terminate()
+                self.a2a_process.wait(timeout=5) # Wait briefly for termination
+                logger.info("Managed A2A process terminated.")
+            except subprocess.TimeoutExpired:
+                logger.warning("Managed A2A process did not terminate gracefully, killing.")
+                self.a2a_process.kill()
+            except Exception as e:
+                logger.error(f"Error terminating managed A2A process: {e}")
+            self.a2a_process = None
+
+        # Wait for the monitor thread to finish
+        if self.monitor_thread and self.monitor_thread.is_alive():
+            logger.info("Waiting for monitor thread to exit...")
+            self.monitor_thread.join(timeout=5)
+            if self.monitor_thread.is_alive():
+                logger.warning("Monitor thread did not exit cleanly.")
+            else:
+                logger.info("Monitor thread exited.")
+            self.monitor_thread = None
+
+        # Call base class cleanup
+        super().stop_component()
+        logger.info(f"A2AClientAgentComponent '{self.agent_name}' stopped.")
