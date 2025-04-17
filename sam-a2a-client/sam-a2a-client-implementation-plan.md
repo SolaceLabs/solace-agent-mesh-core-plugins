@@ -9,6 +9,11 @@ This document provides a step-by-step plan for implementing the `sam-a2a-client`
 
 ---
 
+Coding guidelines:
+
+All code must follow Google's Python style guide (PEP 8). Use `black` for formatting and `mypy` for type checking. Ensure all new code is covered by unit tests.
+
+
 **Phase 1: Project Setup and Core Component Structure**
 
 **Step 1.1: Create Project Structure and Basic Files**

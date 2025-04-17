@@ -82,11 +82,13 @@ Based on the answers, here's a summary of the approach and potential considerati
 
 **Potential Challenges/Open Questions:**
 
-*   **Verification of `tasks/send` Assumption:** Confirming that all A2A agents support synchronous `tasks/send` is critical.
 *   **Dynamic Parameter Generation:** Defining a reliable method to parse skill descriptions into SAM action parameters might be difficult. The fallback to a generic `prompt` is essential.
 *   **State Management for `INPUT_REQUIRED`:** Needs careful implementation regarding storage (memory vs. KV store), TTL/cleanup of pending states, and handling potential errors if a `sam_follow_up_id` is invalid or expired.
+- the cache service can be used with TTL
 *   **Handling Diverse `Parts`:** Defining the exact mapping logic for complex A2A responses (multiple parts, different types) to a single SAM `ActionResponse`.
 *   **Authentication Expansion:** Planning for how to add support for other auth schemes beyond bearer tokens later.
 *   **A2A Artifacts:** Clarify how A2A `Artifacts` (distinct from the final `message`) should be handled. Should they also be mapped to `ActionResponse.files` or `ActionResponse.data`?
+- Files
 
 Overall, the plan is feasible, leveraging existing patterns (`sam-mcp-server`) and A2A libraries. The `INPUT_REQUIRED` state management and dynamic parameter generation are the main areas requiring careful design.
+

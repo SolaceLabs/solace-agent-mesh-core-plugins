@@ -34,7 +34,7 @@ graph TD
         Orchestrator --> A2AClientAgentComponent;
         A2AClientAgentComponent --> ActionList[Action List];
         ActionList --> A2AClientAction["A2AClientAction (Dynamic)"];
-        ActionList --> ProvideInputAction[provide_required_input (Static)];
+        ActionList --> ProvideInputAction["provide_required_input (Static)"];
         A2AClientAgentComponent -- Uses --> CacheService[(Cache Service)];
         A2AClientAction -- Uses --> FileService[(File Service)];
         ProvideInputAction -- Uses --> FileService;
@@ -47,8 +47,8 @@ graph TD
 
     subgraph External A2A Agent Process
         A2AAgentServer[A2A Agent Server];
-        AgentCardEndpoint[/.well-known/agent.json];
-        A2AEndpoint[/a2a JSON-RPC];
+        AgentCardEndpoint["/.well-known/agent.json"];
+        A2AEndpoint["/a2a JSON-RPC"];
         A2AAgentServer -- Serves --> AgentCardEndpoint;
         A2AAgentServer -- Handles --> A2AEndpoint;
     end
