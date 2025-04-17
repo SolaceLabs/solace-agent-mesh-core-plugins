@@ -7,6 +7,7 @@ discovers its capabilities, and exposes them as SAM actions.
 import copy
 import threading
 import logging
+import subprocess # Added import
 from typing import Dict, Any, Optional
 
 from solace_agent_mesh.agents.base_agent_component import BaseAgentComponent, agent_info as base_agent_info
