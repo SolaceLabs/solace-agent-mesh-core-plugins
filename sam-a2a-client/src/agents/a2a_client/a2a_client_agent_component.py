@@ -12,6 +12,8 @@ import shlex
 import os
 import platform
 import time # Added import
+import requests # Added import
+from urllib.parse import urljoin # Added import
 from typing import Dict, Any, Optional
 
 from solace_agent_mesh.agents.base_agent_component import BaseAgentComponent, agent_info as base_agent_info
@@ -98,7 +100,7 @@ class A2AClientAgentComponent(BaseAgentComponent):
 
         # Configuration
         self.agent_name: str = self.get_config("agent_name")
-        self.a2a_server_url: str = self.get_config("a2a_server_url")
+        self.a2a_server_url: str = self.get_config("a2a_server_url").rstrip('/') # Ensure no trailing slash
         self.a2a_server_command: Optional[str] = self.get_config("a2a_server_command")
         self.a2a_server_startup_timeout: int = self.get_config("a2a_server_startup_timeout")
         self.a2a_server_restart_on_crash: bool = self.get_config("a2a_server_restart_on_crash")
@@ -209,6 +211,48 @@ class A2AClientAgentComponent(BaseAgentComponent):
                  break # Exit if stop signal is set during wait
 
         logger.info(f"Stopping monitor thread for A2A process '{self.agent_name}'.")
+
+    def _wait_for_agent_ready(self) -> bool:
+        """
+        Polls the A2A agent's well-known endpoint until it's ready or timeout occurs.
+
+        Returns:
+            True if the agent becomes ready within the timeout, False otherwise.
+        """
+        agent_card_url = urljoin(self.a2a_server_url, "/.well-known/agent.json")
+        timeout = self.a2a_server_startup_timeout
+        deadline = time.time() + timeout
+        check_interval = 1 # seconds
+        request_timeout = 5 # seconds for the HTTP request itself
+
+        logger.info(f"Waiting up to {timeout}s for A2A agent at {self.a2a_server_url} to become ready...")
+
+        while time.time() < deadline:
+            if self.stop_monitor.is_set():
+                logger.info("Stop signal received while waiting for agent readiness.")
+                return False
+            try:
+                response = requests.get(agent_card_url, timeout=request_timeout)
+                if response.status_code == 200:
+                    logger.info(f"A2A agent is ready at {self.a2a_server_url}.")
+                    return True
+                else:
+                    logger.debug(f"A2A agent not ready yet (Status: {response.status_code}). Retrying in {check_interval}s...")
+
+            except requests.exceptions.ConnectionError:
+                logger.debug(f"A2A agent connection refused at {self.a2a_server_url}. Retrying in {check_interval}s...")
+            except requests.exceptions.Timeout:
+                logger.warning(f"Request timed out connecting to {agent_card_url}. Retrying...")
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"Error checking A2A agent readiness: {e}. Retrying in {check_interval}s...")
+
+            # Use wait on the stop event for sleeping to allow faster shutdown
+            if self.stop_monitor.wait(timeout=check_interval):
+                logger.info("Stop signal received while waiting for agent readiness.")
+                return False
+
+        logger.error(f"A2A agent at {self.a2a_server_url} did not become ready within {timeout} seconds.")
+        return False
 
 
     def run(self):
