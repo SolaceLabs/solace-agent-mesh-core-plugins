@@ -5,6 +5,7 @@ import subprocess
 import time
 import os
 import platform
+import requests # Added import
 
 # Adjust the import path based on how tests are run (e.g., from root)
 from src.agents.a2a_client.a2a_client_agent_component import A2AClientAgentComponent, info as component_info
@@ -17,7 +18,7 @@ def create_test_component(config_overrides=None, mock_cache=True):
         "agent_name": "test_a2a_agent",
         "a2a_server_url": "http://localhost:10001",
         "a2a_server_command": None, # Default to no command
-        "a2a_server_startup_timeout": 10,
+        "a2a_server_startup_timeout": 10, # Use a shorter timeout for tests unless overridden
         "a2a_server_restart_on_crash": True,
         "a2a_bearer_token": None,
         "input_required_ttl": 300,
@@ -464,6 +465,109 @@ class TestA2AClientAgentComponent(unittest.TestCase):
         mock_terminate.assert_not_called()
         mock_join.assert_not_called()
         mock_super_stop.assert_called_once()
+
+    # --- Tests for Step 2.2.2 ---
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.requests.get')
+    @patch.object(threading.Event, 'wait', return_value=False) # Simulate wait timeout
+    def test_wait_for_agent_ready_success_immediate(self, mock_event_wait, mock_requests_get):
+        """Test _wait_for_agent_ready succeeds on the first try."""
+        component = create_test_component({"a2a_server_startup_timeout": 5})
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_requests_get.return_value = mock_response
+
+        result = component._wait_for_agent_ready()
+
+        self.assertTrue(result)
+        mock_requests_get.assert_called_once_with(
+            "http://localhost:10001/.well-known/agent.json",
+            timeout=5
+        )
+        mock_event_wait.assert_not_called() # Should succeed before waiting
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.requests.get')
+    @patch.object(threading.Event, 'wait', return_value=False)
+    def test_wait_for_agent_ready_success_retry(self, mock_event_wait, mock_requests_get):
+        """Test _wait_for_agent_ready succeeds after a few retries."""
+        component = create_test_component({"a2a_server_startup_timeout": 5})
+        mock_response_fail = MagicMock()
+        mock_response_fail.status_code = 503
+        mock_response_success = MagicMock()
+        mock_response_success.status_code = 200
+        mock_requests_get.side_effect = [mock_response_fail, mock_response_fail, mock_response_success]
+
+        result = component._wait_for_agent_ready()
+
+        self.assertTrue(result)
+        self.assertEqual(mock_requests_get.call_count, 3)
+        self.assertEqual(mock_event_wait.call_count, 2) # Wait called twice before success
+        mock_event_wait.assert_called_with(timeout=1) # Check last wait timeout
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.requests.get')
+    @patch.object(threading.Event, 'wait', return_value=False)
+    @patch('src.agents.a2a_client.a2a_client_agent_component.time.time') # Mock time
+    def test_wait_for_agent_ready_timeout(self, mock_time, mock_event_wait, mock_requests_get):
+        """Test _wait_for_agent_ready returns False on timeout."""
+        timeout = 3 # seconds for test
+        component = create_test_component({"a2a_server_startup_timeout": timeout})
+        mock_response_fail = MagicMock()
+        mock_response_fail.status_code = 503
+        mock_requests_get.return_value = mock_response_fail
+
+        # Simulate time passing to exceed timeout
+        start_time = time.time()
+        mock_time.side_effect = [start_time, start_time + 1.1, start_time + 2.2, start_time + 3.3]
+
+        result = component._wait_for_agent_ready()
+
+        self.assertFalse(result)
+        self.assertGreaterEqual(mock_requests_get.call_count, 3) # Should try multiple times
+        self.assertGreaterEqual(mock_event_wait.call_count, 2)
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.requests.get', side_effect=requests.exceptions.ConnectionError("Connection failed"))
+    @patch.object(threading.Event, 'wait', return_value=False)
+    @patch('src.agents.a2a_client.a2a_client_agent_component.time.time')
+    def test_wait_for_agent_ready_connection_error(self, mock_time, mock_event_wait, mock_requests_get):
+        """Test _wait_for_agent_ready handles ConnectionError and times out."""
+        timeout = 2
+        component = create_test_component({"a2a_server_startup_timeout": timeout})
+        start_time = time.time()
+        mock_time.side_effect = [start_time, start_time + 1.1, start_time + 2.2]
+
+        result = component._wait_for_agent_ready()
+
+        self.assertFalse(result)
+        self.assertGreaterEqual(mock_requests_get.call_count, 2)
+        self.assertGreaterEqual(mock_event_wait.call_count, 1)
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.requests.get', side_effect=requests.exceptions.Timeout("Request timed out"))
+    @patch.object(threading.Event, 'wait', return_value=False)
+    @patch('src.agents.a2a_client.a2a_client_agent_component.time.time')
+    def test_wait_for_agent_ready_request_timeout(self, mock_time, mock_event_wait, mock_requests_get):
+        """Test _wait_for_agent_ready handles requests.exceptions.Timeout and times out."""
+        timeout = 2
+        component = create_test_component({"a2a_server_startup_timeout": timeout})
+        start_time = time.time()
+        mock_time.side_effect = [start_time, start_time + 1.1, start_time + 2.2]
+
+        result = component._wait_for_agent_ready()
+
+        self.assertFalse(result)
+        self.assertGreaterEqual(mock_requests_get.call_count, 2)
+        self.assertGreaterEqual(mock_event_wait.call_count, 1)
+
+    @patch('src.agents.a2a_client.a2a_client_agent_component.requests.get')
+    @patch.object(threading.Event, 'wait', return_value=True) # Simulate stop event set
+    def test_wait_for_agent_ready_stop_event(self, mock_event_wait, mock_requests_get):
+        """Test _wait_for_agent_ready returns False immediately if stop event is set."""
+        component = create_test_component({"a2a_server_startup_timeout": 10})
+
+        result = component._wait_for_agent_ready()
+
+        self.assertFalse(result)
+        mock_requests_get.assert_not_called() # Should not even attempt request
+        mock_event_wait.assert_called_once_with(timeout=1) # Checks stop event during sleep
 
 
 if __name__ == '__main__':
