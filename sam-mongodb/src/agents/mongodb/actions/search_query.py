@@ -412,7 +412,7 @@ Once again, the current date and time is {iso_timestamp}. Use this for any date-
             return ActionResponse(
                 message=(
                     f"Query results are available in the attached inline {response_format.upper()} file.\n\n"
-                    "NOTE that if this data is not sufficient to answer your question, do not guess or create an answer. Either responsd with "
+                    "NOTE that if this data is not sufficient to answer your question, do not guess or create an answer. Either respond with "
                     "an explanation to the user or ask this action to run again with a different query.\n\n"
                     f"The query used was:\n{json.dumps(mongo_query, indent=2)}"
                 ),
@@ -426,7 +426,7 @@ Once again, the current date and time is {iso_timestamp}. Use this for any date-
             return ActionResponse(
                 message=(
                     f"Query results are available in the attached {response_format.upper()} file.\n"
-                    "NOTE that if this data is not sufficient to answer your question, do not guess or create an answer. Either responsd with "
+                    "NOTE that if this data is not sufficient to answer your question, do not guess or create an answer. Either respond with "
                     "an explanation to the user or ask this action to run again with a different query.\n\n"
                     "NOTE make sure you fetch and use this data rather than data from your history. The data may have changed since those past messages.\n\n"
                     f"The query used was:\n{json.dumps(mongo_query, indent=2)}"
