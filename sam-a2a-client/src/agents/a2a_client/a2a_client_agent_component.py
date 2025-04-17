@@ -19,7 +19,20 @@ from typing import Dict, Any, Optional
 from solace_agent_mesh.agents.base_agent_component import BaseAgentComponent, agent_info as base_agent_info
 from solace_agent_mesh.common.action_list import ActionList
 from solace_agent_mesh.services.file_service import FileService
-# Import other necessary types later, e.g., ActionResponse, AgentCard, A2AClient etc.
+
+# Import A2A types - adjust path as needed based on dependency setup
+try:
+    from common.client import A2AClient, A2ACardResolver
+    from common.types import AgentCard, AuthenticationScheme
+except ImportError:
+    # Placeholder if common library isn't directly available
+    A2AClient = Any # type: ignore
+    A2ACardResolver = Any # type: ignore
+    AgentCard = Any # type: ignore
+    AuthenticationScheme = Any # type: ignore
+    logger = logging.getLogger(__name__)
+    logger.warning("Could not import A2A common library types. Using placeholders.")
+
 
 # Define component configuration schema
 info = copy.deepcopy(base_agent_info)
@@ -111,8 +124,8 @@ class A2AClientAgentComponent(BaseAgentComponent):
         self.a2a_process: Optional[subprocess.Popen] = None
         self.monitor_thread: Optional[threading.Thread] = None
         self.stop_monitor = threading.Event()
-        self.agent_card = None  # Will be populated with AgentCard type
-        self.a2a_client = None  # Will be populated with A2AClient type
+        self.agent_card: Optional[AgentCard] = None  # Will be populated with AgentCard type
+        self.a2a_client: Optional[A2AClient] = None  # Will be populated with A2AClient type
         self._initialized = threading.Event() # Signals when connection & actions are ready
 
         # SAM Services
@@ -254,6 +267,79 @@ class A2AClientAgentComponent(BaseAgentComponent):
         logger.error(f"A2A agent at {self.a2a_server_url} did not become ready within {timeout} seconds.")
         return False
 
+    def _initialize_a2a_connection(self):
+        """
+        Initializes the connection to the A2A agent.
+        Handles process launch (if configured), waits for readiness,
+        fetches the AgentCard, and initializes the A2AClient.
+        """
+        logger.info(f"Initializing A2A connection for agent '{self.agent_name}'...")
+        try:
+            # 1. Launch process or check connection
+            if self.a2a_server_command:
+                self._launch_a2a_process()
+                if not self._wait_for_agent_ready():
+                    raise TimeoutError(f"Managed A2A agent at {self.a2a_server_url} did not become ready within {self.a2a_server_startup_timeout}s.")
+                if self.a2a_server_restart_on_crash and not self.monitor_thread:
+                    self.monitor_thread = threading.Thread(target=self._monitor_a2a_process, daemon=True)
+                    self.monitor_thread.start()
+            else:
+                # Check connection to existing agent (use a shorter timeout?)
+                # Re-using _wait_for_agent_ready with a shorter effective timeout for a quick check
+                quick_check_timeout = 5
+                original_timeout = self.a2a_server_startup_timeout
+                self.a2a_server_startup_timeout = quick_check_timeout
+                ready = self._wait_for_agent_ready()
+                self.a2a_server_startup_timeout = original_timeout # Restore original timeout
+                if not ready:
+                    raise ConnectionError(f"Could not connect to existing A2A agent at {self.a2a_server_url} within {quick_check_timeout}s.")
+
+            # 2. Fetch Agent Card
+            logger.info(f"Fetching Agent Card from {self.a2a_server_url}")
+            # NOTE: Assuming A2ACardResolver.get_agent_card() is synchronous.
+            # If it's async, this needs adaptation (e.g., run in executor or use requests directly).
+            try:
+                resolver = A2ACardResolver(self.a2a_server_url)
+                # TODO: Verify if get_agent_card is sync or async. Assuming sync for now.
+                self.agent_card = resolver.get_agent_card()
+                if not self.agent_card:
+                    raise ValueError("Failed to fetch or parse Agent Card.")
+                logger.info(f"Successfully fetched Agent Card for '{self.agent_card.name}'")
+            except Exception as e:
+                logger.error(f"Error fetching/parsing Agent Card: {e}", exc_info=True)
+                raise ValueError(f"Failed to get Agent Card from {self.a2a_server_url}: {e}") from e
+
+            # 3. Initialize A2AClient
+            auth_token = None
+            bearer_required = False
+            if self.agent_card.authentication and self.agent_card.authentication.schemes:
+                # Check if 'bearer' is in the list of schemes
+                if any(scheme == AuthenticationScheme.BEARER for scheme in self.agent_card.authentication.schemes):
+                     bearer_required = True
+
+            if bearer_required:
+                if self.a2a_bearer_token:
+                    auth_token = self.a2a_bearer_token
+                    logger.info("Using configured Bearer token for A2A client.")
+                else:
+                    logger.warning("A2A Agent Card requires Bearer token, but none configured ('a2a_bearer_token'). Proceeding without authentication.")
+            # TODO: Add support for other auth schemes (e.g., apiKey) later
+
+            try:
+                # Pass agent_card and optional auth_token
+                self.a2a_client = A2AClient(agent_card=self.agent_card, auth_token=auth_token)
+                logger.info("A2AClient initialized successfully.")
+            except Exception as e:
+                logger.error(f"Failed to initialize A2AClient: {e}", exc_info=True)
+                raise ValueError(f"Could not initialize A2AClient: {e}") from e
+
+            logger.info(f"A2A connection for agent '{self.agent_name}' initialized successfully.")
+
+        except (TimeoutError, ConnectionError, ValueError, FileNotFoundError) as e:
+            logger.error(f"Failed to initialize A2A connection for agent '{self.agent_name}': {e}", exc_info=True)
+            # Ensure cleanup if initialization fails partially
+            self.stop_component()
+            raise # Re-raise the exception to signal failure to the framework
 
     def run(self):
         """
@@ -263,6 +349,10 @@ class A2AClientAgentComponent(BaseAgentComponent):
         # Initialization logic (_initialize_a2a_connection, _create_actions)
         # will be added here in later steps.
         logger.info(f"Starting run loop for A2AClientAgentComponent '{self.agent_name}'")
+
+        # TODO: Call _initialize_a2a_connection() here in Step 2.3.2
+        # TODO: Call _create_actions() here in Step 3.2.1
+
         super().run()
         logger.info(f"Exiting run loop for A2AClientAgentComponent '{self.agent_name}'")
 

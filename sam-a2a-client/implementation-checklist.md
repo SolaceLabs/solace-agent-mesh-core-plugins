@@ -26,7 +26,7 @@ This checklist tracks the progress of implementing the `sam-a2a-client` plugin b
 - [x] **Step 2.1.4:** Testing for Step 2.1 (Integration/Unit tests for process management).
 - [x] **Step 2.2.1:** Implement `A2AClientAgentComponent._wait_for_agent_ready`.
 - [x] **Step 2.2.2:** Testing for Step 2.2 (Unit tests for readiness check).
-- [ ] **Step 2.3.1:** Implement `A2AClientAgentComponent._initialize_a2a_connection`.
+- [x] **Step 2.3.1:** Implement `A2AClientAgentComponent._initialize_a2a_connection`.
 - [ ] **Step 2.3.2:** Update `A2AClientAgentComponent.run` to call `_initialize_a2a_connection`.
 - [ ] **Step 2.3.3:** Testing for Step 2.3 (Integration/Unit tests for connection and client init).
 
