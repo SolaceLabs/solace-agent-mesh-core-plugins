@@ -5,10 +5,14 @@ This component manages the connection to an external A2A agent,
 discovers its capabilities, and exposes them as SAM actions.
 """
 import copy
-from typing import Dict, Any
+import threading
+import logging
+from typing import Dict, Any, Optional
 
 from solace_agent_mesh.agents.base_agent_component import BaseAgentComponent, agent_info as base_agent_info
-# Import other necessary types later, e.g., ActionList, ActionResponse, AgentCard, A2AClient etc.
+from solace_agent_mesh.common.action_list import ActionList
+from solace_agent_mesh.services.file_service import FileService
+# Import other necessary types later, e.g., ActionResponse, AgentCard, A2AClient etc.
 
 # Define component configuration schema
 info = copy.deepcopy(base_agent_info)
@@ -67,6 +71,7 @@ info.update(
     }
 )
 
+logger = logging.getLogger(__name__)
 
 class A2AClientAgentComponent(BaseAgentComponent):
     """
@@ -74,4 +79,53 @@ class A2AClientAgentComponent(BaseAgentComponent):
     """
     info = info # Assign class variable
 
-    pass
+    def __init__(self, module_info: Optional[Dict[str, Any]] = None, **kwargs):
+        """
+        Initializes the A2AClientAgentComponent.
+
+        Args:
+            module_info: Component module information.
+            **kwargs: Additional keyword arguments passed from the framework,
+                      including 'cache_service'.
+        """
+        super().__init__(module_info or info, **kwargs)
+        logger.info(f"Initializing A2AClientAgentComponent for agent '{self.get_config('agent_name', 'UNKNOWN')}'")
+
+        # Configuration
+        self.agent_name: str = self.get_config("agent_name")
+        self.a2a_server_url: str = self.get_config("a2a_server_url")
+        self.a2a_server_command: Optional[str] = self.get_config("a2a_server_command")
+        self.a2a_server_startup_timeout: int = self.get_config("a2a_server_startup_timeout")
+        self.a2a_server_restart_on_crash: bool = self.get_config("a2a_server_restart_on_crash")
+        self.a2a_bearer_token: Optional[str] = self.get_config("a2a_bearer_token")
+        self.input_required_ttl: int = self.get_config("input_required_ttl")
+
+        # State Variables
+        self.a2a_process: Optional[subprocess.Popen] = None # type: ignore # subprocess not yet imported
+        self.monitor_thread: Optional[threading.Thread] = None
+        self.stop_monitor = threading.Event()
+        self.agent_card = None  # Will be populated with AgentCard type
+        self.a2a_client = None  # Will be populated with A2AClient type
+        self._initialized = threading.Event() # Signals when connection & actions are ready
+
+        # SAM Services
+        self.file_service = FileService()
+        self.cache_service = kwargs.get("cache_service")
+        if self.cache_service is None:
+            logger.warning("Cache service not provided to A2AClientAgentComponent. INPUT_REQUIRED state will not be supported.")
+
+        # Action List (initially empty, populated after connection)
+        self.action_list = ActionList([], agent=self, config_fn=self.get_config)
+
+        # Update component info with specific instance name
+        # The description will be updated later after fetching the AgentCard
+        self.info["agent_name"] = self.agent_name
+        logger.info(f"A2AClientAgentComponent '{self.agent_name}' initialized.")
+
+    # Placeholder for run method (Step 1.2.4)
+    def run(self):
+        pass
+
+    # Placeholder for stop_component method (Step 1.2.5)
+    def stop_component(self):
+        pass
