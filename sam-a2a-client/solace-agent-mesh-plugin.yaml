@@ -1,0 +1,20 @@
+plugin_schema_version: 1
+
+plugin_info:
+  name: sam-a2a-client
+  version: "0.1.0" # This might be dynamically updated by build process
+  description: "Provides a SAM agent component to interact with A2A protocol agents."
+  author: SolaceLabs
+  license: Apache-2.0
+  # url: # Optional: Link to plugin repository or documentation
+
+agent_types:
+  - name: a2a_client
+    description: "A SAM agent that acts as a client to an external A2A agent."
+    config_template: "src/agents/a2a_client/a2a_client_agent_config_template.yaml" # Path relative to plugin root
+
+# gateway_types: # None defined in this plugin
+#   - name: ...
+
+# service_types: # None defined in this plugin
+#   - name: ...

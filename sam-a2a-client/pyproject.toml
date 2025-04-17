@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[project]
+name = "sam-a2a-client"
+dynamic = ["version"]
+authors = [
+  { name="SolaceLabs", email="solacelabs@solace.com" },
+]
+description = "Solace Agent Mesh plugin to interact with A2A (Agent-to-Agent) protocol compliant agents."
+readme = "README.md"
+requires-python = ">=3.10" # Align with SAM core if possible, A2A samples use 3.12
+dependencies = [
+  # Add solace-agent-mesh dependency once available or use relative path for dev
+  # "solace-agent-mesh",
+  "requests>=2.30.0", # For checking agent readiness
+  # Dependency for the google/A2A common library needs to be determined.
+  # Option 1: If published as a package:
+  # "a2a-common-python",
+  # Option 2: Git dependency (adjust branch/tag as needed)
+  # "a2a-common-python @ git+https://github.com/google/A2A.git#subdirectory=samples/python/common",
+  # Option 3: Local path (for development)
+  # "a2a-common-python @ {root:uri}/../google-a2a/samples/python/common"
+  # Placeholder - needs finalization:
+  "pydantic>=2.0" # Likely needed by A2A common types
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
+
+[tool.hatch.version]
+path = "src/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agents"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src" = "sam_a2a_client/src"
+"configs" = "sam_a2a_client/configs" # Add if config templates are created
+"solace-agent-mesh-plugin.yaml" = "sam_a2a_client/solace-agent-mesh-plugin.yaml"
+
+# Add linters and formatters if desired
+# [tool.black]
+# line-length = 88
+# [tool.mypy]
+# ...
