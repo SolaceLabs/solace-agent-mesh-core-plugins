@@ -4,7 +4,7 @@ This checklist tracks the progress of implementing the `sam-a2a-client` plugin b
 
 ## Phase 1: Project Setup and Core Component Structure
 
-- [ ] **Step 1.1.1:** Create the directory structure.
+- [x] **Step 1.1.1:** Create the directory structure.
 - [ ] **Step 1.1.2:** Create initial project files (`pyproject.toml`, `README.md`, `solace-agent-mesh-plugin.yaml`, `__init__.py` files).
 - [ ] **Step 1.1.3:** Testing for Step 1.1 (None).
 - [ ] **Step 1.2.1:** Define `A2AClientAgentComponent` skeleton class.
