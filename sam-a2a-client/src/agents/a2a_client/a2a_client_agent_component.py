@@ -346,14 +346,34 @@ class A2AClientAgentComponent(BaseAgentComponent):
         Main execution method called by the SAM framework.
         Initializes the A2A connection and then runs the base component loop.
         """
-        # Initialization logic (_initialize_a2a_connection, _create_actions)
-        # will be added here in later steps.
         logger.info(f"Starting run loop for A2AClientAgentComponent '{self.agent_name}'")
 
-        # TODO: Call _initialize_a2a_connection() here in Step 2.3.2
-        # TODO: Call _create_actions() here in Step 3.2.1
+        try:
+            # Initialize connection and discover actions
+            self._initialize_a2a_connection()
 
-        super().run()
+            # TODO: Call _create_actions() here in Step 3.2.1
+
+            # Signal that initialization is complete
+            self._initialized.set()
+            logger.info(f"A2AClientAgentComponent '{self.agent_name}' initialization complete.")
+
+            # Call the base class run method to handle message processing etc.
+            super().run()
+
+        except (TimeoutError, ConnectionError, ValueError, FileNotFoundError) as e:
+            # Initialization failed, log and stop the component thread
+            logger.critical(f"CRITICAL: Initialization failed for A2AClientAgentComponent '{self.agent_name}': {e}. Component will not run.", exc_info=True)
+            # Ensure cleanup is called even if run loop doesn't start
+            self.stop_component()
+            return # Stop the thread execution
+
+        except Exception as e:
+            # Catch any other unexpected errors during initialization or run
+            logger.critical(f"CRITICAL: Unexpected error in A2AClientAgentComponent '{self.agent_name}' run loop: {e}", exc_info=True)
+            self.stop_component()
+            return # Stop the thread execution
+
         logger.info(f"Exiting run loop for A2AClientAgentComponent '{self.agent_name}'")
 
 
