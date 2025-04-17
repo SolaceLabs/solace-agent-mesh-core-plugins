@@ -16,7 +16,7 @@ This checklist tracks the progress of implementing the `sam-a2a-client` plugin b
 - [x] **Step 1.3.1:** Define `A2AClientAction` skeleton class.
 - [x] **Step 1.3.2:** Implement `A2AClientAction.__init__`.
 - [x] **Step 1.3.3:** Implement placeholder `A2AClientAction.invoke`.
-- [ ] **Step 1.3.4:** Testing for Step 1.3 (Unit test for `__init__`).
+- [x] **Step 1.3.4:** Testing for Step 1.3 (Unit test for `__init__`).
 
 ## Phase 2: A2A Connection and Discovery
 
