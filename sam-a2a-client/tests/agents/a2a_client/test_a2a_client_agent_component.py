@@ -187,7 +187,8 @@ class TestA2AClientAgentComponent(unittest.TestCase):
     def test_launch_process_already_running(self, mock_log_warning, mock_popen):
         """Test _launch_a2a_process does nothing if process is already running."""
         component = create_test_component({"a2a_server_command": "run.sh"})
-        mock_existing_process = MagicMock(spec=subprocess.Popen)
+        # Remove spec=subprocess.Popen
+        mock_existing_process = MagicMock()
         mock_existing_process.poll.return_value = None # Indicates running
         mock_existing_process.pid = 1234
         component.a2a_process = mock_existing_process
@@ -234,7 +235,8 @@ class TestA2AClientAgentComponent(unittest.TestCase):
     def test_monitor_process_clean_exit(self, mock_event_wait, mock_sleep):
         """Test _monitor_a2a_process exits loop on clean process termination."""
         component = create_test_component()
-        mock_process = MagicMock(spec=subprocess.Popen)
+        # Remove spec=subprocess.Popen
+        mock_process = MagicMock()
         mock_process.pid = 1234
         # Simulate process running then exiting cleanly
         mock_process.poll.side_effect = [None, None, 0]
@@ -252,7 +254,8 @@ class TestA2AClientAgentComponent(unittest.TestCase):
     def test_monitor_process_crash_no_restart(self, mock_log_error, mock_event_wait, mock_sleep):
         """Test _monitor_a2a_process logs error and exits if restart is disabled."""
         component = create_test_component({"a2a_server_restart_on_crash": False})
-        mock_process = MagicMock(spec=subprocess.Popen)
+        # Remove spec=subprocess.Popen
+        mock_process = MagicMock()
         mock_process.pid = 1234
         # Simulate process running then crashing
         mock_process.poll.side_effect = [None, 1]
@@ -275,14 +278,16 @@ class TestA2AClientAgentComponent(unittest.TestCase):
     def test_monitor_process_crash_with_restart(self, mock_log_info, mock_log_error, mock_event_wait, mock_sleep):
         """Test _monitor_a2a_process attempts restart on crash if enabled."""
         component = create_test_component({"a2a_server_restart_on_crash": True})
-        mock_process1 = MagicMock(spec=subprocess.Popen)
+        # Remove spec=subprocess.Popen
+        mock_process1 = MagicMock()
         mock_process1.pid = 1111
         # Simulate process 1 running then crashing
         mock_process1.poll.side_effect = [None, 1]
         component.a2a_process = mock_process1
 
         # Mock _launch_a2a_process to simulate successful restart
-        mock_process2 = MagicMock(spec=subprocess.Popen)
+        # Remove spec=subprocess.Popen
+        mock_process2 = MagicMock()
         mock_process2.pid = 2222
         # Simulate process 2 running then monitor stopping
         mock_process2.poll.side_effect = [None, None]
@@ -310,7 +315,8 @@ class TestA2AClientAgentComponent(unittest.TestCase):
     def test_monitor_process_crash_restart_fail(self, mock_log_error, mock_event_wait, mock_sleep):
         """Test _monitor_a2a_process exits if restart attempt fails."""
         component = create_test_component({"a2a_server_restart_on_crash": True})
-        mock_process = MagicMock(spec=subprocess.Popen)
+        # Remove spec=subprocess.Popen
+        mock_process = MagicMock()
         mock_process.pid = 1234
         # Simulate process running then crashing
         mock_process.poll.side_effect = [None, 1]
@@ -336,7 +342,8 @@ class TestA2AClientAgentComponent(unittest.TestCase):
     def test_monitor_process_stop_event(self, mock_event_wait, mock_sleep):
         """Test _monitor_a2a_process exits promptly if stop event is set."""
         component = create_test_component()
-        mock_process = MagicMock(spec=subprocess.Popen)
+        # Remove spec=subprocess.Popen
+        mock_process = MagicMock()
         mock_process.pid = 1234
         mock_process.poll.return_value = None # Still running
         component.a2a_process = mock_process
@@ -366,7 +373,8 @@ class TestA2AClientAgentComponent(unittest.TestCase):
     def test_stop_component_terminates_process(self, mock_super_stop, mock_is_alive, mock_join, mock_kill, mock_wait, mock_terminate):
         """Test stop_component terminates the process and joins the thread."""
         component = create_test_component()
-        mock_process = MagicMock(spec=subprocess.Popen)
+        # Remove spec=subprocess.Popen
+        mock_process = MagicMock()
         mock_process.pid = 1234
         component.a2a_process = mock_process
         mock_thread = MagicMock(spec=threading.Thread)
@@ -392,7 +400,8 @@ class TestA2AClientAgentComponent(unittest.TestCase):
     def test_stop_component_kills_process(self, mock_super_stop, mock_is_alive, mock_join, mock_kill, mock_wait, mock_terminate):
         """Test stop_component kills the process if terminate times out."""
         component = create_test_component()
-        mock_process = MagicMock(spec=subprocess.Popen)
+        # Remove spec=subprocess.Popen
+        mock_process = MagicMock()
         mock_process.pid = 1234
         component.a2a_process = mock_process
         mock_thread = MagicMock(spec=threading.Thread)
