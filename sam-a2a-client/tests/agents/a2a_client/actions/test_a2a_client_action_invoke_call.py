@@ -262,11 +262,11 @@ class TestA2AClientActionInvokeCall(unittest.TestCase):
 
         self.mock_a2a_client.send_task.assert_called_once()
         self.assertIsNone(response.error_info)  # Not an error state
-        # Check message contains question
-        self.assertEqual(response.message, "What color?")
-        # Check data contains follow-up ID
-        self.assertIsNotNone(response.data)
-        self.assertEqual(response.data.get("follow_up_id"), mock_follow_up_id)
+        # Check message contains question AND follow-up instructions
+        expected_message = f"What color?\n\nPlease provide the required input using follow-up ID: `{mock_follow_up_id}`"
+        self.assertEqual(response.message, expected_message)
+        # Check data is NOT set (ActionResponse doesn't have data field)
+        self.assertFalse(hasattr(response, 'data') or response.to_dict().get('data') is not None)
         # Check cache was called
         self.mock_cache_service.set.assert_called_once_with(
             f"a2a_follow_up:{mock_follow_up_id}",

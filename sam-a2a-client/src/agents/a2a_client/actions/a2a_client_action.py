@@ -212,12 +212,6 @@ class A2AClientAction(Action):
         """
         logger.info(f"Invoking action '{self.name}' with params: {params}")
 
-        # <inst>
-        # Look over this function carefully - it is passing data into ActionResponse,
-        # which does not have a data field. Fix this and any other invoke methods that
-        # pass invalid keywords to ActionResponse.
-        # </inst>
-
         # 1. Get necessary services and IDs
         a2a_client = self.component.a2a_client
         cache_service = self.component.cache_service
@@ -444,6 +438,7 @@ class A2AClientAction(Action):
 
             elif task_state == A2A_TASK_STATE_INPUT_REQUIRED:
                 logger.warning(f"A2A Task '{a2a_taskId}' requires input.")
+                # Check for cache service *before* generating UUID
                 if not cache_service:
                     logger.error(
                         f"CacheService not available. Cannot handle INPUT_REQUIRED state for task '{a2a_taskId}'."
