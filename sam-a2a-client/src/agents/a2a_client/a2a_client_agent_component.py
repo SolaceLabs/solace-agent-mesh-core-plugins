@@ -13,6 +13,7 @@ import os
 import platform
 import time # Added import
 import requests # Added import
+import uuid # Added import
 from urllib.parse import urljoin # Added import
 from typing import Dict, Any, Optional, List
 
