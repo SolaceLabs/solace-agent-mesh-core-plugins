@@ -43,11 +43,14 @@ class TestA2AClientAgentComponentInit(unittest.TestCase):
             "input_required_ttl": 600,
             "registration_interval": 60 # Example inherited config
         }
+        # Create the mock cache here
         mock_cache = MagicMock()
-        kwargs = {"cache_service": mock_cache}
 
-        # Use the helper, passing overrides
-        component = create_test_component(config_overrides=mock_config, mock_cache=True)
+        # Use the helper, passing the created mock cache instance
+        component = create_test_component(
+            config_overrides=mock_config,
+            cache_service_instance=mock_cache # Pass the instance
+        )
 
         # Assert super().__init__ was called (mocked during create_test_component)
         # We can't directly assert on the mock created inside the helper's context easily,
@@ -72,6 +75,7 @@ class TestA2AClientAgentComponentInit(unittest.TestCase):
 
         # Assert services are stored/initialized
         # mock_file_service.assert_called_once() # Mocked during create_test_component
+        # Now assert that the component's cache service IS the one we created
         self.assertEqual(component.cache_service, mock_cache)
 
         # Assert ActionList is initialized
@@ -91,8 +95,11 @@ class TestA2AClientAgentComponentInit(unittest.TestCase):
             "agent_name": "test_a2a_agent_no_cache",
             "a2a_server_url": "http://localhost:10002",
         }
-        # Use helper, explicitly passing mock_cache=False
-        create_test_component(config_overrides=mock_config, mock_cache=False)
+        # Use helper, explicitly passing cache_service_instance=None
+        create_test_component(
+            config_overrides=mock_config,
+            cache_service_instance=None # Pass None explicitly
+        )
 
         # Assert warning was logged
         mock_log_warning.assert_called_once_with(

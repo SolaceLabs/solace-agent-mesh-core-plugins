@@ -20,8 +20,16 @@ except ImportError:
 
 
 # Helper to create a component instance with mocked dependencies
-def create_test_component(config_overrides=None, mock_cache=True):
-    """Creates a test instance of A2AClientAgentComponent with mocked dependencies."""
+def create_test_component(config_overrides=None, cache_service_instance=None):
+    """
+    Creates a test instance of A2AClientAgentComponent with mocked dependencies.
+
+    Args:
+        config_overrides (dict, optional): Dictionary to override default config values.
+        cache_service_instance (MagicMock | None, optional): An existing MagicMock for the cache service,
+                                                             or None to pass None to the component.
+                                                             Defaults to creating a new MagicMock if not provided.
+    """
     base_config = {
         "agent_name": "test_a2a_agent",
         "a2a_server_url": "http://localhost:10001",
@@ -35,7 +43,15 @@ def create_test_component(config_overrides=None, mock_cache=True):
     if config_overrides:
         base_config.update(config_overrides)
 
-    kwargs = {"cache_service": MagicMock() if mock_cache else None}
+    # Use the provided cache service instance, or create a default mock if None was explicitly passed
+    # but the intention was likely to have one (unless None was intended for testing no-cache scenario)
+    # For clarity, let's default to creating one if None is passed, unless the test explicitly needs None.
+    # A better approach might be to require the caller to always provide it.
+    # Let's refine: if cache_service_instance is not provided (is None), create a default mock.
+    # If the test needs to pass None explicitly, it can pass cache_service_instance=None.
+    effective_cache_service = cache_service_instance if cache_service_instance is not None else MagicMock()
+
+    kwargs = {"cache_service": effective_cache_service}
 
     # Mock self.get_config to return values from mock_config
     def mock_get_config(key, default=None):
@@ -50,4 +66,6 @@ def create_test_component(config_overrides=None, mock_cache=True):
 
     # Re-apply the mock get_config to the instance for use within test methods
     component.get_config = MagicMock(side_effect=mock_get_config)
+    # Store the cache service instance used, so tests can access it if needed
+    component._test_cache_service_instance = effective_cache_service
     return component
