@@ -314,7 +314,8 @@ class A2AClientAgentComponent(BaseAgentComponent):
             bearer_required = False
             if self.agent_card.authentication and self.agent_card.authentication.schemes:
                 # Check if 'bearer' is in the list of schemes
-                if any(scheme == AuthenticationScheme.BEARER for scheme in self.agent_card.authentication.schemes):
+                # Compare with string literal "bearer" for robustness against mock types
+                if any(str(scheme).lower() == "bearer" for scheme in self.agent_card.authentication.schemes):
                      bearer_required = True
 
             if bearer_required:
