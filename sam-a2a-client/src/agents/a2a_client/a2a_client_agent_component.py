@@ -24,8 +24,8 @@ from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo #
 from solace_agent_mesh.services.file_service import FileService
 
 # Import A2A types - Assumes common-a2a is installed or in PYTHONPATH
-from common.client import A2AClient, A2ACardResolver
-from common.types import (
+from common_a2a.client import A2AClient, A2ACardResolver
+from common_a2a.types import (
     AgentCard,
     AuthenticationScheme,
     AgentSkill,

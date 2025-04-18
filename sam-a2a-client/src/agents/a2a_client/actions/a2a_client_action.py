@@ -10,7 +10,7 @@ from solace_agent_mesh.common.action import Action
 from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo
 
 # Import A2A types - Assumes common-a2a is installed or in PYTHONPATH
-from common.types import (
+from common_a2a.types import (
     AgentSkill,
     TaskSendParams,
     Message as A2AMessage,
