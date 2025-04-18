@@ -417,9 +417,10 @@ class A2AClientAgentComponent(BaseAgentComponent):
                 # <inst>
                 #   Check this call - it isn't supposed to pass in an auth_token
                 # </inst>
-                self.a2a_client = A2AClient(
-                    agent_card=self.agent_card, auth_token=auth_token
-                )
+                # Corrected call: Remove auth_token from constructor
+                self.a2a_client = A2AClient(agent_card=self.agent_card)
+                # Note: The auth_token variable still exists and might be needed
+                # when *sending* requests, but the A2AClient library should handle that.
                 logger.info("A2AClient initialized successfully.")
             except Exception as e:
                 logger.error(f"Failed to initialize A2AClient: {e}", exc_info=True)
