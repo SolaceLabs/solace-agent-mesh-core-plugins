@@ -131,8 +131,8 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
 
         component._monitor_a2a_process()
 
-        # Poll should not be called because wait returns True immediately
-        mock_process.poll.assert_not_called()
+        # Poll *is* called once before wait() returns True and breaks the loop
+        mock_process.poll.assert_called_once()
         mock_event_wait.assert_called_once_with(timeout=5)
 
     @patch('logging.Logger.warning')
