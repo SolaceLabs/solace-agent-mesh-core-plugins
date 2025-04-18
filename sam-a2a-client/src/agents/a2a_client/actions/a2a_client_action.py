@@ -12,6 +12,10 @@ from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo
 # Import A2A types - adjust path as needed based on dependency setup
 try:
     from common.types import AgentSkill, TaskSendParams, Message as A2AMessage, TextPart, FilePart, FileContent, Task, TaskState, TaskStatus # Added TaskStatus
+    # Define string constants based on imported enum for robustness in comparisons
+    A2A_TASK_STATE_COMPLETED = TaskState.COMPLETED
+    A2A_TASK_STATE_FAILED = TaskState.FAILED
+    A2A_TASK_STATE_INPUT_REQUIRED = TaskState.INPUT_REQUIRED
 except ImportError as e:
     logging.getLogger(__name__).error(f"CRITICAL: Failed to import A2A common types: {e}. Using placeholders. Ensure 'a2a-samples/samples/python/common' is in PYTHONPATH or installed.", exc_info=True)
     # Placeholder if common library isn't directly available in this structure
@@ -24,6 +28,10 @@ except ImportError as e:
     Task = Any # type: ignore
     TaskState = Any # type: ignore
     TaskStatus = Any # type: ignore
+    # Define string constants directly if import fails
+    A2A_TASK_STATE_COMPLETED = "completed"
+    A2A_TASK_STATE_FAILED = "failed"
+    A2A_TASK_STATE_INPUT_REQUIRED = "input-required"
 
 
 # Use TYPE_CHECKING to avoid circular import issues at runtime
@@ -173,18 +181,19 @@ class A2AClientAction(Action):
             # Assuming send_task is synchronous and returns a Task object
             # This might fail if Task is Any
             response_task: Task = self.component.a2a_client.send_task(task_params.model_dump())
-            logger.info(f"Received response for task '{a2a_taskId}'. State: {response_task.status.state}")
+            task_state = response_task.status.state
+            logger.info(f"Received response for task '{a2a_taskId}'. State: {task_state}")
 
             # --- Basic State Handling (Implemented in Step 3.4.1) ---
-            # This might fail if TaskState is Any
-            if response_task.status.state == TaskState.COMPLETED:
+            # Compare against string literals or constants derived from enum/strings
+            if task_state == A2A_TASK_STATE_COMPLETED:
                 # Response mapping will be implemented in Step 4.1
                 logger.info(f"Task '{a2a_taskId}' completed successfully.")
                 # Return success, but message processing is TBD
                 return ActionResponse(success=True, message="A2A Task Completed (Processing TBD)")
 
             # Handle FAILED state (basic) - Refined in Step 4.2
-            elif response_task.status.state == TaskState.FAILED:
+            elif task_state == A2A_TASK_STATE_FAILED:
                 logger.error(f"A2A Task '{a2a_taskId}' failed.")
                 error_message = "A2A Task Failed"
                 # Try to get more details from the response message if possible
@@ -201,7 +210,7 @@ class A2AClientAction(Action):
                 return ActionResponse(success=False, message=error_message, error_info=ErrorInfo("A2A Task Failed"))
 
             # Handle INPUT_REQUIRED state (basic) - Refined in Step 4.3
-            elif response_task.status.state == TaskState.INPUT_REQUIRED:
+            elif task_state == A2A_TASK_STATE_INPUT_REQUIRED:
                 logger.warning(f"A2A Task '{a2a_taskId}' requires input.")
                 # Return pending/error, but state management is TBD
                 # Extract the agent's question if possible
@@ -218,8 +227,8 @@ class A2AClientAction(Action):
 
             # Handle other unexpected states
             else:
-                logger.error(f"A2A Task '{a2a_taskId}' returned unexpected state: {response_task.status.state}")
-                return ActionResponse(success=False, message=f"A2A Task ended with unexpected state: {response_task.status.state}", error_info=ErrorInfo("Unexpected A2A State"))
+                logger.error(f"A2A Task '{a2a_taskId}' returned unexpected state: {task_state}")
+                return ActionResponse(success=False, message=f"A2A Task ended with unexpected state: {task_state}", error_info=ErrorInfo("Unexpected A2A State"))
 
         except Exception as e:
             # Catch communication errors or errors during send_task itself
