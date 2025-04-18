@@ -9,7 +9,7 @@ NOTE: While the search action implies that it will not modify the database, it i
 - Natural language to SQL query conversion
 - Support for multiple database types (MySQL, PostgreSQL, SQLite)
 - Automatic schema detection with detailed metadata
-- Multiple response formats (YAML, JSON, CSV, Markdown)
+- Multiple response formats (YAML, JSON, CSV)
 - Configurable query timeout
 - Connection pooling and automatic reconnection
 - CSV file import for database initialization
