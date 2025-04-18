@@ -212,5 +212,3 @@ class A2AClientAction(Action):
             # Catch communication errors or errors during send_task itself
             logger.error(f"Failed to communicate with A2A agent for action '{self.name}': {e}", exc_info=True)
             return ActionResponse(success=False, message="Failed to communicate with A2A agent", error_info=ErrorInfo(f"A2A Communication Error: {e}"))
-```
-sam-a2a-client/tests/agents/a2a_client/actions/test_a2a_client_action_invoke_call.py
