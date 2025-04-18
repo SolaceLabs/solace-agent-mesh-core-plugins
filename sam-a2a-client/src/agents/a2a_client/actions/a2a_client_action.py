@@ -154,7 +154,6 @@ class A2AClientAction(Action):
                 f"Failed to create TextPart for action '{self.name}': {e}",
                 exc_info=True,
             )
-            # Removed success=False
             return ActionResponse(
                 message=f"Internal Error: Could not process prompt text.",
                 error_info=ErrorInfo(f"TextPart Error: {e}"),
@@ -232,7 +231,6 @@ class A2AClientAction(Action):
                 f"Failed to construct TaskSendParams for action '{self.name}': {e}",
                 exc_info=True,
             )
-            # Removed success=False
             return ActionResponse(
                 message="Internal Error: Failed to prepare A2A request.",
                 error_info=ErrorInfo(f"TaskSendParams Error: {e}"),
@@ -288,9 +286,17 @@ class A2AClientAction(Action):
             # Handle INPUT_REQUIRED state (basic) - Refined in Step 4.3
             elif task_state == A2A_TASK_STATE_INPUT_REQUIRED:
                 logger.warning(f"A2A Task '{a2a_taskId}' requires input.")
-                # Return pending/error, but state management is TBD
+                if not cache_service:
+                    logger.error(
+                        f"CacheService not available. Cannot handle INPUT_REQUIRED state for task '{a2a_taskId}'."
+                    )
+                    return ActionResponse(
+                        message="Internal Error: Cannot handle required input state without CacheService.",
+                        error_info=ErrorInfo("Cache Service Missing"),
+                    )
+
                 # Extract the agent's question if possible
-                agent_question = "A2A Task requires further input (Handling TBD)"
+                agent_question = "A2A Task requires further input."
                 if (
                     response_task.status
                     and response_task.status.message
@@ -303,7 +309,33 @@ class A2AClientAction(Action):
                             agent_question = question_details
                     except Exception:
                         pass  # Ignore if parts structure is unexpected
-                return ActionResponse(message=agent_question, status="INPUT_REQUIRED")
+
+                # Generate follow-up ID and store mapping
+                sam_follow_up_id = str(uuid.uuid4())
+                a2a_original_taskId = response_task.id # Get the original task ID
+                cache_key = f"a2a_follow_up:{sam_follow_up_id}"
+                try:
+                    cache_service.set(
+                        cache_key,
+                        a2a_original_taskId,
+                        ttl=self.component.input_required_ttl,
+                    )
+                    logger.info(
+                        f"Stored INPUT_REQUIRED state for task '{a2a_original_taskId}' with follow-up ID '{sam_follow_up_id}'."
+                    )
+                    # Return response indicating input is needed, include follow-up ID
+                    return ActionResponse(
+                        message=f"{agent_question}\n\n[Follow-up ID: {sam_follow_up_id}]"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to store INPUT_REQUIRED state in cache for task '{a2a_original_taskId}': {e}",
+                        exc_info=True,
+                    )
+                    return ActionResponse(
+                        message="Internal Error: Failed to store required input state.",
+                        error_info=ErrorInfo(f"Cache Error: {e}"),
+                    )
 
             # Handle other unexpected states
             else:

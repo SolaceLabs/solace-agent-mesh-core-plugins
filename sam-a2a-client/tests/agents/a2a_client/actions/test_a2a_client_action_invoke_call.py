@@ -40,6 +40,8 @@ class MockA2AClientAgentComponent:
         self.cache_service = cache_service or MagicMock()
         self.file_service = file_service or MockFileService()
         self.a2a_client = a2a_client or MagicMock()  # Provide a mock client
+        # Add input_required_ttl needed by INPUT_REQUIRED test
+        self.input_required_ttl = 300
 
 
 class TestA2AClientActionInvokeCall(unittest.TestCase):
@@ -51,10 +53,13 @@ class TestA2AClientActionInvokeCall(unittest.TestCase):
         self.mock_skill.name = "Test Skill Name"
         self.mock_skill.description = "This is a test skill description."
 
-        # Mock the parent component with a mock A2AClient
+        # Mock the parent component with a mock A2AClient and CacheService
         self.mock_a2a_client = MagicMock()
+        self.mock_cache_service = MagicMock()
         self.mock_component = MockA2AClientAgentComponent(
-            agent_name="test_sam_agent", a2a_client=self.mock_a2a_client
+            agent_name="test_sam_agent",
+            a2a_client=self.mock_a2a_client,
+            cache_service=self.mock_cache_service,
         )
 
         # Mock inferred parameters
@@ -96,7 +101,7 @@ class TestA2AClientActionInvokeCall(unittest.TestCase):
         mock_response_task = MagicMock(spec=Task)
         mock_response_task.status = MagicMock(spec=TaskStatus)
         # Use string literal for state
-        mock_response_task.status.state = "completed"  # FIX: Use string literal
+        mock_response_task.status.state = "completed"
         self.mock_a2a_client.send_task.return_value = mock_response_task
 
         # Mock A2A type constructors used in invoke
@@ -116,9 +121,8 @@ class TestA2AClientActionInvokeCall(unittest.TestCase):
         response = self.action.invoke(params, meta)
 
         self.mock_a2a_client.send_task.assert_called_once()
-        self.assertTrue(response.success)
+        self.assertIsNone(response.error_info) # Check for absence of error
         self.assertEqual(response.message, "A2A Task Completed (Processing TBD)")
-        self.assertIsNone(response.error_info)
 
     @patch("src.agents.a2a_client.actions.a2a_client_action.TextPart")
     @patch("src.agents.a2a_client.actions.a2a_client_action.TaskSendParams")
@@ -134,7 +138,7 @@ class TestA2AClientActionInvokeCall(unittest.TestCase):
         mock_response_task = MagicMock(spec=Task)
         mock_response_task.status = MagicMock(spec=TaskStatus)
         # Use string literal for state
-        mock_response_task.status.state = "failed"  # FIX: Use string literal
+        mock_response_task.status.state = "failed"
         mock_response_task.status.message = MagicMock(spec=A2AMessage)
         mock_response_task.status.message.parts = [mock_error_text_part]
         self.mock_a2a_client.send_task.return_value = mock_response_task
@@ -156,9 +160,8 @@ class TestA2AClientActionInvokeCall(unittest.TestCase):
         response = self.action.invoke(params, meta)
 
         self.mock_a2a_client.send_task.assert_called_once()
-        self.assertFalse(response.success)
+        self.assertIsNotNone(response.error_info) # Check for presence of error
         self.assertEqual(response.message, "A2A Task Failed: Something went wrong")
-        self.assertIsNotNone(response.error_info)
         self.assertEqual(response.error_info.error_message, "A2A Task Failed")
 
     @patch("src.agents.a2a_client.actions.a2a_client_action.TextPart")
@@ -175,7 +178,7 @@ class TestA2AClientActionInvokeCall(unittest.TestCase):
         mock_response_task = MagicMock(spec=Task)
         mock_response_task.status = MagicMock(spec=TaskStatus)
         # Use string literal for state
-        mock_response_task.status.state = "failed"  # FIX: Use string literal
+        mock_response_task.status.state = "failed"
         mock_response_task.status.message = None  # No message
         self.mock_a2a_client.send_task.return_value = mock_response_task
 
@@ -196,25 +199,29 @@ class TestA2AClientActionInvokeCall(unittest.TestCase):
         response = self.action.invoke(params, meta)
 
         self.mock_a2a_client.send_task.assert_called_once()
-        self.assertFalse(response.success)
+        self.assertIsNotNone(response.error_info) # Check for presence of error
         self.assertEqual(response.message, "A2A Task Failed")  # No details appended
-        self.assertIsNotNone(response.error_info)
         self.assertEqual(response.error_info.error_message, "A2A Task Failed")
 
     @patch("src.agents.a2a_client.actions.a2a_client_action.TextPart")
     @patch("src.agents.a2a_client.actions.a2a_client_action.TaskSendParams")
     @patch("src.agents.a2a_client.actions.a2a_client_action.A2AMessage")
+    @patch("src.agents.a2a_client.actions.a2a_client_action.uuid.uuid4") # Mock uuid generation
     def test_invoke_call_input_required(
-        self, MockA2AMessage, MockTaskSendParams, MockTextPart
+        self, mock_uuid, MockA2AMessage, MockTaskSendParams, MockTextPart
     ):
         """Test invoke handles INPUT_REQUIRED state from send_task."""
         params = {"prompt": "Need more info"}
         meta = {"session_id": "session_input"}
+        mock_follow_up_id = "mock-follow-up-uuid"
+        mock_uuid.return_value = mock_follow_up_id
+        mock_a2a_task_id = "original-a2a-task-id"
 
         # Mock the Task response with a question part
         mock_question_part = MagicMock(spec=TextPart)
         mock_question_part.text = "What color?"
         mock_response_task = MagicMock(spec=Task)
+        mock_response_task.id = mock_a2a_task_id # Set the original task ID
         mock_response_task.status = MagicMock(spec=TaskStatus)
         # Use string literal for state
         mock_response_task.status.state = "input-required"
@@ -239,10 +246,17 @@ class TestA2AClientActionInvokeCall(unittest.TestCase):
         response = self.action.invoke(params, meta)
 
         self.mock_a2a_client.send_task.assert_called_once()
-        self.assertFalse(response.success)
-        self.assertEqual(response.message, "What color?")  # Agent's question
-        self.assertEqual(response.status, "INPUT_REQUIRED")
-        self.assertIsNone(response.error_info)  # Not an error, just pending
+        self.assertIsNone(response.error_info) # Not an error state
+        # Check message contains question and follow-up ID
+        self.assertIn("What color?", response.message)
+        self.assertIn(f"[Follow-up ID: {mock_follow_up_id}]", response.message)
+        # Check cache was called
+        self.mock_cache_service.set.assert_called_once_with(
+            f"a2a_follow_up:{mock_follow_up_id}",
+            mock_a2a_task_id,
+            ttl=self.mock_component.input_required_ttl
+        )
+
 
     @patch("src.agents.a2a_client.actions.a2a_client_action.TextPart")
     @patch("src.agents.a2a_client.actions.a2a_client_action.TaskSendParams")
@@ -278,11 +292,11 @@ class TestA2AClientActionInvokeCall(unittest.TestCase):
         response = self.action.invoke(params, meta)
 
         self.mock_a2a_client.send_task.assert_called_once()
+        self.assertIsNotNone(response.error_info) # Check for presence of error
         self.assertEqual(
             response.message,
             f"A2A Task ended with unexpected state: {mock_response_task.status.state}",
         )
-        self.assertIsNotNone(response.error_info)
         self.assertEqual(response.error_info.error_message, "Unexpected A2A State")
 
     @patch("src.agents.a2a_client.actions.a2a_client_action.TextPart")
@@ -316,9 +330,8 @@ class TestA2AClientActionInvokeCall(unittest.TestCase):
         response = self.action.invoke(params, meta)
 
         self.mock_a2a_client.send_task.assert_called_once()
-        self.assertFalse(response.success)
+        self.assertIsNotNone(response.error_info) # Check for presence of error
         self.assertEqual(response.message, "Failed to communicate with A2A agent")
-        self.assertIsNotNone(response.error_info)
         self.assertIn("A2A Communication Error", response.error_info.error_message)
         self.assertIn(error_message, response.error_info.error_message)
 
