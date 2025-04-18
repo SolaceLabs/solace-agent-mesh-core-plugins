@@ -65,9 +65,13 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
             mock_a2a_action_instance2,
         ]
 
+        # Configure mock static action instance
         mock_static_action_instance = MagicMock(spec=Action)
         mock_static_action_instance.name = "provide_required_input"
+        # *** FIX: Explicitly add set_handler method to the mock instance ***
+        mock_static_action_instance.set_handler = MagicMock()
         mock_base_action_cls.return_value = mock_static_action_instance
+
 
         # --- Call the relevant part of the run method logic ---
         # Directly call the factory functions as they would be called in `run`
@@ -75,6 +79,7 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
             component.agent_card, component
         )
         static_action = a2a_action_factory.create_provide_input_action(component)
+        # Now this call should work
         static_action.set_handler(
             lambda params, meta: component.handle_provide_required_input(
                 component, params, meta
@@ -185,9 +190,11 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
         # Mock the handler method on the component instance
         component.handle_provide_required_input = MagicMock()
 
-        # Configure mock static action instance to have a name
+        # Configure mock static action instance
         mock_static_action_instance = MagicMock(spec=Action)
         mock_static_action_instance.name = "provide_required_input"
+        # *** FIX: Explicitly add set_handler method to the mock instance ***
+        mock_static_action_instance.set_handler = MagicMock()
         mock_base_action_cls.return_value = mock_static_action_instance
 
         # --- Call the relevant part of the run method logic ---
@@ -195,6 +202,7 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
             component.agent_card, component
         )
         static_action = a2a_action_factory.create_provide_input_action(component)
+        # Now this call should work
         static_action.set_handler(
             lambda params, meta: component.handle_provide_required_input(
                 component, params, meta
@@ -256,9 +264,11 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
         # Mock the handler method on the component instance
         component.handle_provide_required_input = MagicMock()
 
-        # Configure mock static action instance to have a name
+        # Configure mock static action instance
         mock_static_action_instance = MagicMock(spec=Action)
         mock_static_action_instance.name = "provide_required_input"
+        # *** FIX: Explicitly add set_handler method to the mock instance ***
+        mock_static_action_instance.set_handler = MagicMock()
         mock_base_action_cls.return_value = mock_static_action_instance
 
         # --- Call the relevant part of the run method logic ---
@@ -266,6 +276,7 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
             component.agent_card, component # Pass None here
         )
         static_action = a2a_action_factory.create_provide_input_action(component)
+        # Now this call should work
         static_action.set_handler(
             lambda params, meta: component.handle_provide_required_input(
                 component, params, meta
