@@ -231,8 +231,10 @@ class TestA2AClientActionInvokeCall(unittest.TestCase):
         """Test invoke handles INPUT_REQUIRED state from send_task."""
         params = {"prompt": "Need more info"}
         meta = {"session_id": "session_input"}
+        mock_initial_task_id = "initial-task-uuid"
         mock_follow_up_id = "mock-follow-up-uuid"
-        mock_uuid.return_value = mock_follow_up_id
+        # Simulate two calls: one for initial task, one for follow-up
+        mock_uuid.side_effect = [mock_initial_task_id, mock_follow_up_id]
         mock_a2a_task_id = "original-a2a-task-id"
 
         # Mock the Task response with a question part
@@ -273,6 +275,9 @@ class TestA2AClientActionInvokeCall(unittest.TestCase):
             mock_a2a_task_id,
             ttl=self.mock_component.input_required_ttl,
         )
+        # Check uuid was called twice (initial task + follow-up)
+        self.assertEqual(mock_uuid.call_count, 2)
+
 
     @patch("src.agents.a2a_client.actions.a2a_client_action.TextPart")
     @patch("src.agents.a2a_client.actions.a2a_client_action.TaskSendParams")
@@ -291,6 +296,8 @@ class TestA2AClientActionInvokeCall(unittest.TestCase):
         self.mock_component.cache_service = None  # Simulate missing cache
         params = {"prompt": "Need more info, no cache"}
         meta = {"session_id": "session_input_no_cache"}
+        mock_initial_task_id = "initial-task-uuid-no-cache"
+        mock_uuid.return_value = mock_initial_task_id # Only the first call happens
 
         # Mock the Task response
         mock_question_part = self._create_mock_text_part("What color?")
@@ -324,7 +331,8 @@ class TestA2AClientActionInvokeCall(unittest.TestCase):
         self.assertEqual(response.error_info.error_message, "Cache Service Missing")
         mock_log_error.assert_called_once()  # Check error was logged
         self.assertIn("CacheService not available", mock_log_error.call_args[0][0])
-        mock_uuid.assert_not_called()  # Should fail before generating follow-up ID
+        # Assert uuid was called ONLY ONCE for the initial task ID
+        mock_uuid.assert_called_once()
 
     @patch("src.agents.a2a_client.actions.a2a_client_action.TextPart")
     @patch("src.agents.a2a_client.actions.a2a_client_action.TaskSendParams")
