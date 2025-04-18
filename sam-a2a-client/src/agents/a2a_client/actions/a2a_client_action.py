@@ -11,7 +11,7 @@ from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo
 
 # Import A2A types - adjust path as needed based on dependency setup
 try:
-    from common.types import AgentSkill, TaskSendParams, Message as A2AMessage, TextPart, FilePart, FileContent, Task, TaskState
+    from common.types import AgentSkill, TaskSendParams, Message as A2AMessage, TextPart, FilePart, FileContent, Task, TaskState, TaskStatus # Added TaskStatus
 except ImportError as e:
     logging.getLogger(__name__).error(f"CRITICAL: Failed to import A2A common types: {e}. Using placeholders. Ensure 'a2a-samples/samples/python/common' is in PYTHONPATH or installed.", exc_info=True)
     # Placeholder if common library isn't directly available in this structure
@@ -23,6 +23,7 @@ except ImportError as e:
     FileContent = Any # type: ignore
     Task = Any # type: ignore
     TaskState = Any # type: ignore
+    TaskStatus = Any # type: ignore
 
 
 # Use TYPE_CHECKING to avoid circular import issues at runtime
@@ -174,7 +175,7 @@ class A2AClientAction(Action):
             response_task: Task = self.component.a2a_client.send_task(task_params.model_dump())
             logger.info(f"Received response for task '{a2a_taskId}'. State: {response_task.status.state}")
 
-            # --- Basic State Handling ---
+            # --- Basic State Handling (Implemented in Step 3.4.1) ---
             # This might fail if TaskState is Any
             if response_task.status.state == TaskState.COMPLETED:
                 # Response mapping will be implemented in Step 4.1
@@ -187,9 +188,11 @@ class A2AClientAction(Action):
                 logger.error(f"A2A Task '{a2a_taskId}' failed.")
                 error_message = "A2A Task Failed"
                 # Try to get more details from the response message if possible
+                # This might fail if TaskStatus or A2AMessage are Any
                 if response_task.status and response_task.status.message and response_task.status.message.parts:
                     try:
                         # Assuming the first part is text containing the error
+                        # This might fail if TextPart is Any
                         error_details = response_task.status.message.parts[0].text
                         if error_details:
                             error_message += f": {error_details}"
@@ -201,7 +204,17 @@ class A2AClientAction(Action):
             elif response_task.status.state == TaskState.INPUT_REQUIRED:
                 logger.warning(f"A2A Task '{a2a_taskId}' requires input.")
                 # Return pending/error, but state management is TBD
-                return ActionResponse(success=False, message="A2A Task requires further input (Handling TBD)", status="INPUT_REQUIRED")
+                # Extract the agent's question if possible
+                agent_question = "A2A Task requires further input (Handling TBD)"
+                if response_task.status and response_task.status.message and response_task.status.message.parts:
+                    try:
+                        # Assuming the first part is text containing the question
+                        question_details = response_task.status.message.parts[0].text
+                        if question_details:
+                            agent_question = question_details
+                    except Exception:
+                        pass # Ignore if parts structure is unexpected
+                return ActionResponse(success=False, message=agent_question, status="INPUT_REQUIRED")
 
             # Handle other unexpected states
             else:
