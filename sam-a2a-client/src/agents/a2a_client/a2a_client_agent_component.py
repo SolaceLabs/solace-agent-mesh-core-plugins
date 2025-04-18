@@ -170,7 +170,11 @@ class A2AClientAgentComponent(BaseAgentComponent):
             static_action.set_handler(
                 lambda params, meta: handle_provide_required_input(self, params, meta)
             )
-            self.action_list.add_actions(dynamic_actions + [static_action])
+            # Add actions individually
+            for action in dynamic_actions:
+                self.action_list.add_action(action)
+            self.action_list.add_action(static_action)
+
 
             # Update component description
             original_description = self.info.get(
@@ -233,3 +237,34 @@ class A2AClientAgentComponent(BaseAgentComponent):
 
         super().stop_component()
         logger.info(f"A2AClientAgentComponent '{self.agent_name}' stopped.")
+
+    # --- Helper Methods ---
+    # (Keep _infer_params_from_skill here or move to factory if preferred)
+    def _infer_params_from_skill(self, skill: Any) -> list[dict[str, Any]]:
+        """
+        Infers SAM action parameters from an A2A skill.
+        Simple initial implementation: always returns a generic 'prompt' and 'files'.
+        """
+        logger.debug(
+            f"Inferring parameters for skill '{getattr(skill, 'id', 'UNKNOWN')}'. Using generic 'prompt' and 'files'."
+        )
+        return [
+            {
+                "name": "prompt",
+                "desc": "The user request or prompt for the agent.",
+                "type": "string",
+                "required": True,
+            },
+            {
+                "name": "files",
+                "desc": "Optional list of file URLs to include with the prompt.",
+                "type": "list",
+                "required": False,
+            },
+        ]
+
+    def _handle_provide_required_input(
+        self, params: Dict[str, Any], meta: Dict[str, Any]
+    ) -> Any: # Return type should be ActionResponse
+        """Wrapper to call the input handler function."""
+        return handle_provide_required_input(self, params, meta)

@@ -85,7 +85,11 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
                 component, params, meta
             )
         ) # Simulate setting the handler
-        component.action_list.add_actions(dynamic_actions + [static_action])
+        # Use add_action in a loop
+        for action in dynamic_actions:
+            component.action_list.add_action(action)
+        component.action_list.add_action(static_action)
+
         # Simulate description update
         original_description = component.info.get(
             "description", "Component to interact with an external A2A agent."
@@ -208,7 +212,11 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
                 component, params, meta
             )
         )
-        component.action_list.add_actions(dynamic_actions + [static_action])
+        # Use add_action in a loop (dynamic_actions is empty here)
+        for action in dynamic_actions:
+            component.action_list.add_action(action)
+        component.action_list.add_action(static_action)
+
         # Simulate description update
         original_description = component.info.get(
             "description", "Component to interact with an external A2A agent."
@@ -282,7 +290,11 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
                 component, params, meta
             )
         )
-        component.action_list.add_actions(dynamic_actions + [static_action])
+        # Use add_action in a loop (dynamic_actions is empty here)
+        for action in dynamic_actions:
+            component.action_list.add_action(action)
+        component.action_list.add_action(static_action)
+
         # Simulate description update
         original_description = component.info.get(
             "description", "Component to interact with an external A2A agent."
