@@ -8,10 +8,12 @@ class TestA2AClientAgentComponentParamInference(unittest.TestCase):
 
     def test_infer_params_from_skill_simple(self):
         """Test _infer_params_from_skill returns the generic 'prompt' parameter."""
-        component = create_test_component()
+        # Provide a mock cache service to prevent init warning
+        mock_cache = MagicMock()
+        component = create_test_component(cache_service_instance=mock_cache)
 
-        # Mock A2A AgentSkill
-        mock_skill = MagicMock(spec=AgentSkill)
+        # Mock A2A AgentSkill - Remove spec=AgentSkill as AgentSkill is already a mock here
+        mock_skill = MagicMock()
         mock_skill.id = "test_skill"
         mock_skill.name = "Test Skill"
         mock_skill.description = "Does something."
