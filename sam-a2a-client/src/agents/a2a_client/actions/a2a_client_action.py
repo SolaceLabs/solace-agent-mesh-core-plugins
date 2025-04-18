@@ -4,6 +4,7 @@ Dynamically created SAM Action to represent and invoke a specific A2A skill.
 
 import logging
 import uuid
+import json  # Import json for formatting data
 from typing import Dict, Any, List, TYPE_CHECKING
 
 from solace_agent_mesh.common.action import Action
@@ -399,11 +400,21 @@ class A2AClientAction(Action):
                             final_message += art_text
                         final_files.extend(art_files)
 
+                # Append final_data to message if it exists
+                response_msg = final_message.strip() or "Task completed."
+                if final_data:
+                    try:
+                        data_str = json.dumps(final_data, indent=2)
+                        response_msg += f"\n\nData:\n{data_str}"
+                    except Exception as json_e:
+                        logger.warning(f"Could not serialize final_data to JSON: {json_e}")
+                        response_msg += "\n\nData: [Could not serialize]"
+
+
                 return ActionResponse(
-                    message=final_message.strip()
-                    or "Task completed.",  # Provide default message if empty
+                    message=response_msg,
                     files=final_files or None,  # Return None if list is empty
-                    data=final_data or None,  # Return None if dict is empty
+                    # No data parameter
                 )
 
             elif task_state == A2A_TASK_STATE_FAILED:
@@ -471,11 +482,11 @@ class A2AClientAction(Action):
                     logger.info(
                         f"Stored INPUT_REQUIRED state for task '{a2a_original_taskId}' with follow-up ID '{sam_follow_up_id}'."
                     )
-                    # Return response indicating input is needed, include follow-up ID
-                    # Use data field for structured info, message for user prompt
+                    # Return response indicating input is needed, include follow-up ID in message
+                    response_msg = f"{agent_question}\n\nPlease provide the required input using follow-up ID: `{sam_follow_up_id}`"
                     return ActionResponse(
-                        message=agent_question,
-                        data={"follow_up_id": sam_follow_up_id},
+                        message=response_msg,
+                        # No data parameter
                         # Consider adding a specific status field if ActionResponse supports it
                         # status='INPUT_REQUIRED' # Example if status field exists
                     )

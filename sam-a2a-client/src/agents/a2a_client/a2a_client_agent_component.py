@@ -15,6 +15,7 @@ import platform
 import time  # Added import
 import requests  # Added import
 import uuid  # Added import
+import json # Added import
 from urllib.parse import urljoin  # Added import
 from typing import Dict, Any, Optional, List
 
@@ -767,10 +768,21 @@ class A2AClientAgentComponent(BaseAgentComponent):
                                 final_message += "\n\n--- Artifact ---\n"
                             final_message += art_text
                         final_files.extend(art_files)
+
+                # Append final_data to message if it exists
+                response_msg = final_message.strip() or "Task completed."
+                if final_data:
+                    try:
+                        data_str = json.dumps(final_data, indent=2)
+                        response_msg += f"\n\nData:\n{data_str}"
+                    except Exception as json_e:
+                        logger.warning(f"Could not serialize final_data to JSON: {json_e}")
+                        response_msg += "\n\nData: [Could not serialize]"
+
                 return ActionResponse(
-                    message=final_message.strip() or "Task completed.",
+                    message=response_msg,
                     files=final_files or None,
-                    data=final_data or None,
+                    # No data parameter
                 )
 
             elif task_state == A2A_TASK_STATE_FAILED:
@@ -815,9 +827,11 @@ class A2AClientAgentComponent(BaseAgentComponent):
                     logger.info(
                         f"Stored *nested* INPUT_REQUIRED state for task '{a2a_taskId}' with follow-up ID '{new_sam_follow_up_id}'."
                     )
+                    # Append follow-up ID info to the message
+                    response_msg = f"{agent_question}\n\nPlease provide the required input using follow-up ID: `{new_sam_follow_up_id}`"
                     return ActionResponse(
-                        message=agent_question,
-                        data={"follow_up_id": new_sam_follow_up_id},
+                        message=response_msg,
+                        # No data parameter
                     )
                 except Exception as e:
                     logger.error(
