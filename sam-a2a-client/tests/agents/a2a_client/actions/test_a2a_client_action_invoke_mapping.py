@@ -5,7 +5,8 @@ import uuid
 # Adjust import paths as necessary
 from src.agents.a2a_client.actions.a2a_client_action import A2AClientAction, AgentSkill
 # Mock A2A types needed for assertions - EXPECTING THESE TO BE `Any` in the test env
-from src.agents.a2a_client.actions.a2a_client_action import TaskSendParams, A2AMessage, TextPart, FilePart, FileContent
+# We will patch these specifically in tests where instantiation failure is expected
+# from src.agents.a2a_client.actions.a2a_client_action import TaskSendParams, A2AMessage, TextPart, FilePart, FileContent
 from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo
 
 # Mock the parent component and services
@@ -50,49 +51,62 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
             {"name": "files", "desc": "List of file URLs", "type": "list", "required": False}
         ]
 
-        # Instantiate the action - REMOVED patch on Action.__init__
+        # Instantiate the action - REMOVED global patch on TextPart
         self.action = A2AClientAction(
             skill=self.mock_skill,
             component=self.mock_component, # type: ignore
             inferred_params=self.mock_params_def
         )
 
-    def test_invoke_mapping_text_only_handles_import_error(self):
-        """Test mapping returns error correctly if TextPart instantiation fails (due to import error)."""
+    @patch('src.agents.a2a_client.actions.a2a_client_action.TextPart', side_effect=TypeError("Simulated TextPart instantiation error"))
+    def test_invoke_mapping_text_only_handles_import_error(self, mock_text_part_constructor):
+        """Test mapping returns error correctly if TextPart instantiation fails."""
         params = {"prompt": "Hello A2A"}
         meta = {"session_id": "session123"}
 
-        # Call invoke - Expecting TextPart(...) to raise TypeError: Any cannot be instantiated
+        # Call invoke - Expecting TextPart(...) to raise TypeError
         response = self.action.invoke(params, meta)
 
         # Assert that an error response is returned due to the expected TypeError
+        mock_text_part_constructor.assert_called_once_with(text="Hello A2A")
         self.assertIsInstance(response, ActionResponse)
         self.assertIsNotNone(response.error_info, "ActionResponse should have error_info")
         self.assertIn("Could not process prompt text", response.message)
         # Check error_message instead of code
         self.assertIn("TextPart Error", response.error_info.error_message)
-        # Ensure the attribute causing the previous assertion error is NOT set
-        self.assertFalse(hasattr(self.action, '_last_constructed_task_params'))
+        self.assertIn("Simulated TextPart instantiation error", response.error_info.error_message)
+        # Ensure the A2A client was NOT called
+        self.mock_component.a2a_client.send_task.assert_not_called()
 
-    def test_invoke_mapping_text_and_valid_file_handles_import_error(self):
-        """Test mapping returns error correctly if FilePart/FileContent instantiation fails."""
+    @patch('src.agents.a2a_client.actions.a2a_client_action.TextPart', side_effect=TypeError("Simulated TextPart instantiation error"))
+    @patch('src.agents.a2a_client.actions.a2a_client_action.FilePart') # Keep FilePart mocked if TextPart fails first
+    @patch('src.agents.a2a_client.actions.a2a_client_action.FileContent')
+    def test_invoke_mapping_text_and_valid_file_handles_import_error(self, mock_file_content_cls, mock_file_part_cls, mock_text_part_constructor):
+        """Test mapping returns error correctly if TextPart instantiation fails (even with files)."""
         params = {"prompt": "Process this file", "files": ["valid_url"]}
         meta = {"session_id": "session456"}
 
-        # Call invoke - Expecting TextPart or FilePart/FileContent to raise TypeError
+        # Call invoke - Expecting TextPart to raise TypeError
         response = self.action.invoke(params, meta)
 
-        # Assert that an error response is returned
+        # Assert that an error response is returned due to TextPart failure
+        mock_text_part_constructor.assert_called_once_with(text="Process this file")
         self.assertIsInstance(response, ActionResponse)
         self.assertIsNotNone(response.error_info, "ActionResponse should have error_info")
-        # It will likely fail on TextPart first
         self.assertIn("Could not process prompt text", response.message)
-        # Check error_message instead of code
         self.assertIn("TextPart Error", response.error_info.error_message)
-        self.assertFalse(hasattr(self.action, '_last_constructed_task_params'))
+        self.assertIn("Simulated TextPart instantiation error", response.error_info.error_message)
+        # Ensure file processing and A2A client call were not reached
+        self.mock_component.file_service.resolve_url.assert_not_called()
+        mock_file_content_cls.assert_not_called()
+        mock_file_part_cls.assert_not_called()
+        self.mock_component.a2a_client.send_task.assert_not_called()
 
-    def test_invoke_mapping_text_and_multiple_files_handles_import_error(self):
-        """Test mapping returns error correctly even with multiple files if TextPart fails."""
+    @patch('src.agents.a2a_client.actions.a2a_client_action.TextPart', side_effect=TypeError("Simulated TextPart instantiation error"))
+    @patch('src.agents.a2a_client.actions.a2a_client_action.FilePart')
+    @patch('src.agents.a2a_client.actions.a2a_client_action.FileContent')
+    def test_invoke_mapping_text_and_multiple_files_handles_import_error(self, mock_file_content_cls, mock_file_part_cls, mock_text_part_constructor):
+        """Test mapping returns error correctly if TextPart fails, even with multiple files."""
         params = {"prompt": "Multiple files", "files": ["valid_url", "invalid_url", "error_url", 123]} # Include non-string
         meta = {"session_id": "session789"}
 
@@ -102,16 +116,16 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
             response = self.action.invoke(params, meta)
 
         # Assert that an error response is returned due to TextPart failure
+        mock_text_part_constructor.assert_called_once_with(text="Multiple files")
         self.assertIsInstance(response, ActionResponse)
         self.assertIsNotNone(response.error_info, "ActionResponse should have error_info")
         self.assertIn("Could not process prompt text", response.message)
-        # Check error_message instead of code
         self.assertIn("TextPart Error", response.error_info.error_message)
-        self.assertFalse(hasattr(self.action, '_last_constructed_task_params'))
+        self.assertIn("Simulated TextPart instantiation error", response.error_info.error_message)
 
         # Check that the error log for TextPart failure was called
         mock_log_err.assert_any_call(
-            "Failed to create TextPart for action 'test_skill_id': Any cannot be instantiated",
+            "Failed to create TextPart for action 'test_skill_id': Simulated TextPart instantiation error",
             exc_info=True
         )
         # Ensure file processing logs were NOT reached because TextPart failed first
@@ -122,6 +136,7 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
             if "resolve file URL" in c.args[0]
         ]
         self.assertEqual(len(file_resolve_errors), 0)
+        self.mock_component.a2a_client.send_task.assert_not_called()
 
 
     def test_invoke_mapping_missing_prompt(self):
@@ -135,29 +150,32 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
         self.assertEqual(response.message, "Missing required 'prompt' parameter.")
         # Check error_message instead of code
         self.assertEqual(response.error_info.error_message, "Missing Parameter")
-        self.assertFalse(hasattr(self.action, '_last_constructed_task_params')) # Should fail before construction
+        self.mock_component.a2a_client.send_task.assert_not_called() # Should fail before construction
 
-    def test_invoke_mapping_no_session_id_handles_import_error(self):
-        """Test mapping generates session ID but still fails on TextPart due to import error."""
+    @patch('src.agents.a2a_client.actions.a2a_client_action.TextPart', side_effect=TypeError("Simulated TextPart instantiation error"))
+    def test_invoke_mapping_no_session_id_handles_import_error(self, mock_text_part_constructor):
+        """Test mapping generates session ID but still fails on TextPart due to simulated error."""
         params = {"prompt": "Generate session"}
         meta = {} # No session_id
+        generated_uuid = '12345678-1234-5678-1234-567812345678'
 
         with patch('src.agents.a2a_client.actions.a2a_client_action.uuid.uuid4') as mock_uuid, \
              patch('src.agents.a2a_client.actions.a2a_client_action.logger.warning') as mock_log_warn:
-            mock_uuid.return_value = uuid.UUID('12345678-1234-5678-1234-567812345678')
+            mock_uuid.return_value = uuid.UUID(generated_uuid)
             # Call invoke - Expecting TextPart to raise TypeError
             response = self.action.invoke(params, meta)
 
         # Assert session ID warning was logged
-        mock_log_warn.assert_called_with("No session_id found in meta for action 'test_skill_id'. Generated new one: 12345678-1234-5678-1234-567812345678")
+        mock_log_warn.assert_called_with(f"No session_id found in meta for action 'test_skill_id'. Generated new one: {generated_uuid}")
 
         # Assert that an error response is returned due to TextPart failure
+        mock_text_part_constructor.assert_called_once_with(text="Generate session")
         self.assertIsInstance(response, ActionResponse)
         self.assertIsNotNone(response.error_info, "ActionResponse should have error_info")
         self.assertIn("Could not process prompt text", response.message)
-        # Check error_message instead of code
         self.assertIn("TextPart Error", response.error_info.error_message)
-        self.assertFalse(hasattr(self.action, '_last_constructed_task_params'))
+        self.assertIn("Simulated TextPart instantiation error", response.error_info.error_message)
+        self.mock_component.a2a_client.send_task.assert_not_called()
 
     def test_invoke_mapping_no_a2a_client(self):
         """Test mapping fails if a2a_client is not initialized."""
