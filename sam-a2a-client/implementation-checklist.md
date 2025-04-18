@@ -38,8 +38,8 @@ This checklist tracks the progress of implementing the `sam-a2a-client` plugin b
 - [x] **Step 3.2.2:** Testing for Step 3.2 (Unit test for action list population).
 - [x] **Step 3.3.1:** Implement `A2AClientAction.invoke` - Request Mapping (SAM params to A2A Parts).
 - [x] **Step 3.3.2:** Testing for Step 3.3 (Unit test for request mapping).
-- [ ] **Step 3.4.1:** Implement `A2AClientAction.invoke` - Basic A2A Call (handle COMPLETED and basic errors).
-- [ ] **Step 3.4.2:** Testing for Step 3.4 (Integration-like tests for basic invocation).
+- [x] **Step 3.4.1:** Implement `A2AClientAction.invoke` - Basic A2A Call (handle COMPLETED and basic errors).
+- [x] **Step 3.4.2:** Testing for Step 3.4 (Integration-like tests for basic invocation).
 
 ## Phase 4: Response Handling and State Management
 
