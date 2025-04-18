@@ -66,12 +66,15 @@ class TestA2AClientAgentComponentInit(unittest.TestCase):
         self.assertEqual(component.input_required_ttl, 600)
 
         # Assert state variables are initialized
-        self.assertIsNone(component.a2a_process)
-        self.assertIsNone(component.monitor_thread)
         self.assertIsInstance(component.stop_monitor, threading.Event)
+        self.assertIsInstance(component._initialized, threading.Event)
+        # Assert helper classes are initially None
+        self.assertIsNone(component.process_manager)
+        self.assertIsNone(component.connection_handler)
+        # Assert properties that depend on connection_handler are None initially
         self.assertIsNone(component.agent_card)
         self.assertIsNone(component.a2a_client)
-        self.assertIsInstance(component._initialized, threading.Event)
+
 
         # Assert services are stored/initialized
         # mock_file_service.assert_called_once() # Mocked during create_test_component
