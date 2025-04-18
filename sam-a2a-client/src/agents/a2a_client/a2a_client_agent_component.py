@@ -413,14 +413,8 @@ class A2AClientAgentComponent(BaseAgentComponent):
             # TODO: Add support for other auth schemes (e.g., apiKey) later
 
             try:
-                # Pass agent_card and optional auth_token
-                # <inst>
-                #   Check this call - it isn't supposed to pass in an auth_token
-                # </inst>
-                # Corrected call: Remove auth_token from constructor
+                # Pass agent_card
                 self.a2a_client = A2AClient(agent_card=self.agent_card)
-                # Note: The auth_token variable still exists and might be needed
-                # when *sending* requests, but the A2AClient library should handle that.
                 logger.info("A2AClient initialized successfully.")
             except Exception as e:
                 logger.error(f"Failed to initialize A2AClient: {e}", exc_info=True)

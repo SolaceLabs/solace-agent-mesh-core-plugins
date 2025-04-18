@@ -9,7 +9,6 @@ from typing import Dict, Any, List, TYPE_CHECKING
 from solace_agent_mesh.common.action import Action
 from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo
 
-# Import A2A types - Assumes common-a2a is installed or in PYTHONPATH
 from ....common_a2a.types import (
     AgentSkill,
     TaskSendParams,
@@ -211,6 +210,12 @@ class A2AClientAction(Action):
         FAILED, and INPUT_REQUIRED mapping.
         """
         logger.info(f"Invoking action '{self.name}' with params: {params}")
+
+        # <inst>
+        # Look over this function carefully - it is passing data into ActionResponse,
+        # which does not have a data field. Fix this and any other invoke methods that
+        # pass invalid keywords to ActionResponse.
+        # </inst>
 
         # 1. Get necessary services and IDs
         a2a_client = self.component.a2a_client
