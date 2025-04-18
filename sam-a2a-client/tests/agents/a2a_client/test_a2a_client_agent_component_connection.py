@@ -11,9 +11,9 @@ import threading
 from .test_helpers import (
     create_test_component,
     AgentCard,
-    Authentication,
-    AuthenticationScheme,
-)  # Import helper and mocked types
+    AgentAuthentication, # Use correct type
+    # AuthenticationScheme is not defined, use string literal "bearer"
+)
 
 
 class TestA2AClientAgentComponentConnection(unittest.TestCase):
@@ -273,12 +273,12 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
             mock_card = MagicMock(spec=AgentCard)
         mock_card.name = "Auth Agent"
         # Simulate AgentCard requiring bearer token
-        # Conditionally use spec
-        if _is_instance_mock(Authentication):
+        # Use correct type AgentAuthentication
+        if _is_instance_mock(AgentAuthentication):
             mock_auth = MagicMock()
         else:
-            mock_auth = MagicMock(spec=Authentication)
-        mock_auth.schemes = [AuthenticationScheme.BEARER]
+            mock_auth = MagicMock(spec=AgentAuthentication)
+        mock_auth.schemes = ["bearer"] # Use string literal
         mock_card.authentication = mock_auth
         mock_resolver_instance = mock_resolver_cls.return_value
         mock_resolver_instance.get_agent_card.return_value = mock_card
@@ -317,12 +317,12 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
             mock_card = MagicMock(spec=AgentCard)
         mock_card.name = "Auth Agent Missing Token"
         # Simulate AgentCard requiring bearer token
-        # Conditionally use spec
-        if _is_instance_mock(Authentication):
+        # Use correct type AgentAuthentication
+        if _is_instance_mock(AgentAuthentication):
             mock_auth = MagicMock()
         else:
-            mock_auth = MagicMock(spec=Authentication)
-        mock_auth.schemes = [AuthenticationScheme.BEARER]
+            mock_auth = MagicMock(spec=AgentAuthentication)
+        mock_auth.schemes = ["bearer"] # Use string literal
         mock_card.authentication = mock_auth
         mock_resolver_instance = mock_resolver_cls.return_value
         mock_resolver_instance.get_agent_card.return_value = mock_card

@@ -9,18 +9,12 @@ from src.agents.a2a_client.a2a_client_agent_component import (
     info as component_info,
 )
 
-# Mock A2A types if not directly importable
-# from ...common_a2a.client import A2AClient, A2ACardResolver
-# from ...common_a2a.types import (
-#     AgentCard,
-#     Authentication,
-#     AuthenticationScheme,
-#     AgentSkill,
-# )  # Added AgentSkill here
+# Import correct types from common_a2a
 from src.common_a2a.types import (
     AgentCard,
+    AgentAuthentication, # Correct type
     AgentSkill,
-)  # Added AgentSkill here
+)
 
 
 # Helper to create a component instance with mocked dependencies
