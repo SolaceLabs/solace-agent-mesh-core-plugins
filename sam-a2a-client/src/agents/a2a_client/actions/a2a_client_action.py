@@ -12,7 +12,8 @@ from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo
 # Import A2A types - adjust path as needed based on dependency setup
 try:
     from common.types import AgentSkill, TaskSendParams, Message as A2AMessage, TextPart, FilePart, FileContent
-except ImportError:
+except ImportError as e:
+    logging.getLogger(__name__).error(f"CRITICAL: Failed to import A2A common types: {e}. Using placeholders. Ensure 'a2a-samples/samples/python/common' is in PYTHONPATH or installed.", exc_info=True)
     # Placeholder if common library isn't directly available in this structure
     AgentSkill = Any # type: ignore
     TaskSendParams = Any # type: ignore
@@ -79,10 +80,10 @@ class A2AClientAction(Action):
 
         if not a2a_client:
             logger.error(f"A2AClient not initialized for component '{self.component.agent_name}'. Cannot invoke action '{self.name}'.")
-            return ActionResponse(success=False, message="Internal Error: A2A Client not available.", error_info=ErrorInfo("A2A Client Missing"))
+            return ActionResponse(message="Internal Error: A2A Client not available.", error_info=ErrorInfo("A2A Client Missing"))
         if not file_service:
             logger.error(f"FileService not available for component '{self.component.agent_name}'. Cannot handle file parameters for action '{self.name}'.")
-            return ActionResponse(success=False, message="Internal Error: File Service not available.", error_info=ErrorInfo("File Service Missing"))
+            return ActionResponse(message="Internal Error: File Service not available.", error_info=ErrorInfo("File Service Missing"))
 
         session_id = meta.get("session_id")
         if not session_id:
@@ -100,13 +101,15 @@ class A2AClientAction(Action):
             # Maybe try finding the first string param if 'prompt' doesn't exist?
             # For now, require 'prompt' based on simple inference.
             logger.error(f"Missing required 'prompt' parameter for action '{self.name}'.")
-            return ActionResponse(success=False, message="Missing required 'prompt' parameter.", error_info=ErrorInfo("Missing Parameter"))
+            return ActionResponse(message="Missing required 'prompt' parameter.", error_info=ErrorInfo("Missing Parameter"))
 
         try:
+            # This might still fail if TextPart is Any due to import error
             parts.append(TextPart(text=str(prompt_text)))
         except Exception as e:
              logger.error(f"Failed to create TextPart for action '{self.name}': {e}", exc_info=True)
-             return ActionResponse(success=False, message=f"Internal Error: Could not process prompt text.", error_info=ErrorInfo(f"TextPart Error: {e}"))
+             # Removed success=False
+             return ActionResponse(message=f"Internal Error: Could not process prompt text.", error_info=ErrorInfo(f"TextPart Error: {e}"))
 
 
         file_urls = params.get("files", []) # Expecting a list of URLs
@@ -125,6 +128,7 @@ class A2AClientAction(Action):
                     # TODO: Confirm exact return type/attributes of FileService.resolve_url
                     resolved_file = file_service.resolve_url(file_url, session_id=session_id)
                     if resolved_file and hasattr(resolved_file, 'bytes') and hasattr(resolved_file, 'name') and hasattr(resolved_file, 'mime_type'):
+                        # This might still fail if FileContent/FilePart are Any
                         file_content = FileContent(
                             bytes=resolved_file.bytes, # Assuming bytes are raw bytes
                             name=resolved_file.name,
@@ -135,17 +139,19 @@ class A2AClientAction(Action):
                     else:
                         logger.error(f"Failed to resolve file URL '{file_url}' or resolved object is invalid.")
                         # Decide: fail action or just skip file? Skipping for now.
-                        # return ActionResponse(success=False, message=f"Failed to resolve file URL: {file_url}", error_info=ErrorInfo("File Resolution Failed"))
+                        # return ActionResponse(message=f"Failed to resolve file URL: {file_url}", error_info=ErrorInfo("File Resolution Failed"))
                 except Exception as e:
                     logger.error(f"Error resolving file URL '{file_url}' for action '{self.name}': {e}", exc_info=True)
                     # Decide: fail action or just skip file? Skipping for now.
-                    # return ActionResponse(success=False, message=f"Error resolving file: {file_url}", error_info=ErrorInfo(f"File Resolution Error: {e}"))
+                    # return ActionResponse(message=f"Error resolving file: {file_url}", error_info=ErrorInfo(f"File Resolution Error: {e}"))
 
         # 3. Create TaskSendParams
         try:
+            # This might still fail if A2AMessage is Any
             a2a_message = A2AMessage(role="user", parts=parts)
             # TODO: Determine acceptedOutputModes dynamically? From skill? Hardcode for now.
             accepted_modes = ["text", "text/plain", "image/*", "application/json"]
+            # This might still fail if TaskSendParams is Any
             task_params = TaskSendParams(
                 id=a2a_taskId,
                 sessionId=session_id,
@@ -155,7 +161,8 @@ class A2AClientAction(Action):
             logger.debug(f"Constructed TaskSendParams for action '{self.name}': {task_params.model_dump_json(exclude_none=True)}") # Log constructed params
         except Exception as e:
             logger.error(f"Failed to construct TaskSendParams for action '{self.name}': {e}", exc_info=True)
-            return ActionResponse(success=False, message="Internal Error: Failed to prepare A2A request.", error_info=ErrorInfo(f"TaskSendParams Error: {e}"))
+            # Removed success=False
+            return ActionResponse(message="Internal Error: Failed to prepare A2A request.", error_info=ErrorInfo(f"TaskSendParams Error: {e}"))
 
         # --- Placeholder for Step 3.4 ---
         # The actual call `a2a_client.send_task(task_params.model_dump())`
@@ -164,8 +171,8 @@ class A2AClientAction(Action):
         # Store task_params temporarily if needed for next step, or pass directly
         self._last_constructed_task_params = task_params # Example: store for testing/next step
 
+        # Removed success=False
         return ActionResponse(
-            success=False, # Mark as false until call is made
             message=f"Action '{self.name}' mapped request. A2A call not implemented yet.",
             error_info=ErrorInfo("Not Implemented")
         )
