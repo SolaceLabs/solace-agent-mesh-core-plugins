@@ -30,7 +30,8 @@ class MockA2AClientAgentComponent:
         self.agent_name = agent_name
         self.get_config = MagicMock()
         self.cache_service = cache_service or MagicMock()
-        self.file_service = file_service or MockFileService()
+        # If file_service is not provided, it defaults to MockFileService instance
+        self.file_service = file_service if file_service is not None else MockFileService()
         self.a2a_client = a2a_client or MagicMock() # Provide a mock client
 
 class TestA2AClientActionInvokeMapping(unittest.TestCase):
@@ -44,6 +45,12 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
 
         # Mock the parent component
         self.mock_component = MockA2AClientAgentComponent(agent_name="test_sam_agent")
+        # *** FIX: Explicitly make file_service a MagicMock for call tracking ***
+        # We assign a MagicMock that uses the original class for its spec,
+        # ensuring methods exist, but allowing call tracking.
+        self.mock_component.file_service = MagicMock(spec=MockFileService)
+        # If needed for other tests, configure the mock's behavior:
+        # self.mock_component.file_service.resolve_url.side_effect = MockFileService().resolve_url
 
         # Mock inferred parameters
         self.mock_params_def = [
@@ -97,6 +104,7 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
         self.assertIn("TextPart Error", response.error_info.error_message)
         self.assertIn("Simulated TextPart instantiation error", response.error_info.error_message)
         # Ensure file processing and A2A client call were not reached
+        # *** FIX: Now this assertion works because file_service.resolve_url is a mock ***
         self.mock_component.file_service.resolve_url.assert_not_called()
         mock_file_content_cls.assert_not_called()
         mock_file_part_cls.assert_not_called()
