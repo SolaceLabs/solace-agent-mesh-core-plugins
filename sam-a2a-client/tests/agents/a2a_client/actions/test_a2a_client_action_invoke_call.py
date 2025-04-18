@@ -15,8 +15,9 @@ from src.agents.a2a_client.actions.a2a_client_action import (
     FileContent,
     Task,
     TaskState,  # This will be mocked as Any
-    TaskStatus,
 )
+# Import TaskStatus from the correct location
+from src.common_a2a.types import TaskStatus
 from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo
 
 
