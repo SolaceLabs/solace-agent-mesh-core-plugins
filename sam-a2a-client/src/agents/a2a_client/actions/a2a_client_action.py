@@ -11,7 +11,7 @@ from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo
 
 # Import A2A types - adjust path as needed based on dependency setup
 try:
-    from common.types import AgentSkill, TaskSendParams, Message as A2AMessage, TextPart, FilePart, FileContent
+    from common.types import AgentSkill, TaskSendParams, Message as A2AMessage, TextPart, FilePart, FileContent, Task, TaskState
 except ImportError as e:
     logging.getLogger(__name__).error(f"CRITICAL: Failed to import A2A common types: {e}. Using placeholders. Ensure 'a2a-samples/samples/python/common' is in PYTHONPATH or installed.", exc_info=True)
     # Placeholder if common library isn't directly available in this structure
@@ -21,6 +21,8 @@ except ImportError as e:
     TextPart = Any # type: ignore
     FilePart = Any # type: ignore
     FileContent = Any # type: ignore
+    Task = Any # type: ignore
+    TaskState = Any # type: ignore
 
 
 # Use TYPE_CHECKING to avoid circular import issues at runtime
@@ -68,8 +70,8 @@ class A2AClientAction(Action):
 
     def invoke(self, params: Dict[str, Any], meta: Dict[str, Any]) -> ActionResponse:
         """
-        Invokes the A2A skill by mapping SAM parameters to an A2A Task request.
-        (Currently only implements the request mapping part).
+        Invokes the A2A skill by mapping SAM parameters to an A2A Task request,
+        sending the request, and handling the basic response states.
         """
         logger.info(f"Invoking action '{self.name}' with params: {params}")
 
@@ -164,15 +166,51 @@ class A2AClientAction(Action):
             # Removed success=False
             return ActionResponse(message="Internal Error: Failed to prepare A2A request.", error_info=ErrorInfo(f"TaskSendParams Error: {e}"))
 
-        # --- Placeholder for Step 3.4 ---
-        # The actual call `a2a_client.send_task(task_params.model_dump())`
-        # and response processing will go here in the next step.
-        logger.warning(f"Invoke for action '{self.name}' completed mapping. A2A call not yet implemented.")
-        # Store task_params temporarily if needed for next step, or pass directly
-        self._last_constructed_task_params = task_params # Example: store for testing/next step
+        # 4. Call A2A Agent and Handle Basic Response
+        try:
+            logger.info(f"Sending task '{a2a_taskId}' to A2A agent for action '{self.name}'...")
+            # Assuming send_task is synchronous and returns a Task object
+            # This might fail if Task is Any
+            response_task: Task = self.component.a2a_client.send_task(task_params.model_dump())
+            logger.info(f"Received response for task '{a2a_taskId}'. State: {response_task.status.state}")
 
-        # Removed success=False
-        return ActionResponse(
-            message=f"Action '{self.name}' mapped request. A2A call not implemented yet.",
-            error_info=ErrorInfo("Not Implemented")
-        )
+            # --- Basic State Handling ---
+            # This might fail if TaskState is Any
+            if response_task.status.state == TaskState.COMPLETED:
+                # Response mapping will be implemented in Step 4.1
+                logger.info(f"Task '{a2a_taskId}' completed successfully.")
+                # Return success, but message processing is TBD
+                return ActionResponse(success=True, message="A2A Task Completed (Processing TBD)")
+
+            # Handle FAILED state (basic) - Refined in Step 4.2
+            elif response_task.status.state == TaskState.FAILED:
+                logger.error(f"A2A Task '{a2a_taskId}' failed.")
+                error_message = "A2A Task Failed"
+                # Try to get more details from the response message if possible
+                if response_task.status and response_task.status.message and response_task.status.message.parts:
+                    try:
+                        # Assuming the first part is text containing the error
+                        error_details = response_task.status.message.parts[0].text
+                        if error_details:
+                            error_message += f": {error_details}"
+                    except Exception:
+                        pass # Ignore if parts structure is unexpected
+                return ActionResponse(success=False, message=error_message, error_info=ErrorInfo("A2A Task Failed"))
+
+            # Handle INPUT_REQUIRED state (basic) - Refined in Step 4.3
+            elif response_task.status.state == TaskState.INPUT_REQUIRED:
+                logger.warning(f"A2A Task '{a2a_taskId}' requires input.")
+                # Return pending/error, but state management is TBD
+                return ActionResponse(success=False, message="A2A Task requires further input (Handling TBD)", status="INPUT_REQUIRED")
+
+            # Handle other unexpected states
+            else:
+                logger.error(f"A2A Task '{a2a_taskId}' returned unexpected state: {response_task.status.state}")
+                return ActionResponse(success=False, message=f"A2A Task ended with unexpected state: {response_task.status.state}", error_info=ErrorInfo("Unexpected A2A State"))
+
+        except Exception as e:
+            # Catch communication errors or errors during send_task itself
+            logger.error(f"Failed to communicate with A2A agent for action '{self.name}': {e}", exc_info=True)
+            return ActionResponse(success=False, message="Failed to communicate with A2A agent", error_info=ErrorInfo(f"A2A Communication Error: {e}"))
+```
+sam-a2a-client/tests/agents/a2a_client/actions/test_a2a_client_action_invoke_call.py
