@@ -58,13 +58,14 @@ class TestA2AClientAgentComponentReadiness(unittest.TestCase):
 
         # Simulate time passing to exceed timeout
         start_time = 1000.0
-        # Time sequence: start, check1, wait1, check2, wait2, check3, wait3 (timeout occurs during wait3)
+        # Time sequence: start, check1, wait1, check2, wait2, check3, wait3 (timeout), logger call
         mock_time.side_effect = [
             start_time,       # Initial deadline calculation
             start_time + 0.1, # First check
             start_time + 1.2, # Second check
             start_time + 2.3, # Third check
-            start_time + 3.4  # Final check (exceeds deadline)
+            start_time + 3.4, # Final check (exceeds deadline)
+            start_time + 3.5  # Extra call for logger.error
         ]
 
         result = component._wait_for_agent_ready()
@@ -81,12 +82,13 @@ class TestA2AClientAgentComponentReadiness(unittest.TestCase):
         timeout = 2
         component = create_test_component({"a2a_server_startup_timeout": timeout})
         start_time = 1000.0
-        # Time sequence: start, check1, wait1, check2 (timeout occurs during wait2)
+        # Time sequence: start, check1, wait1, check2 (timeout), logger call
         mock_time.side_effect = [
             start_time,       # Initial deadline calculation
             start_time + 0.1, # First check
             start_time + 1.2, # Second check
-            start_time + 2.3  # Final check (exceeds deadline)
+            start_time + 2.3, # Final check (exceeds deadline)
+            start_time + 2.4  # Extra call for logger.error
         ]
 
         result = component._wait_for_agent_ready()
