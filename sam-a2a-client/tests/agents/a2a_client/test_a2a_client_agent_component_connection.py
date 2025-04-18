@@ -15,6 +15,8 @@ from .test_helpers import (
 )
 # Import the class causing the flake8 error
 from src.agents.a2a_client.a2a_connection_handler import A2AConnectionHandler
+# Import the class needed for the fix in test_initialize_connection_launch_fail
+from src.agents.a2a_client.a2a_process_manager import A2AProcessManager
 
 
 class TestA2AClientAgentComponentConnection(unittest.TestCase):
@@ -191,14 +193,17 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             # 1. Initialize Process Manager (will fail)
             if component.a2a_server_command:
-                # Instantiate the manager which will then fail on launch
-                with patch("src.agents.a2a_client.a2a_client_agent_component.A2AProcessManager") as mock_pm_cls:
-                    mock_pm_instance = mock_pm_cls.return_value
-                    mock_pm_instance.launch.side_effect = FileNotFoundError("cmd not found")
-                    component.process_manager = mock_pm_instance
-                    component.process_manager.launch() # This raises the error
+                # Instantiate the REAL Process Manager. Its 'launch' method is mocked by the decorator.
+                component.process_manager = A2AProcessManager(
+                    command=component.a2a_server_command,
+                    restart_on_crash=component.a2a_server_restart_on_crash,
+                    agent_name=component.agent_name,
+                    stop_event=component.stop_monitor,
+                )
+                # This call will now trigger the mock_launch from the decorator
+                component.process_manager.launch() # This raises the FileNotFoundError
 
-        mock_launch.assert_called_once() # Launch was attempted
+        mock_launch.assert_called_once() # Launch was attempted (and mocked to fail)
         mock_stop.assert_called_once()  # Ensure cleanup is called
         self.assertIsNone(component.agent_card)
         self.assertIsNone(component.a2a_client)
