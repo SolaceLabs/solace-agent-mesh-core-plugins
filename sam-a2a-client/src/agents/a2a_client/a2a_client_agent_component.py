@@ -342,10 +342,20 @@ class A2AClientAgentComponent(BaseAgentComponent):
             self.stop_component()
             raise # Re-raise the exception to signal failure to the framework
 
+    # Placeholder for action creation method (Step 3.2.1)
+    def _create_actions(self):
+        """
+        Dynamically creates SAM actions based on the skills found in the AgentCard.
+        (Placeholder - to be implemented)
+        """
+        logger.info(f"Creating actions for agent '{self.agent_name}' based on AgentCard skills...")
+        # Implementation from Step 3.2.1 will go here
+        pass # Remove pass when implemented
+
     def run(self):
         """
         Main execution method called by the SAM framework.
-        Initializes the A2A connection and then runs the base component loop.
+        Initializes the A2A connection, creates actions, and then runs the base component loop.
         """
         logger.info(f"Starting run loop for A2AClientAgentComponent '{self.agent_name}'")
 
@@ -353,7 +363,8 @@ class A2AClientAgentComponent(BaseAgentComponent):
             # Initialize connection and discover actions
             self._initialize_a2a_connection()
 
-            # TODO: Call _create_actions() here in Step 3.2.1
+            # Create actions based on discovered skills
+            self._create_actions() # Call the action creation method
 
             # Signal that initialization is complete
             self._initialized.set()
