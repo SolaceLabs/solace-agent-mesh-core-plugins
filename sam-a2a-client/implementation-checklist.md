@@ -45,12 +45,12 @@ This checklist tracks the progress of implementing the `sam-a2a-client` plugin b
 
 - [x] **Step 4.1.1:** Implement `A2AClientAction.invoke` - Response Mapping (A2A Parts to ActionResponse for COMPLETED).
 - [x] **Step 4.1.2:** Testing for Step 4.1 (Unit test for response mapping).
-- [ ] **Step 4.2.1:** Implement `A2AClientAction.invoke` - Error Handling (FAILED state).
-- [ ] **Step 4.2.2:** Testing for Step 4.2 (Unit test for FAILED state handling).
-- [ ] **Step 4.3.1:** Implement `A2AClientAction.invoke` - State Handling (INPUT_REQUIRED state).
-- [ ] **Step 4.3.2:** Testing for Step 4.3 (Unit test for INPUT_REQUIRED state handling).
-- [ ] **Step 4.4.1:** Implement `A2AClientAgentComponent._handle_provide_required_input`.
-- [ ] **Step 4.4.2:** Testing for Step 4.4 (Unit tests for follow-up input handling).
+- [x] **Step 4.2.1:** Implement `A2AClientAction.invoke` - Error Handling (FAILED state).
+- [x] **Step 4.2.2:** Testing for Step 4.2 (Unit test for FAILED state handling).
+- [x] **Step 4.3.1:** Implement `A2AClientAction.invoke` - State Handling (INPUT_REQUIRED state).
+- [x] **Step 4.3.2:** Testing for Step 4.3 (Unit test for INPUT_REQUIRED state handling).
+- [x] **Step 4.4.1:** Implement `A2AClientAgentComponent._handle_provide_required_input`.
+- [x] **Step 4.4.2:** Testing for Step 4.4 (Unit tests for follow-up input handling).
 
 ## Phase 5: Configuration and Finalization
 

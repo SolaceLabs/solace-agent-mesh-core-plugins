@@ -17,16 +17,22 @@ try:
         Message as A2AMessage,
         TextPart,
         FilePart,
+        DataPart, # Added DataPart
         FileContent,
         Task,
         TaskState,
         TaskStatus,
-    )  # Added TaskStatus
+        Artifact, # Added Artifact
+    )
 
     # Define string constants based on imported enum for robustness in comparisons
     A2A_TASK_STATE_COMPLETED = TaskState.COMPLETED
     A2A_TASK_STATE_FAILED = TaskState.FAILED
     A2A_TASK_STATE_INPUT_REQUIRED = TaskState.INPUT_REQUIRED
+    A2A_PART_TYPE_TEXT = "text"
+    A2A_PART_TYPE_FILE = "file"
+    A2A_PART_TYPE_DATA = "data"
+
 except ImportError as e:
     logging.getLogger(__name__).error(
         f"CRITICAL: Failed to import A2A common types: {e}. Using placeholders. Ensure 'a2a-samples/samples/python/common' is in PYTHONPATH or installed.",
@@ -38,14 +44,19 @@ except ImportError as e:
     A2AMessage = Any  # type: ignore
     TextPart = Any  # type: ignore
     FilePart = Any  # type: ignore
+    DataPart = Any  # type: ignore
     FileContent = Any  # type: ignore
     Task = Any  # type: ignore
     TaskState = Any  # type: ignore
     TaskStatus = Any  # type: ignore
+    Artifact = Any # type: ignore
     # Define string constants directly if import fails
     A2A_TASK_STATE_COMPLETED = "completed"
     A2A_TASK_STATE_FAILED = "failed"
     A2A_TASK_STATE_INPUT_REQUIRED = "input-required"
+    A2A_PART_TYPE_TEXT = "text"
+    A2A_PART_TYPE_FILE = "file"
+    A2A_PART_TYPE_DATA = "data"
 
 
 # Use TYPE_CHECKING to avoid circular import issues at runtime
@@ -92,268 +103,291 @@ class A2AClientAction(Action):
         )
         logger.debug(f"Initialized A2AClientAction for skill '{self.skill.id}'")
 
+    def _process_parts(self, parts: List[Any], session_id: str, response_data: Dict) -> tuple[str, List[Dict]]:
+        """
+        Helper method to process a list of A2A parts (from message or artifact).
+
+        Args:
+            parts: List of A2A Part objects (TextPart, FilePart, DataPart).
+            session_id: The current session ID for file uploads.
+            response_data: Dictionary to accumulate data from DataParts.
+
+        Returns:
+            A tuple containing:
+            - response_message (str): Concatenated text from TextParts.
+            - response_files (List[Dict]): List of file metadata dicts from FileParts.
+        """
+        response_message = ""
+        response_files = []
+        file_service = self.component.file_service
+
+        if not parts:
+            return response_message, response_files
+
+        for part in parts:
+            part_type = getattr(part, 'type', None) # Get type safely
+
+            # Use string literals or constants for comparison
+            if part_type == A2A_PART_TYPE_TEXT:
+                try:
+                    text_content = getattr(part, 'text', '')
+                    if text_content:
+                        if response_message:
+                            response_message += "\n" # Add newline between text parts
+                        response_message += text_content
+                except Exception as e:
+                    logger.warning(f"Could not extract text from TextPart: {e}", exc_info=True)
+
+            elif part_type == A2A_PART_TYPE_FILE:
+                try:
+                    file_content = getattr(part, 'file', None)
+                    if file_content and hasattr(file_content, 'bytes') and hasattr(file_content, 'name'):
+                        # Decode base64 bytes if necessary (A2A spec might send base64 string)
+                        file_bytes_maybe_b64 = getattr(file_content, 'bytes', '')
+                        file_bytes = b''
+                        if isinstance(file_bytes_maybe_b64, str):
+                            try:
+                                import base64
+                                file_bytes = base64.b64decode(file_bytes_maybe_b64)
+                            except Exception as b64_e:
+                                logger.error(f"Failed to decode base64 FilePart content: {b64_e}")
+                                continue # Skip this file part
+                        elif isinstance(file_bytes_maybe_b64, bytes):
+                            file_bytes = file_bytes_maybe_b64
+                        else:
+                            logger.warning(f"Skipping FilePart with unexpected bytes type: {type(file_bytes_maybe_b64)}")
+                            continue
+
+                        file_name = getattr(file_content, 'name', 'unknown_file')
+                        mime_type = getattr(file_content, 'mimeType', 'application/octet-stream') # Default mime type
+
+                        if file_bytes and file_name:
+                            logger.debug(f"Uploading FilePart '{file_name}' using FileService...")
+                            try:
+                                # Assuming upload_from_buffer returns a dict like {'url': ..., 'name': ...}
+                                file_meta = file_service.upload_from_buffer(
+                                    content=file_bytes, # Pass raw bytes
+                                    file_name=file_name,
+                                    session_id=session_id,
+                                    mime_type=mime_type,
+                                    data_source=f"{self.component.agent_name}/{self.name}" # Add data source info
+                                )
+                                if file_meta:
+                                    response_files.append(file_meta)
+                                    logger.debug(f"FilePart '{file_name}' uploaded successfully: {file_meta.get('url')}")
+                                else:
+                                    logger.error(f"FileService.upload_from_buffer returned None for '{file_name}'.")
+                            except Exception as upload_e:
+                                logger.error(f"Failed to upload FilePart '{file_name}': {upload_e}", exc_info=True)
+                        else:
+                            logger.warning(f"Skipping FilePart with missing bytes or name: {file_name}")
+                    else:
+                        logger.warning("Skipping invalid FilePart object.")
+                except Exception as e:
+                    logger.warning(f"Could not process FilePart: {e}", exc_info=True)
+
+            elif part_type == A2A_PART_TYPE_DATA:
+                try:
+                    data_content = getattr(part, 'data', None)
+                    if isinstance(data_content, dict):
+                        # Merge data - simple update, last one wins on conflict
+                        response_data.update(data_content)
+                        logger.debug(f"Merged DataPart content: {data_content}")
+                    elif data_content is not None:
+                        logger.warning(f"Skipping DataPart with non-dictionary content: {type(data_content)}")
+                except Exception as e:
+                    logger.warning(f"Could not process DataPart: {e}", exc_info=True)
+
+            else:
+                logger.warning(f"Encountered unknown or missing A2A Part type: '{part_type}'. Skipping.")
+
+        return response_message, response_files
+
+
     def invoke(self, params: Dict[str, Any], meta: Dict[str, Any]) -> ActionResponse:
         """
         Invokes the A2A skill by mapping SAM parameters to an A2A Task request,
-        sending the request, and handling the basic response states.
+        sending the request, and handling the response states including COMPLETED,
+        FAILED, and INPUT_REQUIRED mapping.
         """
         logger.info(f"Invoking action '{self.name}' with params: {params}")
 
         # 1. Get necessary services and IDs
         a2a_client = self.component.a2a_client
-        cache_service = self.component.cache_service  # Needed later for INPUT_REQUIRED
+        cache_service = self.component.cache_service
         file_service = self.component.file_service
 
         if not a2a_client:
-            logger.error(
-                f"A2AClient not initialized for component '{self.component.agent_name}'. Cannot invoke action '{self.name}'."
-            )
-            return ActionResponse(
-                message="Internal Error: A2A Client not available.",
-                error_info=ErrorInfo("A2A Client Missing"),
-            )
+            logger.error(f"A2AClient not initialized for component '{self.component.agent_name}'. Cannot invoke action '{self.name}'.")
+            return ActionResponse(message="Internal Error: A2A Client not available.", error_info=ErrorInfo("A2A Client Missing"))
         if not file_service:
-            logger.error(
-                f"FileService not available for component '{self.component.agent_name}'. Cannot handle file parameters for action '{self.name}'."
-            )
-            return ActionResponse(
-                message="Internal Error: File Service not available.",
-                error_info=ErrorInfo("File Service Missing"),
-            )
+            logger.error(f"FileService not available for component '{self.component.agent_name}'. Cannot handle file parameters for action '{self.name}'.")
+            return ActionResponse(message="Internal Error: File Service not available.", error_info=ErrorInfo("File Service Missing"))
 
         session_id = meta.get("session_id")
         if not session_id:
-            # A2A requires a session ID, generate one if missing from SAM meta
             session_id = str(uuid.uuid4())
-            logger.warning(
-                f"No session_id found in meta for action '{self.name}'. Generated new one: {session_id}"
-            )
+            logger.warning(f"No session_id found in meta for action '{self.name}'. Generated new one: {session_id}")
 
         a2a_taskId = str(uuid.uuid4())
 
         # 2. Map SAM params to A2A Message.parts
-        parts: List[Any] = []  # List to hold TextPart, FilePart, etc.
-        prompt_text = params.get("prompt")  # Assuming generic 'prompt' for now
+        parts: List[Any] = []
+        prompt_text = params.get("prompt")
 
         if prompt_text is None:
-            # Maybe try finding the first string param if 'prompt' doesn't exist?
-            # For now, require 'prompt' based on simple inference.
-            logger.error(
-                f"Missing required 'prompt' parameter for action '{self.name}'."
-            )
-            return ActionResponse(
-                message="Missing required 'prompt' parameter.",
-                error_info=ErrorInfo("Missing Parameter"),
-            )
+            logger.error(f"Missing required 'prompt' parameter for action '{self.name}'.")
+            return ActionResponse(message="Missing required 'prompt' parameter.", error_info=ErrorInfo("Missing Parameter"))
 
         try:
-            # This might still fail if TextPart is Any due to import error
             parts.append(TextPart(text=str(prompt_text)))
         except Exception as e:
-            logger.error(
-                f"Failed to create TextPart for action '{self.name}': {e}",
-                exc_info=True,
-            )
-            return ActionResponse(
-                message=f"Internal Error: Could not process prompt text.",
-                error_info=ErrorInfo(f"TextPart Error: {e}"),
-            )
+            logger.error(f"Failed to create TextPart for action '{self.name}': {e}", exc_info=True)
+            return ActionResponse(message="Internal Error: Could not process prompt text.", error_info=ErrorInfo(f"TextPart Error: {e}"))
 
-        file_urls = params.get("files", [])  # Expecting a list of URLs
-        if isinstance(file_urls, str):  # Handle single URL case
+        file_urls = params.get("files", [])
+        if isinstance(file_urls, str):
             file_urls = [file_urls]
 
         if file_urls and isinstance(file_urls, list):
-            logger.info(
-                f"Processing {len(file_urls)} file URLs for action '{self.name}'."
-            )
+            logger.info(f"Processing {len(file_urls)} file URLs for action '{self.name}'.")
             for file_url in file_urls:
                 if not isinstance(file_url, str):
-                    logger.warning(
-                        f"Skipping non-string item in 'files' list: {file_url}"
-                    )
+                    logger.warning(f"Skipping non-string item in 'files' list: {file_url}")
                     continue
                 try:
                     logger.debug(f"Resolving file URL: {file_url}")
-                    # Assuming resolve_url returns an object with attributes: bytes, name, mime_type
-                    # TODO: Confirm exact return type/attributes of FileService.resolve_url
-                    resolved_file = file_service.resolve_url(
-                        file_url, session_id=session_id
-                    )
-                    if (
-                        resolved_file
-                        and hasattr(resolved_file, "bytes")
-                        and hasattr(resolved_file, "name")
-                        and hasattr(resolved_file, "mime_type")
-                    ):
-                        # This might still fail if FileContent/FilePart are Any
-                        file_content = FileContent(
-                            bytes=resolved_file.bytes,  # Assuming bytes are raw bytes
-                            name=resolved_file.name,
-                            mimeType=resolved_file.mime_type,
-                        )
+                    resolved_file = file_service.resolve_url(file_url, session_id=session_id)
+                    if resolved_file and hasattr(resolved_file, 'bytes') and hasattr(resolved_file, 'name') and hasattr(resolved_file, 'mime_type'):
+                        # A2A FileContent expects base64 encoded string for bytes
+                        import base64
+                        encoded_bytes = base64.b64encode(resolved_file.bytes).decode('utf-8')
+                        file_content = FileContent(bytes=encoded_bytes, name=resolved_file.name, mimeType=resolved_file.mime_type)
                         parts.append(FilePart(file=file_content))
-                        logger.debug(
-                            f"Successfully added FilePart for {resolved_file.name}"
-                        )
+                        logger.debug(f"Successfully added FilePart for {resolved_file.name}")
                     else:
-                        logger.error(
-                            f"Failed to resolve file URL '{file_url}' or resolved object is invalid."
-                        )
-                        # Decide: fail action or just skip file? Skipping for now.
-                        # return ActionResponse(message=f"Failed to resolve file URL: {file_url}", error_info=ErrorInfo("File Resolution Failed"))
+                        logger.error(f"Failed to resolve file URL '{file_url}' or resolved object is invalid.")
                 except Exception as e:
-                    logger.error(
-                        f"Error resolving file URL '{file_url}' for action '{self.name}': {e}",
-                        exc_info=True,
-                    )
-                    # Decide: fail action or just skip file? Skipping for now.
-                    # return ActionResponse(message=f"Error resolving file: {file_url}", error_info=ErrorInfo(f"File Resolution Error: {e}"))
+                    logger.error(f"Error resolving file URL '{file_url}' for action '{self.name}': {e}", exc_info=True)
 
         # 3. Create TaskSendParams
         try:
-            # This might still fail if A2AMessage is Any
             a2a_message = A2AMessage(role="user", parts=parts)
-            # TODO: Determine acceptedOutputModes dynamically? From skill? Hardcode for now.
-            accepted_modes = ["text", "text/plain", "image/*", "application/json"]
-            # This might still fail if TaskSendParams is Any
-            task_params = TaskSendParams(
-                id=a2a_taskId,
-                sessionId=session_id,
-                message=a2a_message,
-                acceptedOutputModes=accepted_modes,
-            )
-            logger.debug(
-                f"Constructed TaskSendParams for action '{self.name}': {task_params.model_dump_json(exclude_none=True)}"
-            )  # Log constructed params
+            accepted_modes = ["text", "text/plain", "image/*", "application/json", "application/*"] # Added application/*
+            task_params = TaskSendParams(id=a2a_taskId, sessionId=session_id, message=a2a_message, acceptedOutputModes=accepted_modes)
+            logger.debug(f"Constructed TaskSendParams for action '{self.name}': {task_params.model_dump_json(exclude_none=True)}")
         except Exception as e:
-            logger.error(
-                f"Failed to construct TaskSendParams for action '{self.name}': {e}",
-                exc_info=True,
-            )
-            return ActionResponse(
-                message="Internal Error: Failed to prepare A2A request.",
-                error_info=ErrorInfo(f"TaskSendParams Error: {e}"),
-            )
+            logger.error(f"Failed to construct TaskSendParams for action '{self.name}': {e}", exc_info=True)
+            return ActionResponse(message="Internal Error: Failed to prepare A2A request.", error_info=ErrorInfo(f"TaskSendParams Error: {e}"))
 
-        # 4. Call A2A Agent and Handle Basic Response
+        # 4. Call A2A Agent and Handle Response
         try:
-            logger.info(
-                f"Sending task '{a2a_taskId}' to A2A agent for action '{self.name}'..."
-            )
-            # Assuming send_task is synchronous and returns a Task object
-            # This might fail if Task is Any
-            response_task: Task = self.component.a2a_client.send_task(
-                task_params.model_dump()
-            )
-            task_state = response_task.status.state
-            logger.info(
-                f"Received response for task '{a2a_taskId}'. State: {task_state}"
-            )
+            logger.info(f"Sending task '{a2a_taskId}' to A2A agent for action '{self.name}'...")
+            response_task: Task = self.component.a2a_client.send_task(task_params.model_dump())
+            task_state = getattr(getattr(response_task, 'status', None), 'state', None) # Safely get state
+            logger.info(f"Received response for task '{a2a_taskId}'. State: {task_state}")
 
-            # --- Basic State Handling (Implemented in Step 3.4.1) ---
-            # Compare against string literals or constants derived from enum/strings
+            # --- State Handling ---
             if task_state == A2A_TASK_STATE_COMPLETED:
-                # Response mapping will be implemented in Step 4.1
                 logger.info(f"Task '{a2a_taskId}' completed successfully.")
-                # Return success, but message processing is TBD
-                return ActionResponse(message="A2A Task Completed (Processing TBD)")
+                final_message = ""
+                final_files = []
+                final_data = {}
 
-            # Handle FAILED state (basic) - Refined in Step 4.2
+                # Process status message parts
+                status_message = getattr(response_task.status, 'message', None)
+                if status_message:
+                    msg_parts = getattr(status_message, 'parts', [])
+                    msg_text, msg_files = self._process_parts(msg_parts, session_id, final_data)
+                    if msg_text:
+                        final_message += msg_text
+                    final_files.extend(msg_files)
+
+                # Process artifact parts
+                artifacts = getattr(response_task, 'artifacts', [])
+                if artifacts:
+                    for artifact in artifacts:
+                        artifact_parts = getattr(artifact, 'parts', [])
+                        art_text, art_files = self._process_parts(artifact_parts, session_id, final_data)
+                        if art_text:
+                            if final_message:
+                                final_message += "\n\n--- Artifact ---\n" # Separator for artifact text
+                            final_message += art_text
+                        final_files.extend(art_files)
+
+                return ActionResponse(
+                    message=final_message.strip() or "Task completed.", # Provide default message if empty
+                    files=final_files or None, # Return None if list is empty
+                    data=final_data or None # Return None if dict is empty
+                )
+
             elif task_state == A2A_TASK_STATE_FAILED:
                 logger.error(f"A2A Task '{a2a_taskId}' failed.")
                 error_message = "A2A Task Failed"
-                # Try to get more details from the response message if possible
-                # This might fail if TaskStatus or A2AMessage are Any
-                if (
-                    response_task.status
-                    and response_task.status.message
-                    and response_task.status.message.parts
-                ):
-                    try:
-                        # Assuming the first part is text containing the error
-                        # This might fail if TextPart is Any
-                        error_details = response_task.status.message.parts[0].text
-                        if error_details:
-                            error_message += f": {error_details}"
-                    except Exception:
-                        pass  # Ignore if parts structure is unexpected
+                error_details = ""
+                status_message = getattr(response_task.status, 'message', None)
+                if status_message:
+                    msg_parts = getattr(status_message, 'parts', [])
+                    if msg_parts:
+                        try:
+                            # Attempt to extract text from the first part
+                            first_part_text = getattr(msg_parts[0], 'text', '')
+                            if first_part_text:
+                                error_details = first_part_text
+                                error_message += f": {error_details}"
+                        except Exception as e:
+                            logger.warning(f"Could not extract error details from FAILED task message parts: {e}")
                 return ActionResponse(
                     message=error_message,
-                    error_info=ErrorInfo("A2A Task Failed"),
+                    error_info=ErrorInfo(error_details or "A2A Task Failed") # Use details if available
                 )
 
-            # Handle INPUT_REQUIRED state (basic) - Refined in Step 4.3
             elif task_state == A2A_TASK_STATE_INPUT_REQUIRED:
                 logger.warning(f"A2A Task '{a2a_taskId}' requires input.")
                 if not cache_service:
-                    logger.error(
-                        f"CacheService not available. Cannot handle INPUT_REQUIRED state for task '{a2a_taskId}'."
-                    )
-                    return ActionResponse(
-                        message="Internal Error: Cannot handle required input state without CacheService.",
-                        error_info=ErrorInfo("Cache Service Missing"),
-                    )
+                    logger.error(f"CacheService not available. Cannot handle INPUT_REQUIRED state for task '{a2a_taskId}'.")
+                    return ActionResponse(message="Internal Error: Cannot handle required input state without CacheService.", error_info=ErrorInfo("Cache Service Missing"))
 
-                # Extract the agent's question if possible
                 agent_question = "A2A Task requires further input."
-                if (
-                    response_task.status
-                    and response_task.status.message
-                    and response_task.status.message.parts
-                ):
-                    try:
-                        # Assuming the first part is text containing the question
-                        question_details = response_task.status.message.parts[0].text
-                        if question_details:
-                            agent_question = question_details
-                    except Exception:
-                        pass  # Ignore if parts structure is unexpected
+                status_message = getattr(response_task.status, 'message', None)
+                if status_message:
+                    msg_parts = getattr(status_message, 'parts', [])
+                    if msg_parts:
+                        try:
+                            # Assuming the first part is text containing the question
+                            question_details = getattr(msg_parts[0], 'text', '')
+                            if question_details:
+                                agent_question = question_details
+                        except Exception as e:
+                             logger.warning(f"Could not extract question details from INPUT_REQUIRED task message parts: {e}")
 
-                # Generate follow-up ID and store mapping
                 sam_follow_up_id = str(uuid.uuid4())
-                a2a_original_taskId = response_task.id # Get the original task ID
+                a2a_original_taskId = getattr(response_task, 'id', a2a_taskId) # Use original ID if available
                 cache_key = f"a2a_follow_up:{sam_follow_up_id}"
                 try:
-                    cache_service.set(
-                        cache_key,
-                        a2a_original_taskId,
-                        ttl=self.component.input_required_ttl,
-                    )
-                    logger.info(
-                        f"Stored INPUT_REQUIRED state for task '{a2a_original_taskId}' with follow-up ID '{sam_follow_up_id}'."
-                    )
+                    cache_service.set(cache_key, a2a_original_taskId, ttl=self.component.input_required_ttl)
+                    logger.info(f"Stored INPUT_REQUIRED state for task '{a2a_original_taskId}' with follow-up ID '{sam_follow_up_id}'.")
                     # Return response indicating input is needed, include follow-up ID
+                    # Use data field for structured info, message for user prompt
                     return ActionResponse(
-                        message=f"{agent_question}\n\n[Follow-up ID: {sam_follow_up_id}]"
+                        message=agent_question,
+                        data={'follow_up_id': sam_follow_up_id},
+                        # Consider adding a specific status field if ActionResponse supports it
+                        # status='INPUT_REQUIRED' # Example if status field exists
                     )
                 except Exception as e:
-                    logger.error(
-                        f"Failed to store INPUT_REQUIRED state in cache for task '{a2a_original_taskId}': {e}",
-                        exc_info=True,
-                    )
-                    return ActionResponse(
-                        message="Internal Error: Failed to store required input state.",
-                        error_info=ErrorInfo(f"Cache Error: {e}"),
-                    )
+                    logger.error(f"Failed to store INPUT_REQUIRED state in cache for task '{a2a_original_taskId}': {e}", exc_info=True)
+                    return ActionResponse(message="Internal Error: Failed to store required input state.", error_info=ErrorInfo(f"Cache Error: {e}"))
 
-            # Handle other unexpected states
             else:
-                logger.error(
-                    f"A2A Task '{a2a_taskId}' returned unexpected state: {task_state}"
-                )
+                # Handle other potential states like 'working', 'submitted', 'canceled' gracefully
+                logger.warning(f"A2A Task '{a2a_taskId}' returned unhandled state: {task_state}. Treating as pending/error.")
+                # Decide how to represent this. Maybe a generic message indicating the state?
                 return ActionResponse(
-                    message=f"A2A Task ended with unexpected state: {task_state}",
-                    error_info=ErrorInfo("Unexpected A2A State"),
+                    message=f"A2A Task is currently in state: {task_state}",
+                    error_info=ErrorInfo(f"Unhandled A2A State: {task_state}") # Indicate it's not a final success
                 )
 
         except Exception as e:
-            # Catch communication errors or errors during send_task itself
-            logger.error(
-                f"Failed to communicate with A2A agent for action '{self.name}': {e}",
-                exc_info=True,
-            )
-            return ActionResponse(
-                message="Failed to communicate with A2A agent",
-                error_info=ErrorInfo(f"A2A Communication Error: {e}"),
-            )
+            logger.error(f"Failed to communicate with A2A agent for action '{self.name}': {e}", exc_info=True)
+            return ActionResponse(message="Failed to communicate with A2A agent", error_info=ErrorInfo(f"A2A Communication Error: {e}"))
