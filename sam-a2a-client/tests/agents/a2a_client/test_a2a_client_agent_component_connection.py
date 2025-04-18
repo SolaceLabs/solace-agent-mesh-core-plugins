@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, _is_instance_mock # Import _is_instance_mock
 import threading
 
 # Adjust the import path based on how tests are run (e.g., from root)
@@ -18,7 +18,11 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
             "a2a_server_command": "run_agent",
             "a2a_server_restart_on_crash": True
         })
-        mock_card = MagicMock(spec=AgentCard) # Use spec here
+        # Conditionally use spec based on whether AgentCard is a mock
+        if _is_instance_mock(AgentCard):
+            mock_card = MagicMock()
+        else:
+            mock_card = MagicMock(spec=AgentCard)
         mock_card.name = "Launched Agent"
         mock_card.authentication = None # No auth
         mock_resolver_instance = mock_resolver_cls.return_value
@@ -47,7 +51,11 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
     def test_initialize_connection_connect_mode_success(self, mock_thread_cls, mock_a2a_client_cls, mock_resolver_cls, mock_wait_ready, mock_launch):
         """Test successful initialization in connect mode."""
         component = create_test_component({"a2a_server_command": None}) # No command
-        mock_card = MagicMock(spec=AgentCard) # Use spec here
+        # Conditionally use spec
+        if _is_instance_mock(AgentCard):
+            mock_card = MagicMock()
+        else:
+            mock_card = MagicMock(spec=AgentCard)
         mock_card.name = "Existing Agent"
         mock_card.authentication = None
         mock_resolver_instance = mock_resolver_cls.return_value
@@ -123,7 +131,11 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
     def test_initialize_connection_client_init_fail(self, mock_stop, mock_a2a_client_cls, mock_resolver_cls, mock_wait_ready):
         """Test initialization fails if A2AClient initialization fails."""
         component = create_test_component()
-        mock_card = MagicMock(spec=AgentCard) # Use spec here
+        # Conditionally use spec
+        if _is_instance_mock(AgentCard):
+            mock_card = MagicMock()
+        else:
+            mock_card = MagicMock(spec=AgentCard)
         mock_card.authentication = None
         mock_resolver_instance = mock_resolver_cls.return_value
         mock_resolver_instance.get_agent_card.return_value = mock_card
@@ -146,10 +158,18 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         """Test initialization with bearer token required and provided."""
         token = "my-secret-token"
         component = create_test_component({"a2a_bearer_token": token})
-        mock_card = MagicMock(spec=AgentCard) # Use spec here
+        # Conditionally use spec
+        if _is_instance_mock(AgentCard):
+            mock_card = MagicMock()
+        else:
+            mock_card = MagicMock(spec=AgentCard)
         mock_card.name = "Auth Agent"
         # Simulate AgentCard requiring bearer token
-        mock_auth = MagicMock(spec=Authentication)
+        # Conditionally use spec
+        if _is_instance_mock(Authentication):
+            mock_auth = MagicMock()
+        else:
+            mock_auth = MagicMock(spec=Authentication)
         mock_auth.schemes = [AuthenticationScheme.BEARER]
         mock_card.authentication = mock_auth
         mock_resolver_instance = mock_resolver_cls.return_value
@@ -170,10 +190,18 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
     def test_initialize_connection_bearer_auth_missing(self, mock_log_warning, mock_a2a_client_cls, mock_resolver_cls, mock_wait_ready):
         """Test initialization logs warning if bearer token required but not provided."""
         component = create_test_component({"a2a_bearer_token": None}) # No token configured
-        mock_card = MagicMock(spec=AgentCard) # Use spec here
+        # Conditionally use spec
+        if _is_instance_mock(AgentCard):
+            mock_card = MagicMock()
+        else:
+            mock_card = MagicMock(spec=AgentCard)
         mock_card.name = "Auth Agent Missing Token"
         # Simulate AgentCard requiring bearer token
-        mock_auth = MagicMock(spec=Authentication)
+        # Conditionally use spec
+        if _is_instance_mock(Authentication):
+            mock_auth = MagicMock()
+        else:
+            mock_auth = MagicMock(spec=Authentication)
         mock_auth.schemes = [AuthenticationScheme.BEARER]
         mock_card.authentication = mock_auth
         mock_resolver_instance = mock_resolver_cls.return_value
@@ -200,7 +228,11 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         token = "my-secret-token"
         # Token is configured but card doesn't require it
         component = create_test_component({"a2a_bearer_token": token})
-        mock_card = MagicMock(spec=AgentCard) # Use spec here
+        # Conditionally use spec
+        if _is_instance_mock(AgentCard):
+            mock_card = MagicMock()
+        else:
+            mock_card = MagicMock(spec=AgentCard)
         mock_card.name = "No Auth Agent"
         mock_card.authentication = None # No auth required
         mock_resolver_instance = mock_resolver_cls.return_value
