@@ -13,6 +13,8 @@ from .test_helpers import (
     AgentCard,
     AgentAuthentication,
 )
+# Import the class causing the flake8 error
+from src.agents.a2a_client.a2a_connection_handler import A2AConnectionHandler
 
 
 class TestA2AClientAgentComponentConnection(unittest.TestCase):
