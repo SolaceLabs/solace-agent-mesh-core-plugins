@@ -96,7 +96,7 @@ class TestA2AClientActionInvokeCall(unittest.TestCase):
         mock_response_task = MagicMock(spec=Task)
         mock_response_task.status = MagicMock(spec=TaskStatus)
         # Use string literal for state
-        mock_response_task.status.state = "completed"
+        mock_response_task.status.state = "completed" # FIX: Use string literal
         self.mock_a2a_client.send_task.return_value = mock_response_task
 
         # Mock A2A type constructors used in invoke
@@ -134,7 +134,7 @@ class TestA2AClientActionInvokeCall(unittest.TestCase):
         mock_response_task = MagicMock(spec=Task)
         mock_response_task.status = MagicMock(spec=TaskStatus)
         # Use string literal for state
-        mock_response_task.status.state = "failed"
+        mock_response_task.status.state = "failed" # FIX: Use string literal
         mock_response_task.status.message = MagicMock(spec=A2AMessage)
         mock_response_task.status.message.parts = [mock_error_text_part]
         self.mock_a2a_client.send_task.return_value = mock_response_task
@@ -175,7 +175,7 @@ class TestA2AClientActionInvokeCall(unittest.TestCase):
         mock_response_task = MagicMock(spec=Task)
         mock_response_task.status = MagicMock(spec=TaskStatus)
         # Use string literal for state
-        mock_response_task.status.state = "failed"
+        mock_response_task.status.state = "failed" # FIX: Use string literal
         mock_response_task.status.message = None  # No message
         self.mock_a2a_client.send_task.return_value = mock_response_task
 
