@@ -14,7 +14,7 @@ import platform
 import time # Added import
 import requests # Added import
 from urllib.parse import urljoin # Added import
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from solace_agent_mesh.agents.base_agent_component import BaseAgentComponent, agent_info as base_agent_info
 from solace_agent_mesh.common.action_list import ActionList
@@ -23,13 +23,14 @@ from solace_agent_mesh.services.file_service import FileService
 # Import A2A types - adjust path as needed based on dependency setup
 try:
     from common.client import A2AClient, A2ACardResolver
-    from common.types import AgentCard, AuthenticationScheme
+    from common.types import AgentCard, AuthenticationScheme, AgentSkill
 except ImportError:
     # Placeholder if common library isn't directly available
     A2AClient = Any # type: ignore
     A2ACardResolver = Any # type: ignore
     AgentCard = Any # type: ignore
     AuthenticationScheme = Any # type: ignore
+    AgentSkill = Any # type: ignore
     logger = logging.getLogger(__name__)
     logger.warning("Could not import A2A common library types. Using placeholders.")
 
@@ -351,6 +352,28 @@ class A2AClientAgentComponent(BaseAgentComponent):
         logger.info(f"Creating actions for agent '{self.agent_name}' based on AgentCard skills...")
         # Implementation from Step 3.2.1 will go here
         pass # Remove pass when implemented
+
+    def _infer_params_from_skill(self, skill: AgentSkill) -> List[Dict[str, Any]]:
+        """
+        Infers SAM action parameters from an A2A skill.
+        Simple initial implementation: always returns a generic 'prompt'.
+
+        Args:
+            skill: The A2A AgentSkill object.
+
+        Returns:
+            A list containing a single dictionary defining the 'prompt' parameter.
+        """
+        # TODO: Implement more sophisticated parsing of skill.description or other fields later.
+        logger.debug(f"Inferring parameters for skill '{skill.id}'. Using generic 'prompt'.")
+        return [
+            {
+                "name": "prompt",
+                "desc": "The user request or prompt for the agent.",
+                "type": "string",
+                "required": True,
+            }
+        ]
 
     def run(self):
         """

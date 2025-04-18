@@ -32,7 +32,7 @@ This checklist tracks the progress of implementing the `sam-a2a-client` plugin b
 
 ## Phase 3: Dynamic Action Creation and Basic Invocation
 
-- [ ] **Step 3.1.1:** Implement `A2AClientAgentComponent._infer_params_from_skill` (simple version).
+- [x] **Step 3.1.1:** Implement `A2AClientAgentComponent._infer_params_from_skill` (simple version).
 - [ ] **Step 3.1.2:** Testing for Step 3.1 (Unit test for parameter inference).
 - [ ] **Step 3.2.1:** Implement `A2AClientAgentComponent._create_actions`.
 - [ ] **Step 3.2.2:** Testing for Step 3.2 (Unit test for action list population).
