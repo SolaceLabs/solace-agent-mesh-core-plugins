@@ -23,45 +23,26 @@ from solace_agent_mesh.common.action import Action # Added import
 from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo # Added import for handler type hint
 from solace_agent_mesh.services.file_service import FileService
 
-# Import A2A types - adjust path as needed based on dependency setup
-try:
-    from common.client import A2AClient, A2ACardResolver
-    from common.types import (
-        AgentCard,
-        AuthenticationScheme,
-        AgentSkill,
-        TaskSendParams, # Added for handler
-        Message as A2AMessage, # Added for handler
-        TextPart, # Added for handler
-        FilePart, # Added for handler
-        FileContent, # Added for handler
-        Task, # Added for handler
-        TaskState, # Added for handler
-    )
-    # Define string constants based on imported enum for robustness in comparisons
-    A2A_TASK_STATE_COMPLETED = TaskState.COMPLETED
-    A2A_TASK_STATE_FAILED = TaskState.FAILED
-    A2A_TASK_STATE_INPUT_REQUIRED = TaskState.INPUT_REQUIRED
-except ImportError:
-    # Placeholder if common library isn't directly available
-    A2AClient = Any # type: ignore
-    A2ACardResolver = Any # type: ignore
-    AgentCard = Any # type: ignore
-    AuthenticationScheme = Any # type: ignore
-    AgentSkill = Any # type: ignore
-    TaskSendParams = Any # type: ignore
-    A2AMessage = Any # type: ignore
-    TextPart = Any # type: ignore
-    FilePart = Any # type: ignore
-    FileContent = Any # type: ignore
-    Task = Any # type: ignore
-    TaskState = Any # type: ignore
-    # Define string constants directly if import fails
-    A2A_TASK_STATE_COMPLETED = "completed"
-    A2A_TASK_STATE_FAILED = "failed"
-    A2A_TASK_STATE_INPUT_REQUIRED = "input-required"
-    logger = logging.getLogger(__name__)
-    logger.warning("Could not import A2A common library types. Using placeholders.")
+# Import A2A types - Assumes common-a2a is installed or in PYTHONPATH
+from common.client import A2AClient, A2ACardResolver
+from common.types import (
+    AgentCard,
+    AuthenticationScheme,
+    AgentSkill,
+    TaskSendParams, # Added for handler
+    Message as A2AMessage, # Added for handler
+    TextPart, # Added for handler
+    FilePart, # Added for handler
+    FileContent, # Added for handler
+    Task, # Added for handler
+    TaskState, # Added for handler
+)
+
+# Define string constants based on imported enum for robustness in comparisons
+A2A_TASK_STATE_COMPLETED = TaskState.COMPLETED
+A2A_TASK_STATE_FAILED = TaskState.FAILED
+A2A_TASK_STATE_INPUT_REQUIRED = TaskState.INPUT_REQUIRED
+
 
 # Import the dynamic action class
 from .actions.a2a_client_action import A2AClientAction

@@ -9,54 +9,28 @@ from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from solace_agent_mesh.common.action import Action
 from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo
 
-# Import A2A types - adjust path as needed based on dependency setup
-try:
-    from common.types import (
-        AgentSkill,
-        TaskSendParams,
-        Message as A2AMessage,
-        TextPart,
-        FilePart,
-        DataPart, # Added DataPart
-        FileContent,
-        Task,
-        TaskState,
-        TaskStatus,
-        Artifact, # Added Artifact
-    )
+# Import A2A types - Assumes common-a2a is installed or in PYTHONPATH
+from common.types import (
+    AgentSkill,
+    TaskSendParams,
+    Message as A2AMessage,
+    TextPart,
+    FilePart,
+    DataPart, # Added DataPart
+    FileContent,
+    Task,
+    TaskState,
+    TaskStatus,
+    Artifact, # Added Artifact
+)
 
-    # Define string constants based on imported enum for robustness in comparisons
-    A2A_TASK_STATE_COMPLETED = TaskState.COMPLETED
-    A2A_TASK_STATE_FAILED = TaskState.FAILED
-    A2A_TASK_STATE_INPUT_REQUIRED = TaskState.INPUT_REQUIRED
-    A2A_PART_TYPE_TEXT = "text"
-    A2A_PART_TYPE_FILE = "file"
-    A2A_PART_TYPE_DATA = "data"
-
-except ImportError as e:
-    logging.getLogger(__name__).error(
-        f"CRITICAL: Failed to import A2A common types: {e}. Using placeholders. Ensure 'a2a-samples/samples/python/common' is in PYTHONPATH or installed.",
-        exc_info=True,
-    )
-    # Placeholder if common library isn't directly available in this structure
-    AgentSkill = Any  # type: ignore
-    TaskSendParams = Any  # type: ignore
-    A2AMessage = Any  # type: ignore
-    TextPart = Any  # type: ignore
-    FilePart = Any  # type: ignore
-    DataPart = Any  # type: ignore
-    FileContent = Any  # type: ignore
-    Task = Any  # type: ignore
-    TaskState = Any  # type: ignore
-    TaskStatus = Any  # type: ignore
-    Artifact = Any # type: ignore
-    # Define string constants directly if import fails
-    A2A_TASK_STATE_COMPLETED = "completed"
-    A2A_TASK_STATE_FAILED = "failed"
-    A2A_TASK_STATE_INPUT_REQUIRED = "input-required"
-    A2A_PART_TYPE_TEXT = "text"
-    A2A_PART_TYPE_FILE = "file"
-    A2A_PART_TYPE_DATA = "data"
+# Define string constants based on imported enum for robustness in comparisons
+A2A_TASK_STATE_COMPLETED = TaskState.COMPLETED
+A2A_TASK_STATE_FAILED = TaskState.FAILED
+A2A_TASK_STATE_INPUT_REQUIRED = TaskState.INPUT_REQUIRED
+A2A_PART_TYPE_TEXT = "text"
+A2A_PART_TYPE_FILE = "file"
+A2A_PART_TYPE_DATA = "data"
 
 
 # Use TYPE_CHECKING to avoid circular import issues at runtime
