@@ -2,6 +2,9 @@
 
 This checklist tracks the progress of implementing the `sam-a2a-client` plugin based on the steps outlined in `sam-a2a-client-implementation-plan.md`.
 
+When implementing code, do not add comments to describe the change you are doing at that moment, such as "adding import" or "removing ... because of ..."
+
+
 ## Phase 1: Project Setup and Core Component Structure
 
 - [x] **Step 1.1.1:** Create the directory structure.

@@ -2,7 +2,8 @@ import unittest
 from unittest.mock import MagicMock
 
 # Adjust import paths as necessary
-from .test_helpers import create_test_component, AgentSkill # Import helper and mocked types
+from .test_helpers import create_test_component
+
 
 class TestA2AClientAgentComponentParamInference(unittest.TestCase):
 
@@ -33,5 +34,6 @@ class TestA2AClientAgentComponentParamInference(unittest.TestCase):
         }
         self.assertEqual(inferred_params[0], expected_param)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()
