@@ -57,15 +57,21 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
         # Create component instance using helper, passing mocks
         self.component = create_test_component(
             cache_service_instance=self.mock_cache_service,
-            # Need to explicitly pass file_service and a2a_client mocks
-            # as the helper doesn't handle these by default
         )
-        # Manually assign the mocks after creation via helper
-        self.component.a2a_client = self.mock_a2a_client
+        # Manually assign the file service mock after creation via helper
         self.component.file_service = self.mock_file_service
+
+        # Mock the connection_handler and assign the mock a2a_client to it
+        self.mock_connection_handler = MagicMock()
+        self.mock_connection_handler.a2a_client = self.mock_a2a_client
+        self.component.connection_handler = self.mock_connection_handler
 
         # Mock the _process_parts method directly on the component instance
         # as finding a specific action instance is tricky in the handler
+        # We need a way to access the action's _process_parts logic.
+        # Option 1: Mock it directly on the component (simplest for this test)
+        # Option 2: Instantiate a dummy action and use its method (more complex setup)
+        # Let's stick with Option 1 for now.
         self.component._process_parts = MagicMock(
             side_effect=self._mock_process_parts_side_effect
         )
@@ -88,7 +94,8 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
                         import base64
 
                         file_bytes = base64.b64decode(file_bytes_b64)
-                        file_meta = self.mock_file_service.upload_from_buffer(
+                        # Use the mock file service assigned to the component
+                        file_meta = self.component.file_service.upload_from_buffer(
                             file_bytes, file_name, session_id, mime_type, ANY
                         )
                         if file_meta:
@@ -136,9 +143,9 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
             mock_part.data = kwargs.get("data", {})
         return mock_part
 
-    @patch("src.agents.a2a_client.a2a_client_agent_component.TextPart")
-    @patch("src.agents.a2a_client.a2a_client_agent_component.TaskSendParams")
-    @patch("src.agents.a2a_client.a2a_client_agent_component.A2AMessage")
+    @patch("src.agents.a2a_client.a2a_input_handler.TextPart") # Patch where it's used
+    @patch("src.agents.a2a_client.a2a_input_handler.TaskSendParams") # Patch where it's used
+    @patch("src.agents.a2a_client.a2a_input_handler.A2AMessage") # Patch where it's used
     def test_handle_provide_input_success_completed(
         self, MockA2AMessage, MockTaskSendParams, MockTextPart
     ):
@@ -175,33 +182,39 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
         }
         MockTaskSendParams.return_value = mock_task_params_instance
 
-        response = self.component._handle_provide_required_input(params, meta)
+        # Patch the _process_parts method on the component instance for this test
+        # This assumes the handler uses self.component._process_parts
+        with patch.object(self.component, '_process_parts', side_effect=self._mock_process_parts_side_effect) as mock_process_parts:
+            response = self.component._handle_provide_required_input(params, meta)
 
-        self.mock_cache_service.get.assert_called_once_with(
-            f"a2a_follow_up:{follow_up_id}"
-        )
-        self.mock_cache_service.delete.assert_called_once_with(
-            f"a2a_follow_up:{follow_up_id}"
-        )
-        self.mock_a2a_client.send_task.assert_called_once()
-        # Check that the task ID in the sent params matches the retrieved one
-        sent_params_dump = self.mock_a2a_client.send_task.call_args[0][0]
-        self.assertEqual(sent_params_dump["id"], original_task_id)
+            self.mock_cache_service.get.assert_called_once_with(
+                f"a2a_follow_up:{follow_up_id}"
+            )
+            self.mock_cache_service.delete.assert_called_once_with(
+                f"a2a_follow_up:{follow_up_id}"
+            )
+            self.mock_a2a_client.send_task.assert_called_once()
+            # Check that the task ID in the sent params matches the retrieved one
+            sent_params_dump = self.mock_a2a_client.send_task.call_args[0][0]
+            self.assertEqual(sent_params_dump["id"], original_task_id)
 
-        self.assertIsNone(response.error_info)
-        self.assertEqual(response.message, "Here is the blue image.")
-        self.assertIsNone(response.files)
-        self.assertIsNone(response.data)
+            # Assert _process_parts was called with the response parts
+            mock_process_parts.assert_called_once_with(
+                mock_response_task.status.message.parts, meta["session_id"], {}
+            )
 
-    @patch("src.agents.a2a_client.a2a_client_agent_component.TextPart")
-    @patch(
-        "src.agents.a2a_client.a2a_client_agent_component.FilePart"
-    )  # Need to mock FilePart too
-    @patch(
-        "src.agents.a2a_client.a2a_client_agent_component.FileContent"
-    )  # And FileContent
-    @patch("src.agents.a2a_client.a2a_client_agent_component.TaskSendParams")
-    @patch("src.agents.a2a_client.a2a_client_agent_component.A2AMessage")
+            self.assertIsNone(response.error_info)
+            self.assertEqual(response.message, "Here is the blue image.")
+            self.assertIsNone(response.files)
+            # Check data attribute doesn't exist or is None
+            self.assertFalse(hasattr(response, 'data') or response.to_dict().get('data') is not None)
+
+
+    @patch("src.agents.a2a_client.a2a_input_handler.TextPart")
+    @patch("src.agents.a2a_client.a2a_input_handler.FilePart")
+    @patch("src.agents.a2a_client.a2a_input_handler.FileContent")
+    @patch("src.agents.a2a_client.a2a_input_handler.TaskSendParams")
+    @patch("src.agents.a2a_client.a2a_input_handler.A2AMessage")
     def test_handle_provide_input_with_file_success(
         self,
         MockA2AMessage,
@@ -249,29 +262,37 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
         }
         MockTaskSendParams.return_value = mock_task_params_instance
 
-        response = self.component._handle_provide_required_input(params, meta)
+        # Patch _process_parts for this test
+        with patch.object(self.component, '_process_parts', side_effect=self._mock_process_parts_side_effect) as mock_process_parts:
+            response = self.component._handle_provide_required_input(params, meta)
 
-        self.mock_cache_service.get.assert_called_once_with(
-            f"a2a_follow_up:{follow_up_id}"
-        )
-        self.mock_cache_service.delete.assert_called_once_with(
-            f"a2a_follow_up:{follow_up_id}"
-        )
-        self.mock_a2a_client.send_task.assert_called_once()
-        # Verify FilePart was constructed and included
-        MockFilePart.assert_called_once()
-        sent_message = MockA2AMessage.call_args[1]["parts"]
-        self.assertEqual(len(sent_message), 2)  # Text + File
-        self.assertIn(mock_file_part_inst, sent_message)
+            self.mock_cache_service.get.assert_called_once_with(
+                f"a2a_follow_up:{follow_up_id}"
+            )
+            self.mock_cache_service.delete.assert_called_once_with(
+                f"a2a_follow_up:{follow_up_id}"
+            )
+            self.mock_a2a_client.send_task.assert_called_once()
+            # Verify FilePart was constructed and included
+            MockFilePart.assert_called_once()
+            sent_message_args, sent_message_kwargs = MockA2AMessage.call_args
+            sent_parts = sent_message_kwargs.get('parts', [])
+            self.assertEqual(len(sent_parts), 2)  # Text + File
+            self.assertIn(mock_file_part_inst, sent_parts)
 
-        self.assertIsNone(response.error_info)
-        self.assertEqual(
-            response.message, "Task completed."
-        )  # Default message as mock response had no parts
+            # Assert _process_parts was called (with empty parts from mock response)
+            mock_process_parts.assert_called_once_with(
+                [], meta["session_id"], {}
+            )
 
-    @patch("src.agents.a2a_client.a2a_client_agent_component.TextPart")
-    @patch("src.agents.a2a_client.a2a_client_agent_component.TaskSendParams")
-    @patch("src.agents.a2a_client.a2a_client_agent_component.A2AMessage")
+            self.assertIsNone(response.error_info)
+            self.assertEqual(
+                response.message, "Task completed."
+            )  # Default message as mock response had no parts
+
+    @patch("src.agents.a2a_client.a2a_input_handler.TextPart")
+    @patch("src.agents.a2a_client.a2a_input_handler.TaskSendParams")
+    @patch("src.agents.a2a_client.a2a_input_handler.A2AMessage")
     def test_handle_provide_input_invalid_id(
         self, MockA2AMessage, MockTaskSendParams, MockTextPart
     ):
@@ -298,9 +319,9 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
         )
         self.assertEqual(response.error_info.error_message, "Invalid Follow-up ID")
 
-    @patch("src.agents.a2a_client.a2a_client_agent_component.TextPart")
-    @patch("src.agents.a2a_client.a2a_client_agent_component.TaskSendParams")
-    @patch("src.agents.a2a_client.a2a_client_agent_component.A2AMessage")
+    @patch("src.agents.a2a_client.a2a_input_handler.TextPart")
+    @patch("src.agents.a2a_client.a2a_input_handler.TaskSendParams")
+    @patch("src.agents.a2a_client.a2a_input_handler.A2AMessage")
     def test_handle_provide_input_cache_error(
         self, MockA2AMessage, MockTaskSendParams, MockTextPart
     ):
@@ -327,9 +348,9 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
         self.assertIn("Cache Error", response.error_info.error_message)
         self.assertIn(cache_error_msg, response.error_info.error_message)
 
-    @patch("src.agents.a2a_client.a2a_client_agent_component.TextPart")
-    @patch("src.agents.a2a_client.a2a_client_agent_component.TaskSendParams")
-    @patch("src.agents.a2a_client.a2a_client_agent_component.A2AMessage")
+    @patch("src.agents.a2a_client.a2a_input_handler.TextPart")
+    @patch("src.agents.a2a_client.a2a_input_handler.TaskSendParams")
+    @patch("src.agents.a2a_client.a2a_input_handler.A2AMessage")
     def test_handle_provide_input_follow_up_fails(
         self, MockA2AMessage, MockTaskSendParams, MockTextPart
     ):
@@ -365,25 +386,25 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
         }
         MockTaskSendParams.return_value = mock_task_params_instance
 
-        response = self.component._handle_provide_required_input(params, meta)
+        # Patch _process_parts for this test
+        with patch.object(self.component, '_process_parts', side_effect=self._mock_process_parts_side_effect):
+            response = self.component._handle_provide_required_input(params, meta)
 
-        self.mock_cache_service.get.assert_called_once()
-        self.mock_cache_service.delete.assert_called_once()
-        self.mock_a2a_client.send_task.assert_called_once()
+            self.mock_cache_service.get.assert_called_once()
+            self.mock_cache_service.delete.assert_called_once()
+            self.mock_a2a_client.send_task.assert_called_once()
 
-        self.assertIsNotNone(response.error_info)
-        self.assertEqual(
-            response.message,
-            "A2A Task Failed (after follow-up): Invalid input provided.",
-        )
-        self.assertEqual(response.error_info.error_message, "Invalid input provided.")
+            self.assertIsNotNone(response.error_info)
+            self.assertEqual(
+                response.message,
+                "A2A Task Failed (after follow-up): Invalid input provided.",
+            )
+            self.assertEqual(response.error_info.error_message, "Invalid input provided.")
 
-    @patch("src.agents.a2a_client.a2a_client_agent_component.TextPart")
-    @patch("src.agents.a2a_client.a2a_client_agent_component.TaskSendParams")
-    @patch("src.agents.a2a_client.a2a_client_agent_component.A2AMessage")
-    @patch(
-        "src.agents.a2a_client.a2a_client_agent_component.uuid.uuid4"
-    )  # Mock uuid for nested input required
+    @patch("src.agents.a2a_client.a2a_input_handler.TextPart")
+    @patch("src.agents.a2a_client.a2a_input_handler.TaskSendParams")
+    @patch("src.agents.a2a_client.a2a_input_handler.A2AMessage")
+    @patch("src.agents.a2a_client.a2a_input_handler.uuid.uuid4")
     def test_handle_provide_input_follow_up_input_required_again(
         self, mock_uuid, MockA2AMessage, MockTaskSendParams, MockTextPart
     ):
@@ -423,27 +444,32 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
         }
         MockTaskSendParams.return_value = mock_task_params_instance
 
-        response = self.component._handle_provide_required_input(params, meta)
+        # Patch _process_parts for this test
+        with patch.object(self.component, '_process_parts', side_effect=self._mock_process_parts_side_effect):
+            response = self.component._handle_provide_required_input(params, meta)
 
-        self.mock_cache_service.get.assert_called_once()
-        self.mock_cache_service.delete.assert_called_once()  # Original ID deleted
-        self.mock_a2a_client.send_task.assert_called_once()
+            self.mock_cache_service.get.assert_called_once()
+            self.mock_cache_service.delete.assert_called_once()  # Original ID deleted
+            self.mock_a2a_client.send_task.assert_called_once()
 
-        # Check new state was stored in cache
-        self.mock_cache_service.set.assert_called_once_with(
-            f"a2a_follow_up:{new_follow_up_id}",
-            original_task_id,
-            ttl=self.component.input_required_ttl,
-        )
+            # Check new state was stored in cache
+            self.mock_cache_service.set.assert_called_once_with(
+                f"a2a_follow_up:{new_follow_up_id}",
+                original_task_id,
+                ttl=self.component.input_required_ttl,
+            )
 
-        self.assertIsNone(response.error_info)
-        self.assertEqual(response.message, "Need even more details.")
-        self.assertIsNotNone(response.data)
-        self.assertEqual(response.data.get("follow_up_id"), new_follow_up_id)
+            self.assertIsNone(response.error_info)
+            # Check message contains question AND follow-up instructions
+            expected_message = f"Need even more details.\n\nPlease provide the required input using follow-up ID: `{new_follow_up_id}`"
+            self.assertEqual(response.message, expected_message)
+            # Check data attribute doesn't exist or is None
+            self.assertFalse(hasattr(response, 'data') or response.to_dict().get('data') is not None)
 
-    @patch("src.agents.a2a_client.a2a_client_agent_component.TextPart")
-    @patch("src.agents.a2a_client.a2a_client_agent_component.TaskSendParams")
-    @patch("src.agents.a2a_client.a2a_client_agent_component.A2AMessage")
+
+    @patch("src.agents.a2a_client.a2a_input_handler.TextPart")
+    @patch("src.agents.a2a_client.a2a_input_handler.TaskSendParams")
+    @patch("src.agents.a2a_client.a2a_input_handler.A2AMessage")
     def test_handle_provide_input_communication_error(
         self, MockA2AMessage, MockTaskSendParams, MockTextPart
     ):
@@ -474,18 +500,20 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
         }
         MockTaskSendParams.return_value = mock_task_params_instance
 
-        response = self.component._handle_provide_required_input(params, meta)
+        # Patch _process_parts for this test
+        with patch.object(self.component, '_process_parts', side_effect=self._mock_process_parts_side_effect):
+            response = self.component._handle_provide_required_input(params, meta)
 
-        self.mock_cache_service.get.assert_called_once()
-        self.mock_cache_service.delete.assert_called_once()
-        self.mock_a2a_client.send_task.assert_called_once()
+            self.mock_cache_service.get.assert_called_once()
+            self.mock_cache_service.delete.assert_called_once()
+            self.mock_a2a_client.send_task.assert_called_once()
 
-        self.assertIsNotNone(response.error_info)
-        self.assertEqual(
-            response.message, "Failed to communicate with A2A agent during follow-up"
-        )
-        self.assertIn("A2A Communication Error", response.error_info.error_message)
-        self.assertIn(error_msg, response.error_info.error_message)
+            self.assertIsNotNone(response.error_info)
+            self.assertEqual(
+                response.message, "Failed to communicate with A2A agent during follow-up"
+            )
+            self.assertIn("A2A Communication Error", response.error_info.error_message)
+            self.assertIn(error_msg, response.error_info.error_message)
 
 
 if __name__ == "__main__":
