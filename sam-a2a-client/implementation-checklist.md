@@ -43,8 +43,8 @@ This checklist tracks the progress of implementing the `sam-a2a-client` plugin b
 
 ## Phase 4: Response Handling and State Management
 
-- [ ] **Step 4.1.1:** Implement `A2AClientAction.invoke` - Response Mapping (A2A Parts to ActionResponse for COMPLETED).
-- [ ] **Step 4.1.2:** Testing for Step 4.1 (Unit test for response mapping).
+- [x] **Step 4.1.1:** Implement `A2AClientAction.invoke` - Response Mapping (A2A Parts to ActionResponse for COMPLETED).
+- [x] **Step 4.1.2:** Testing for Step 4.1 (Unit test for response mapping).
 - [ ] **Step 4.2.1:** Implement `A2AClientAction.invoke` - Error Handling (FAILED state).
 - [ ] **Step 4.2.2:** Testing for Step 4.2 (Unit test for FAILED state handling).
 - [ ] **Step 4.3.1:** Implement `A2AClientAction.invoke` - State Handling (INPUT_REQUIRED state).
