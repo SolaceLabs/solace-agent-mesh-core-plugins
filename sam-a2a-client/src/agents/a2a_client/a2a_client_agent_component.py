@@ -18,6 +18,8 @@ from typing import Dict, Any, Optional, List
 
 from solace_agent_mesh.agents.base_agent_component import BaseAgentComponent, agent_info as base_agent_info
 from solace_agent_mesh.common.action_list import ActionList
+from solace_agent_mesh.common.action import Action # Added import
+from solace_agent_mesh.common.action_response import ActionResponse # Added import for handler type hint
 from solace_agent_mesh.services.file_service import FileService
 
 # Import A2A types - adjust path as needed based on dependency setup
@@ -33,6 +35,9 @@ except ImportError:
     AgentSkill = Any # type: ignore
     logger = logging.getLogger(__name__)
     logger.warning("Could not import A2A common library types. Using placeholders.")
+
+# Import the dynamic action class
+from .actions.a2a_client_action import A2AClientAction
 
 
 # Define component configuration schema
@@ -343,16 +348,6 @@ class A2AClientAgentComponent(BaseAgentComponent):
             self.stop_component()
             raise # Re-raise the exception to signal failure to the framework
 
-    # Placeholder for action creation method (Step 3.2.1)
-    def _create_actions(self):
-        """
-        Dynamically creates SAM actions based on the skills found in the AgentCard.
-        (Placeholder - to be implemented)
-        """
-        logger.info(f"Creating actions for agent '{self.agent_name}' based on AgentCard skills...")
-        # Implementation from Step 3.2.1 will go here
-        pass # Remove pass when implemented
-
     def _infer_params_from_skill(self, skill: AgentSkill) -> List[Dict[str, Any]]:
         """
         Infers SAM action parameters from an A2A skill.
@@ -374,6 +369,84 @@ class A2AClientAgentComponent(BaseAgentComponent):
                 "required": True,
             }
         ]
+
+    def _create_actions(self):
+        """
+        Dynamically creates SAM actions based on the skills found in the AgentCard.
+        Also adds the static 'provide_required_input' action.
+        """
+        logger.info(f"Creating actions for agent '{self.agent_name}' based on AgentCard skills...")
+
+        if not self.agent_card or not self.agent_card.skills:
+            logger.warning(f"No skills found in AgentCard for '{self.agent_name}'. No dynamic actions created.")
+            # Still add the static action
+        else:
+            # Create dynamic actions from skills
+            for skill in self.agent_card.skills:
+                try:
+                    inferred_params = self._infer_params_from_skill(skill)
+                    action = A2AClientAction(
+                        skill=skill,
+                        component=self,
+                        inferred_params=inferred_params
+                    )
+                    self.action_list.add_action(action)
+                    logger.info(f"Created action '{action.name}' for skill '{skill.id}'")
+                except Exception as e:
+                    logger.error(f"Failed to create action for skill '{skill.id}': {e}", exc_info=True)
+
+        # Define and add the static 'provide_required_input' action
+        provide_input_action_def = {
+            "name": "provide_required_input",
+            "prompt_directive": "Provides the required input to continue a pending A2A task.",
+            "params": [
+                {
+                    "name": "follow_up_id",
+                    "desc": "The ID provided by the previous action call that requires input.",
+                    "type": "string",
+                    "required": True,
+                },
+                {
+                    "name": "user_response",
+                    "desc": "The user's response to the agent's request for input.",
+                    "type": "string",
+                    "required": True,
+                },
+                {
+                    "name": "files",
+                    "desc": "Optional list of file URLs to include with the response.",
+                    "type": "list", # Assuming list of strings (URLs)
+                    "required": False,
+                },
+            ],
+            "required_scopes": [f"{self.agent_name}:provide_required_input:execute"],
+        }
+        provide_input_action = Action(
+            provide_input_action_def,
+            agent=self,
+            config_fn=self.get_config
+        )
+        # Set the handler method (to be implemented in Step 4.4)
+        provide_input_action.set_handler(self._handle_provide_required_input)
+        self.action_list.add_action(provide_input_action)
+        logger.info(f"Added static action '{provide_input_action.name}'")
+
+        # Update component description
+        original_description = self.info.get("description", "Component to interact with an external A2A agent.")
+        action_names = [a.name for a in self.action_list.actions]
+        if action_names:
+            self.info["description"] = f"{original_description}\nDiscovered Actions: {', '.join(action_names)}"
+        else:
+             self.info["description"] = f"{original_description}\nNo actions discovered or created."
+        logger.info(f"Action creation complete. Total actions: {len(self.action_list.actions)}")
+
+    # Placeholder for the handler method (Step 4.4)
+    def _handle_provide_required_input(self, params: Dict[str, Any], meta: Dict[str, Any]) -> ActionResponse:
+        """Handles the 'provide_required_input' action."""
+        logger.warning("'_handle_provide_required_input' called but not yet implemented.")
+        # Implementation from Step 4.4 will go here
+        raise NotImplementedError("'_handle_provide_required_input' is not yet implemented.")
+
 
     def run(self):
         """
