@@ -3,6 +3,7 @@ Dynamically created SAM Action to represent and invoke a specific A2A skill.
 """
 
 import logging
+import uuid
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 
 from solace_agent_mesh.common.action import Action
@@ -10,10 +11,16 @@ from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo
 
 # Import A2A types - adjust path as needed based on dependency setup
 try:
-    from common.types import AgentSkill
+    from common.types import AgentSkill, TaskSendParams, Message as A2AMessage, TextPart, FilePart, FileContent
 except ImportError:
     # Placeholder if common library isn't directly available in this structure
     AgentSkill = Any # type: ignore
+    TaskSendParams = Any # type: ignore
+    A2AMessage = Any # type: ignore
+    TextPart = Any # type: ignore
+    FilePart = Any # type: ignore
+    FileContent = Any # type: ignore
+
 
 # Use TYPE_CHECKING to avoid circular import issues at runtime
 if TYPE_CHECKING:
@@ -58,14 +65,107 @@ class A2AClientAction(Action):
         )
         logger.debug(f"Initialized A2AClientAction for skill '{self.skill.id}'")
 
-    # Placeholder for invoke method (Step 1.3.3)
     def invoke(self, params: Dict[str, Any], meta: Dict[str, Any]) -> ActionResponse:
         """
-        Invokes the A2A skill. (Placeholder)
+        Invokes the A2A skill by mapping SAM parameters to an A2A Task request.
+        (Currently only implements the request mapping part).
         """
-        logger.warning(f"Invoke called for action '{self.name}', but not yet implemented.")
+        logger.info(f"Invoking action '{self.name}' with params: {params}")
+
+        # 1. Get necessary services and IDs
+        a2a_client = self.component.a2a_client
+        cache_service = self.component.cache_service # Needed later for INPUT_REQUIRED
+        file_service = self.component.file_service
+
+        if not a2a_client:
+            logger.error(f"A2AClient not initialized for component '{self.component.agent_name}'. Cannot invoke action '{self.name}'.")
+            return ActionResponse(success=False, message="Internal Error: A2A Client not available.", error_info=ErrorInfo("A2A Client Missing"))
+        if not file_service:
+            logger.error(f"FileService not available for component '{self.component.agent_name}'. Cannot handle file parameters for action '{self.name}'.")
+            return ActionResponse(success=False, message="Internal Error: File Service not available.", error_info=ErrorInfo("File Service Missing"))
+
+        session_id = meta.get("session_id")
+        if not session_id:
+            # A2A requires a session ID, generate one if missing from SAM meta
+            session_id = str(uuid.uuid4())
+            logger.warning(f"No session_id found in meta for action '{self.name}'. Generated new one: {session_id}")
+
+        a2a_taskId = str(uuid.uuid4())
+
+        # 2. Map SAM params to A2A Message.parts
+        parts: List[Any] = [] # List to hold TextPart, FilePart, etc.
+        prompt_text = params.get("prompt") # Assuming generic 'prompt' for now
+
+        if prompt_text is None:
+            # Maybe try finding the first string param if 'prompt' doesn't exist?
+            # For now, require 'prompt' based on simple inference.
+            logger.error(f"Missing required 'prompt' parameter for action '{self.name}'.")
+            return ActionResponse(success=False, message="Missing required 'prompt' parameter.", error_info=ErrorInfo("Missing Parameter"))
+
+        try:
+            parts.append(TextPart(text=str(prompt_text)))
+        except Exception as e:
+             logger.error(f"Failed to create TextPart for action '{self.name}': {e}", exc_info=True)
+             return ActionResponse(success=False, message=f"Internal Error: Could not process prompt text.", error_info=ErrorInfo(f"TextPart Error: {e}"))
+
+
+        file_urls = params.get("files", []) # Expecting a list of URLs
+        if isinstance(file_urls, str): # Handle single URL case
+            file_urls = [file_urls]
+
+        if file_urls and isinstance(file_urls, list):
+            logger.info(f"Processing {len(file_urls)} file URLs for action '{self.name}'.")
+            for file_url in file_urls:
+                if not isinstance(file_url, str):
+                    logger.warning(f"Skipping non-string item in 'files' list: {file_url}")
+                    continue
+                try:
+                    logger.debug(f"Resolving file URL: {file_url}")
+                    # Assuming resolve_url returns an object with attributes: bytes, name, mime_type
+                    # TODO: Confirm exact return type/attributes of FileService.resolve_url
+                    resolved_file = file_service.resolve_url(file_url, session_id=session_id)
+                    if resolved_file and hasattr(resolved_file, 'bytes') and hasattr(resolved_file, 'name') and hasattr(resolved_file, 'mime_type'):
+                        file_content = FileContent(
+                            bytes=resolved_file.bytes, # Assuming bytes are raw bytes
+                            name=resolved_file.name,
+                            mimeType=resolved_file.mime_type
+                        )
+                        parts.append(FilePart(file=file_content))
+                        logger.debug(f"Successfully added FilePart for {resolved_file.name}")
+                    else:
+                        logger.error(f"Failed to resolve file URL '{file_url}' or resolved object is invalid.")
+                        # Decide: fail action or just skip file? Skipping for now.
+                        # return ActionResponse(success=False, message=f"Failed to resolve file URL: {file_url}", error_info=ErrorInfo("File Resolution Failed"))
+                except Exception as e:
+                    logger.error(f"Error resolving file URL '{file_url}' for action '{self.name}': {e}", exc_info=True)
+                    # Decide: fail action or just skip file? Skipping for now.
+                    # return ActionResponse(success=False, message=f"Error resolving file: {file_url}", error_info=ErrorInfo(f"File Resolution Error: {e}"))
+
+        # 3. Create TaskSendParams
+        try:
+            a2a_message = A2AMessage(role="user", parts=parts)
+            # TODO: Determine acceptedOutputModes dynamically? From skill? Hardcode for now.
+            accepted_modes = ["text", "text/plain", "image/*", "application/json"]
+            task_params = TaskSendParams(
+                id=a2a_taskId,
+                sessionId=session_id,
+                message=a2a_message,
+                acceptedOutputModes=accepted_modes
+            )
+            logger.debug(f"Constructed TaskSendParams for action '{self.name}': {task_params.model_dump_json(exclude_none=True)}") # Log constructed params
+        except Exception as e:
+            logger.error(f"Failed to construct TaskSendParams for action '{self.name}': {e}", exc_info=True)
+            return ActionResponse(success=False, message="Internal Error: Failed to prepare A2A request.", error_info=ErrorInfo(f"TaskSendParams Error: {e}"))
+
+        # --- Placeholder for Step 3.4 ---
+        # The actual call `a2a_client.send_task(task_params.model_dump())`
+        # and response processing will go here in the next step.
+        logger.warning(f"Invoke for action '{self.name}' completed mapping. A2A call not yet implemented.")
+        # Store task_params temporarily if needed for next step, or pass directly
+        self._last_constructed_task_params = task_params # Example: store for testing/next step
+
         return ActionResponse(
-            success=False,
-            message=f"Action '{self.name}' is not fully implemented yet.",
+            success=False, # Mark as false until call is made
+            message=f"Action '{self.name}' mapped request. A2A call not implemented yet.",
             error_info=ErrorInfo("Not Implemented")
         )
