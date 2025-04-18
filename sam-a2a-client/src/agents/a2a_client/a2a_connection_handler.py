@@ -1,6 +1,7 @@
 import time
 import requests
 import logging
+import threading  # Import the threading module
 from urllib.parse import urljoin
 from typing import Optional
 
