@@ -297,10 +297,7 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         self.assertIsNone(component.agent_card)
         self.assertIsNone(component.a2a_client)
 
-    @patch(
-        "src.agents.a2a_client.a2a_connection_handler.A2AConnectionHandler.wait_for_ready",
-        return_value=True,
-    )
+    # Removed the redundant patch for wait_for_ready
     @patch("src.agents.a2a_client.a2a_connection_handler.A2ACardResolver") # Correct path
     @patch(
         "src.agents.a2a_client.a2a_connection_handler.A2AClient", # Correct path
@@ -310,7 +307,7 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         "src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent.stop_component"
     )
     def test_initialize_connection_client_init_fail(
-        self, mock_stop, mock_a2a_client_cls, mock_resolver_cls, mock_wait_ready
+        self, mock_stop, mock_a2a_client_cls, mock_resolver_cls
     ):
         """Test initialization fails if A2AClient initialization fails."""
         # Provide a mock cache service
@@ -341,7 +338,8 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
                 component.connection_handler.initialize_client() # This raises the error
 
         self.assertIn("Could not initialize A2AClient", str(cm.exception))
-        mock_wait_ready.assert_called_once()
+        # Assert on the instance mock
+        mock_conn_handler_instance.wait_for_ready.assert_called_once()
         # Assertions on mocks inside initialize_client are tricky, but we know it was called
         # mock_resolver_instance.get_agent_card.assert_called_once()
         # mock_a2a_client_cls.assert_called_once() # Constructor was called (and failed)
