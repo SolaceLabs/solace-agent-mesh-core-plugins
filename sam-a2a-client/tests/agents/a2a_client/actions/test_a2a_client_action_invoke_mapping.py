@@ -69,7 +69,8 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
         self.assertIsInstance(response, ActionResponse)
         self.assertIsNotNone(response.error_info, "ActionResponse should have error_info")
         self.assertIn("Could not process prompt text", response.message)
-        self.assertIn("TextPart Error", response.error_info.code)
+        # Check error_message instead of code
+        self.assertIn("TextPart Error", response.error_info.error_message)
         # Ensure the attribute causing the previous assertion error is NOT set
         self.assertFalse(hasattr(self.action, '_last_constructed_task_params'))
 
@@ -86,7 +87,8 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
         self.assertIsNotNone(response.error_info, "ActionResponse should have error_info")
         # It will likely fail on TextPart first
         self.assertIn("Could not process prompt text", response.message)
-        self.assertIn("TextPart Error", response.error_info.code)
+        # Check error_message instead of code
+        self.assertIn("TextPart Error", response.error_info.error_message)
         self.assertFalse(hasattr(self.action, '_last_constructed_task_params'))
 
     def test_invoke_mapping_text_and_multiple_files_handles_import_error(self):
@@ -103,7 +105,8 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
         self.assertIsInstance(response, ActionResponse)
         self.assertIsNotNone(response.error_info, "ActionResponse should have error_info")
         self.assertIn("Could not process prompt text", response.message)
-        self.assertIn("TextPart Error", response.error_info.code)
+        # Check error_message instead of code
+        self.assertIn("TextPart Error", response.error_info.error_message)
         self.assertFalse(hasattr(self.action, '_last_constructed_task_params'))
 
         # Check that the error log for TextPart failure was called
@@ -130,7 +133,8 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
 
         self.assertIsNotNone(response.error_info)
         self.assertEqual(response.message, "Missing required 'prompt' parameter.")
-        self.assertEqual(response.error_info.code, "Missing Parameter")
+        # Check error_message instead of code
+        self.assertEqual(response.error_info.error_message, "Missing Parameter")
         self.assertFalse(hasattr(self.action, '_last_constructed_task_params')) # Should fail before construction
 
     def test_invoke_mapping_no_session_id_handles_import_error(self):
@@ -151,7 +155,8 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
         self.assertIsInstance(response, ActionResponse)
         self.assertIsNotNone(response.error_info, "ActionResponse should have error_info")
         self.assertIn("Could not process prompt text", response.message)
-        self.assertIn("TextPart Error", response.error_info.code)
+        # Check error_message instead of code
+        self.assertIn("TextPart Error", response.error_info.error_message)
         self.assertFalse(hasattr(self.action, '_last_constructed_task_params'))
 
     def test_invoke_mapping_no_a2a_client(self):
@@ -164,7 +169,8 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
 
         self.assertIsNotNone(response.error_info)
         self.assertEqual(response.message, "Internal Error: A2A Client not available.")
-        self.assertEqual(response.error_info.code, "A2A Client Missing")
+        # Check error_message instead of code
+        self.assertEqual(response.error_info.error_message, "A2A Client Missing")
 
     def test_invoke_mapping_no_file_service(self):
         """Test mapping fails if file_service is not available."""
@@ -176,7 +182,8 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
 
         self.assertIsNotNone(response.error_info)
         self.assertEqual(response.message, "Internal Error: File Service not available.")
-        self.assertEqual(response.error_info.code, "File Service Missing")
+        # Check error_message instead of code
+        self.assertEqual(response.error_info.error_message, "File Service Missing")
 
 
 if __name__ == '__main__':
