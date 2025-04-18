@@ -7,18 +7,8 @@ from typing import Any
 from src.agents.a2a_client.a2a_client_agent_component import A2AClientAgentComponent, info as component_info
 
 # Mock A2A types if not directly importable
-try:
-    from common.client import A2AClient, A2ACardResolver
-    from common.types import AgentCard, Authentication, AuthenticationScheme, AgentSkill # Added AgentSkill here
-except ImportError:
-    A2AClient = MagicMock()
-    A2ACardResolver = MagicMock()
-    AgentCard = MagicMock()
-    Authentication = MagicMock()
-    AuthenticationScheme = MagicMock()
-    AuthenticationScheme.BEARER = "bearer" # Define mock value
-    # Explicitly define AgentSkill as a mock in the module scope if import fails
-    AgentSkill = MagicMock()
+from ...common-a2a.client import A2AClient, A2ACardResolver
+from ...common-a2a.types import AgentCard, Authentication, AuthenticationScheme, AgentSkill # Added AgentSkill here
 
 
 # Helper to create a component instance with mocked dependencies
