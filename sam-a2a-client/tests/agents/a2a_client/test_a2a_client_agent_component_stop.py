@@ -11,7 +11,9 @@ class TestA2AClientAgentComponentStop(unittest.TestCase):
     @patch('src.agents.a2a_client.a2a_client_agent_component.BaseAgentComponent.stop_component')
     def test_stop_component_terminates_process(self, mock_super_stop):
         """Test stop_component terminates the process and joins the thread."""
-        component = create_test_component()
+        # Provide a mock cache service
+        mock_cache = MagicMock()
+        component = create_test_component(cache_service_instance=mock_cache)
         # Mock process instance
         mock_process = MagicMock()
         mock_process.pid = 1234
@@ -37,7 +39,9 @@ class TestA2AClientAgentComponentStop(unittest.TestCase):
     @patch('src.agents.a2a_client.a2a_client_agent_component.BaseAgentComponent.stop_component')
     def test_stop_component_kills_process(self, mock_super_stop):
         """Test stop_component kills the process if terminate times out."""
-        component = create_test_component()
+        # Provide a mock cache service
+        mock_cache = MagicMock()
+        component = create_test_component(cache_service_instance=mock_cache)
         # Mock process instance
         mock_process = MagicMock()
         mock_process.pid = 1234
@@ -67,7 +71,9 @@ class TestA2AClientAgentComponentStop(unittest.TestCase):
     @patch('logging.Logger.warning')
     def test_stop_component_joins_thread(self, mock_log_warning, mock_super_stop):
         """Test stop_component attempts to join the monitor thread."""
-        component = create_test_component()
+        # Provide a mock cache service
+        mock_cache = MagicMock()
+        component = create_test_component(cache_service_instance=mock_cache)
         component.a2a_process = None # No process
         # Mock thread instance
         mock_thread = MagicMock(spec=threading.Thread)
@@ -87,7 +93,9 @@ class TestA2AClientAgentComponentStop(unittest.TestCase):
     @patch('logging.Logger.warning')
     def test_stop_component_thread_join_timeout(self, mock_log_warning, mock_super_stop):
         """Test stop_component logs warning if monitor thread join times out."""
-        component = create_test_component()
+        # Provide a mock cache service
+        mock_cache = MagicMock()
+        component = create_test_component(cache_service_instance=mock_cache)
         component.a2a_process = None # No process
         # Mock thread instance
         mock_thread = MagicMock(spec=threading.Thread)
@@ -107,7 +115,9 @@ class TestA2AClientAgentComponentStop(unittest.TestCase):
     @patch('src.agents.a2a_client.a2a_client_agent_component.BaseAgentComponent.stop_component')
     def test_stop_component_no_process_or_thread(self, mock_super_stop):
         """Test stop_component handles no process or thread existing."""
-        component = create_test_component()
+        # Provide a mock cache service
+        mock_cache = MagicMock()
+        component = create_test_component(cache_service_instance=mock_cache)
         component.a2a_process = None
         component.monitor_thread = None
 
