@@ -50,13 +50,12 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
             {"name": "files", "desc": "List of file URLs", "type": "list", "required": False}
         ]
 
-        # Instantiate the action
-        with patch('src.agents.a2a_client.actions.a2a_client_action.Action.__init__'):
-            self.action = A2AClientAction(
-                skill=self.mock_skill,
-                component=self.mock_component, # type: ignore
-                inferred_params=self.mock_params_def
-            )
+        # Instantiate the action - REMOVED patch on Action.__init__
+        self.action = A2AClientAction(
+            skill=self.mock_skill,
+            component=self.mock_component, # type: ignore
+            inferred_params=self.mock_params_def
+        )
 
     def test_invoke_mapping_text_only(self):
         """Test mapping with only text prompt."""
