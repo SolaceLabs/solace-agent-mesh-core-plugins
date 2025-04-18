@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch, MagicMock, _is_instance_mock # Import _is_instance_mock
+from unittest.mock import patch, MagicMock, _is_instance_mock, call # Import _is_instance_mock and call
 import threading
 
 # Adjust the import path based on how tests are run (e.g., from root)
@@ -14,10 +14,15 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
     @patch('src.agents.a2a_client.a2a_client_agent_component.threading.Thread')
     def test_initialize_connection_launch_mode_success(self, mock_thread_cls, mock_a2a_client_cls, mock_resolver_cls, mock_wait_ready, mock_launch):
         """Test successful initialization in launch mode."""
-        component = create_test_component({
-            "a2a_server_command": "run_agent",
-            "a2a_server_restart_on_crash": True
-        })
+        # Provide a mock cache service to prevent init warning
+        mock_cache = MagicMock()
+        component = create_test_component(
+            config_overrides={
+                "a2a_server_command": "run_agent",
+                "a2a_server_restart_on_crash": True
+            },
+            cache_service_instance=mock_cache
+        )
         # Conditionally use spec based on whether AgentCard is a mock
         if _is_instance_mock(AgentCard):
             mock_card = MagicMock()
@@ -50,7 +55,12 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
     @patch('src.agents.a2a_client.a2a_client_agent_component.threading.Thread')
     def test_initialize_connection_connect_mode_success(self, mock_thread_cls, mock_a2a_client_cls, mock_resolver_cls, mock_wait_ready, mock_launch):
         """Test successful initialization in connect mode."""
-        component = create_test_component({"a2a_server_command": None}) # No command
+        # Provide a mock cache service
+        mock_cache = MagicMock()
+        component = create_test_component(
+            config_overrides={"a2a_server_command": None}, # No command
+            cache_service_instance=mock_cache
+        )
         # Conditionally use spec
         if _is_instance_mock(AgentCard):
             mock_card = MagicMock()
@@ -79,7 +89,12 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
     @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent.stop_component') # Mock stop to prevent side effects
     def test_initialize_connection_launch_fail(self, mock_stop, mock_launch):
         """Test initialization fails if process launch fails."""
-        component = create_test_component({"a2a_server_command": "bad_cmd"})
+        # Provide a mock cache service
+        mock_cache = MagicMock()
+        component = create_test_component(
+            config_overrides={"a2a_server_command": "bad_cmd"},
+            cache_service_instance=mock_cache
+        )
 
         with self.assertRaises(FileNotFoundError):
             component._initialize_a2a_connection()
@@ -94,7 +109,12 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
     @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent.stop_component')
     def test_initialize_connection_readiness_timeout(self, mock_stop, mock_wait_ready, mock_launch):
         """Test initialization fails if agent readiness check times out."""
-        component = create_test_component({"a2a_server_command": "run_agent"})
+        # Provide a mock cache service
+        mock_cache = MagicMock()
+        component = create_test_component(
+            config_overrides={"a2a_server_command": "run_agent"},
+            cache_service_instance=mock_cache
+        )
 
         with self.assertRaises(TimeoutError):
             component._initialize_a2a_connection()
@@ -110,7 +130,9 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
     @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent.stop_component')
     def test_initialize_connection_card_fetch_fail(self, mock_stop, mock_resolver_cls, mock_wait_ready):
         """Test initialization fails if Agent Card fetch fails."""
-        component = create_test_component() # Connect mode
+        # Provide a mock cache service
+        mock_cache = MagicMock()
+        component = create_test_component(cache_service_instance=mock_cache) # Connect mode
         mock_resolver_instance = mock_resolver_cls.return_value
         mock_resolver_instance.get_agent_card.side_effect = ValueError("Fetch failed")
 
@@ -130,7 +152,9 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
     @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent.stop_component')
     def test_initialize_connection_client_init_fail(self, mock_stop, mock_a2a_client_cls, mock_resolver_cls, mock_wait_ready):
         """Test initialization fails if A2AClient initialization fails."""
-        component = create_test_component()
+        # Provide a mock cache service
+        mock_cache = MagicMock()
+        component = create_test_component(cache_service_instance=mock_cache)
         # Conditionally use spec
         if _is_instance_mock(AgentCard):
             mock_card = MagicMock()
@@ -157,7 +181,12 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
     def test_initialize_connection_bearer_auth_success(self, mock_a2a_client_cls, mock_resolver_cls, mock_wait_ready):
         """Test initialization with bearer token required and provided."""
         token = "my-secret-token"
-        component = create_test_component({"a2a_bearer_token": token})
+        # Provide a mock cache service
+        mock_cache = MagicMock()
+        component = create_test_component(
+            config_overrides={"a2a_bearer_token": token},
+            cache_service_instance=mock_cache
+        )
         # Conditionally use spec
         if _is_instance_mock(AgentCard):
             mock_card = MagicMock()
@@ -189,7 +218,12 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
     @patch('logging.Logger.warning')
     def test_initialize_connection_bearer_auth_missing(self, mock_log_warning, mock_a2a_client_cls, mock_resolver_cls, mock_wait_ready):
         """Test initialization logs warning if bearer token required but not provided."""
-        component = create_test_component({"a2a_bearer_token": None}) # No token configured
+        # Provide a mock cache service
+        mock_cache = MagicMock()
+        component = create_test_component(
+            config_overrides={"a2a_bearer_token": None}, # No token configured
+            cache_service_instance=mock_cache
+        )
         # Conditionally use spec
         if _is_instance_mock(AgentCard):
             mock_card = MagicMock()
@@ -211,7 +245,7 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
 
         mock_wait_ready.assert_called_once()
         mock_resolver_instance.get_agent_card.assert_called_once()
-        # Verify warning was logged
+        # Verify warning was logged for the bearer token
         mock_log_warning.assert_called_with(
             "A2A Agent Card requires Bearer token, but none configured ('a2a_bearer_token'). Proceeding without authentication."
         )
@@ -227,7 +261,12 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         """Test initialization proceeds normally if bearer token not required."""
         token = "my-secret-token"
         # Token is configured but card doesn't require it
-        component = create_test_component({"a2a_bearer_token": token})
+        # Provide a mock cache service
+        mock_cache = MagicMock()
+        component = create_test_component(
+            config_overrides={"a2a_bearer_token": token},
+            cache_service_instance=mock_cache
+        )
         # Conditionally use spec
         if _is_instance_mock(AgentCard):
             mock_card = MagicMock()
