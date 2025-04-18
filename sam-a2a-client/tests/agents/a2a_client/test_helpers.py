@@ -4,11 +4,23 @@ import threading
 from typing import Any
 
 # Adjust the import path based on how tests are run (e.g., from root)
-from src.agents.a2a_client.a2a_client_agent_component import A2AClientAgentComponent, info as component_info
+from src.agents.a2a_client.a2a_client_agent_component import (
+    A2AClientAgentComponent,
+    info as component_info,
+)
 
 # Mock A2A types if not directly importable
-from ...common-a2a.client import A2AClient, A2ACardResolver
-from ...common-a2a.types import AgentCard, Authentication, AuthenticationScheme, AgentSkill # Added AgentSkill here
+# from ...common_a2a.client import A2AClient, A2ACardResolver
+# from ...common_a2a.types import (
+#     AgentCard,
+#     Authentication,
+#     AuthenticationScheme,
+#     AgentSkill,
+# )  # Added AgentSkill here
+from src.common_a2a.types import (
+    AgentCard,
+    AgentSkill,
+)  # Added AgentSkill here
 
 
 # Helper to create a component instance with mocked dependencies
@@ -24,12 +36,12 @@ def create_test_component(config_overrides=None, cache_service_instance=None):
     base_config = {
         "agent_name": "test_a2a_agent",
         "a2a_server_url": "http://localhost:10001",
-        "a2a_server_command": None, # Default to no command
-        "a2a_server_startup_timeout": 10, # Use a shorter timeout for tests unless overridden
+        "a2a_server_command": None,  # Default to no command
+        "a2a_server_startup_timeout": 10,  # Use a shorter timeout for tests unless overridden
         "a2a_server_restart_on_crash": True,
         "a2a_bearer_token": None,
         "input_required_ttl": 300,
-        "registration_interval": 60
+        "registration_interval": 60,
     }
     if config_overrides:
         base_config.update(config_overrides)
@@ -43,10 +55,13 @@ def create_test_component(config_overrides=None, cache_service_instance=None):
         return base_config.get(key, default)
 
     # Patch BaseAgentComponent.__init__ and FileService during instantiation
-    with patch('src.agents.a2a_client.a2a_client_agent_component.BaseAgentComponent.__init__'), \
-         patch('src.agents.a2a_client.a2a_client_agent_component.FileService'):
+    with patch(
+        "src.agents.a2a_client.a2a_client_agent_component.BaseAgentComponent.__init__"
+    ), patch("src.agents.a2a_client.a2a_client_agent_component.FileService"):
         # Patch get_config specifically for the duration of the __init__ call
-        with patch.object(A2AClientAgentComponent, 'get_config', side_effect=mock_get_config):
+        with patch.object(
+            A2AClientAgentComponent, "get_config", side_effect=mock_get_config
+        ):
             component = A2AClientAgentComponent(module_info=component_info, **kwargs)
 
     # Re-apply the mock get_config to the instance for use within test methods
