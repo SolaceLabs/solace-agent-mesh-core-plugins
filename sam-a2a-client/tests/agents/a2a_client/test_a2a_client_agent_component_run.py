@@ -3,6 +3,7 @@ from unittest.mock import patch, MagicMock
 
 # Adjust the import path based on how tests are run (e.g., from root)
 from .test_helpers import create_test_component # Import helper
+from solace_ai_connector.common.log import log # Import the log object
 
 class TestA2AClientAgentComponentRun(unittest.TestCase):
 
@@ -23,7 +24,7 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
     @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent._create_actions')
     @patch('src.agents.a2a_client.a2a_client_agent_component.BaseAgentComponent.run')
     @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent.stop_component')
-    @patch('logging.Logger.critical')
+    @patch('solace_ai_connector.common.log.log.critical') # Patch the correct log object
     def test_run_handles_initialization_failure(self, mock_log_critical, mock_stop, mock_super_run, mock_create_actions, mock_initialize):
         """Test run handles exceptions during initialization."""
         component = create_test_component()
@@ -32,6 +33,7 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
         mock_initialize.assert_called_once()
         mock_create_actions.assert_not_called() # Should not be called if init fails
         mock_log_critical.assert_called_once() # Check critical error logged
+        # Check the first argument of the call contains the expected message
         self.assertIn("Initialization failed", mock_log_critical.call_args[0][0])
         mock_stop.assert_called_once() # Ensure cleanup called
         mock_super_run.assert_not_called() # Base run should not be called
@@ -41,7 +43,7 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
     @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent._create_actions', side_effect=Exception("Action creation failed"))
     @patch('src.agents.a2a_client.a2a_client_agent_component.BaseAgentComponent.run')
     @patch('src.agents.a2a_client.a2a_client_agent_component.A2AClientAgentComponent.stop_component')
-    @patch('logging.Logger.critical')
+    @patch('solace_ai_connector.common.log.log.critical') # Patch the correct log object
     def test_run_handles_action_creation_failure(self, mock_log_critical, mock_stop, mock_super_run, mock_create_actions, mock_initialize):
         """Test run handles exceptions during action creation."""
         component = create_test_component()
@@ -50,6 +52,7 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
         mock_initialize.assert_called_once()
         mock_create_actions.assert_called_once() # Action creation was attempted
         mock_log_critical.assert_called_once() # Check critical error logged
+        # Check the first argument of the call contains the expected message
         self.assertIn("Action creation failed", mock_log_critical.call_args[0][0])
         mock_stop.assert_called_once() # Ensure cleanup called
         mock_super_run.assert_not_called() # Base run should not be called
@@ -57,4 +60,3 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-

@@ -9,6 +9,7 @@ import threading # Import threading
 from .test_helpers import create_test_component # Import helper
 # Import the class we are testing the launch method of
 from src.agents.a2a_client.a2a_process_manager import A2AProcessManager
+from solace_ai_connector.common.log import log # Import the log object
 
 class TestA2AClientAgentComponentProcessLaunch(unittest.TestCase):
 
@@ -51,7 +52,7 @@ class TestA2AClientAgentComponentProcessLaunch(unittest.TestCase):
 
     # Patch where the objects are *used*
     @patch('src.agents.a2a_client.a2a_process_manager.subprocess.Popen')
-    @patch('logging.Logger.warning')
+    @patch('solace_ai_connector.common.log.log.warning') # Patch the correct log object
     def test_launch_process_no_command(self, mock_log_warning, mock_popen):
         """Test launch does nothing if command is not set."""
         agent_name = "test_agent_no_cmd"
@@ -66,11 +67,11 @@ class TestA2AClientAgentComponentProcessLaunch(unittest.TestCase):
         process_manager.launch()
 
         mock_popen.assert_not_called()
-        mock_log_warning.assert_called_with("No 'a2a_server_command' configured, cannot launch process.")
+        mock_log_warning.assert_called_with("No 'a2a_server_command' configured for '%s', cannot launch process.", agent_name)
 
     # Patch where the objects are *used*
     @patch('src.agents.a2a_client.a2a_process_manager.subprocess.Popen')
-    @patch('logging.Logger.warning')
+    @patch('solace_ai_connector.common.log.log.warning') # Patch the correct log object
     def test_launch_process_already_running(self, mock_log_warning, mock_popen):
         """Test launch does nothing if process is already running."""
         agent_name = "test_agent_running"
@@ -89,12 +90,12 @@ class TestA2AClientAgentComponentProcessLaunch(unittest.TestCase):
         process_manager.launch()
 
         mock_popen.assert_not_called()
-        mock_log_warning.assert_called_with("A2A process (PID: 1234) seems to be already running.")
+        mock_log_warning.assert_called_with("A2A process (PID: %d) for '%s' seems to be already running.", 1234, agent_name)
 
     # Patch where the objects are *used*
     @patch('src.agents.a2a_client.a2a_process_manager.subprocess.Popen', side_effect=FileNotFoundError("Command not found"))
     @patch('src.agents.a2a_client.a2a_process_manager.shlex.split')
-    @patch('logging.Logger.error')
+    @patch('solace_ai_connector.common.log.log.error') # Patch the correct log object
     def test_launch_process_file_not_found(self, mock_log_error, mock_shlex_split, mock_popen):
         """Test launch handles FileNotFoundError."""
         command = "non_existent_command"
@@ -113,12 +114,14 @@ class TestA2AClientAgentComponentProcessLaunch(unittest.TestCase):
 
         self.assertIsNone(process_manager.process)
         mock_log_error.assert_called_once()
-        self.assertIn("Command not found: non_existent_command", mock_log_error.call_args[0][0])
+        self.assertIn("Command not found for '%s': %s", mock_log_error.call_args[0][0])
+        self.assertEqual(mock_log_error.call_args[0][1], agent_name)
+        self.assertEqual(mock_log_error.call_args[0][2], "non_existent_command")
 
     # Patch where the objects are *used*
     @patch('src.agents.a2a_client.a2a_process_manager.subprocess.Popen', side_effect=Exception("Other Popen error"))
     @patch('src.agents.a2a_client.a2a_process_manager.shlex.split')
-    @patch('logging.Logger.error')
+    @patch('solace_ai_connector.common.log.log.error') # Patch the correct log object
     def test_launch_process_other_exception(self, mock_log_error, mock_shlex_split, mock_popen):
         """Test launch handles other Popen exceptions."""
         command = "some_command"
@@ -137,7 +140,9 @@ class TestA2AClientAgentComponentProcessLaunch(unittest.TestCase):
 
         self.assertIsNone(process_manager.process)
         mock_log_error.assert_called_once()
-        self.assertIn("Failed to launch A2A agent process", mock_log_error.call_args[0][0])
+        self.assertIn("Failed to launch A2A agent process for '%s': %s", mock_log_error.call_args[0][0])
+        self.assertEqual(mock_log_error.call_args[0][1], agent_name)
+        self.assertIsInstance(mock_log_error.call_args[0][2], Exception)
 
 if __name__ == '__main__':
     unittest.main()

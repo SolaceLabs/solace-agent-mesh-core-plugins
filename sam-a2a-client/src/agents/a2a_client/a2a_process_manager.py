@@ -8,11 +8,10 @@ import shlex
 import platform
 import threading
 import time
-import logging
 import os
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+from solace_ai_connector.common.log import log # Use solace-ai-connector log
 
 
 class A2AProcessManager:
@@ -53,7 +52,8 @@ class A2AProcessManager:
         self.stop_event = stop_event
         self.process: Optional[subprocess.Popen] = None
         self.monitor_thread: Optional[threading.Thread] = None
-        logger.debug(f"A2AProcessManager initialized for '{agent_name}'. Command: '{command}', Restart: {restart_on_crash}")
+        log.debug("A2AProcessManager initialized for '%s'. Command: '%s', Restart: %s",
+                  self.agent_name, self.command, self.restart_on_crash)
 
     def launch(self):
         """
@@ -64,16 +64,18 @@ class A2AProcessManager:
             Exception: For other errors during process launch.
         """
         if not self.command:
-            logger.warning(f"No 'a2a_server_command' configured for '{self.agent_name}', cannot launch process.")
+            log.warning("No 'a2a_server_command' configured for '%s', cannot launch process.", self.agent_name)
             return
 
         if self.process and self.process.poll() is None:
-            logger.warning(
-                f"A2A process (PID: {self.process.pid}) for '{self.agent_name}' seems to be already running."
+            log.warning(
+                "A2A process (PID: %d) for '%s' seems to be already running.",
+                self.process.pid, self.agent_name
             )
             return
 
-        logger.info(f"Launching A2A agent process for '{self.agent_name}' with command: {self.command}")
+        log.info("Launching A2A agent process for '%s' with command: %s", self.agent_name, self.command)
+        args = [] # Define args before try block
         try:
             # Use shlex.split for safer command parsing, especially with arguments
             args = shlex.split(self.command)
@@ -91,18 +93,19 @@ class A2AProcessManager:
                 self.process = subprocess.Popen(
                     args, stdout=devnull, stderr=devnull, **popen_kwargs
                 )
-            logger.info(f"Launched A2A agent process for '{self.agent_name}' with PID: {self.process.pid}")
+            log.info("Launched A2A agent process for '%s' with PID: %d", self.agent_name, self.process.pid)
 
         except FileNotFoundError:
-            logger.error(
-                f"Command not found for '{self.agent_name}': {args[0]}. "
+            log.error(
+                "Command not found for '%s': %s. "
                 "Please ensure it's in the system PATH or provide the full path.",
+                self.agent_name, args[0] if args else "<empty command>",
                 exc_info=True,
             )
             self.process = None # Ensure process is None on failure
             raise # Re-raise the specific error for the component to handle
         except Exception as e:
-            logger.error(f"Failed to launch A2A agent process for '{self.agent_name}': {e}", exc_info=True)
+            log.error("Failed to launch A2A agent process for '%s': %s", self.agent_name, e, exc_info=True)
             self.process = None # Ensure process is None on failure
             raise # Re-raise for the component
 
@@ -120,7 +123,7 @@ class A2AProcessManager:
             # Check if the existing thread object is actually alive before creating a new one
             # This handles cases where start_monitor might be called multiple times erroneously
             if self.monitor_thread and self.monitor_thread.is_alive():
-                 logger.warning(f"Monitor thread for '{self.agent_name}' is already running.")
+                 log.warning("Monitor thread for '%s' is already running.", self.agent_name)
                  return
 
             self.monitor_thread = threading.Thread(
@@ -129,11 +132,11 @@ class A2AProcessManager:
                 daemon=True
             )
             self.monitor_thread.start()
-            logger.info(f"Started monitor thread for A2A process '{self.agent_name}'.")
+            log.info("Started monitor thread for A2A process '%s'.", self.agent_name)
         elif not self.restart_on_crash:
-             logger.debug(f"Restart on crash disabled for '{self.agent_name}', monitor not started.")
+             log.debug("Restart on crash disabled for '%s', monitor not started.", self.agent_name)
         elif not self.process:
-             logger.debug(f"No process to monitor for '{self.agent_name}', monitor not started.")
+             log.debug("No process to monitor for '%s', monitor not started.", self.agent_name)
 
 
     def _monitor_loop(self):
@@ -141,26 +144,27 @@ class A2AProcessManager:
         Internal loop run by the monitor thread. Checks the process status
         and attempts restarts if configured and necessary.
         """
-        logger.info(f"Monitor thread running for '{self.agent_name}'.")
+        log.info("Monitor thread running for '%s'.", self.agent_name)
         restart_delay = 2 # Seconds to wait before attempting restart
         max_restart_attempts = 5 # Limit consecutive restart attempts
         current_restart_attempts = 0
 
         while not self.stop_event.is_set():
             if not self.process:
-                logger.warning(f"Monitor thread ({self.agent_name}): No A2A process to monitor. Exiting.")
+                log.warning("Monitor thread (%s): No A2A process to monitor. Exiting.", self.agent_name)
                 break
 
             try:
                 return_code = self.process.poll()
             except Exception as poll_err:
-                 logger.error(f"Error polling A2A process for '{self.agent_name}': {poll_err}. Stopping monitor.", exc_info=True)
+                 log.error("Error polling A2A process for '%s': %s. Stopping monitor.", self.agent_name, poll_err, exc_info=True)
                  break # Exit monitor loop on poll error
 
             if return_code is not None: # Process has terminated
-                log_func = logger.info if return_code == 0 else logger.error
+                log_func = log.info if return_code == 0 else log.error
                 log_func(
-                    f"Managed A2A process (PID: {self.process.pid}) for '{self.agent_name}' terminated with code {return_code}."
+                    "Managed A2A process (PID: %d) for '%s' terminated with code %d.",
+                    self.process.pid, self.agent_name, return_code
                 )
 
                 if (
@@ -170,34 +174,36 @@ class A2AProcessManager:
                 ):
                     current_restart_attempts += 1
                     if current_restart_attempts > max_restart_attempts:
-                         logger.error(f"Exceeded maximum restart attempts ({max_restart_attempts}) for '{self.agent_name}'. Stopping monitor.")
+                         log.error("Exceeded maximum restart attempts (%d) for '%s'. Stopping monitor.", max_restart_attempts, self.agent_name)
                          break
 
-                    logger.info(f"Attempting restart {current_restart_attempts}/{max_restart_attempts} for '{self.agent_name}' in {restart_delay}s...")
+                    log.info("Attempting restart %d/%d for '%s' in %ds...",
+                             current_restart_attempts, max_restart_attempts, self.agent_name, restart_delay)
                     # Wait for the delay, but check stop_event frequently
                     if self.stop_event.wait(timeout=restart_delay):
-                        logger.info(f"Stop signal received during restart delay for '{self.agent_name}'. Aborting restart.")
+                        log.info("Stop signal received during restart delay for '%s'. Aborting restart.", self.agent_name)
                         break
 
                     try:
                         self.launch() # Attempt to relaunch
                         if self.process: # Check if launch was successful
-                            logger.info(f"A2A process for '{self.agent_name}' restarted successfully (New PID: {self.process.pid}).")
+                            log.info("A2A process for '%s' restarted successfully (New PID: %d).", self.agent_name, self.process.pid)
                             current_restart_attempts = 0 # Reset attempts on successful restart
                             continue # Continue monitoring the new process
                         else:
                             # Launch might have failed and set self.process to None
-                            logger.error(f"Failed to restart A2A process for '{self.agent_name}' (launch returned no process). Stopping monitor.")
+                            log.error("Failed to restart A2A process for '%s' (launch returned no process). Stopping monitor.", self.agent_name)
                             break
                     except Exception as e:
-                        logger.error(
-                            f"Exception during A2A process restart for '{self.agent_name}': {e}. Stopping monitor.",
+                        log.error(
+                            "Exception during A2A process restart for '%s': %s. Stopping monitor.",
+                            self.agent_name, e,
                             exc_info=True,
                         )
                         break # Stop monitoring if restart fails critically
                 else:
                     # Process exited cleanly or restart is disabled/aborted
-                    logger.info(f"Monitor loop for '{self.agent_name}' exiting as process terminated and restart is not applicable.")
+                    log.info("Monitor loop for '%s' exiting as process terminated and restart is not applicable.", self.agent_name)
                     break # Exit monitor loop
             else:
                  # Process is still running, reset restart attempts
@@ -205,24 +211,25 @@ class A2AProcessManager:
 
             # Wait for a longer interval or until stop_event is set
             if self.stop_event.wait(timeout=5): # Check every 5 seconds
-                logger.info(f"Stop signal received by monitor thread for '{self.agent_name}'.")
+                log.info("Stop signal received by monitor thread for '%s'.", self.agent_name)
                 break
 
-        logger.info(f"Stopping monitor thread for A2A process '{self.agent_name}'.")
+        log.info("Stopping monitor thread for A2A process '%s'.", self.agent_name)
 
     def stop(self):
         """
         Stops the managed A2A process (if running) and the monitor thread.
         """
-        logger.info(f"Stopping A2AProcessManager for '{self.agent_name}'.")
+        log.info("Stopping A2AProcessManager for '%s'.", self.agent_name)
         # 1. Signal monitor thread to stop *first* to prevent restart attempts during shutdown
         self.stop_event.set()
 
         # 2. Terminate the process
         if self.process:
             pid = self.process.pid # Store PID for logging before process becomes None
-            logger.info(
-                f"Terminating managed A2A process (PID: {pid}) for '{self.agent_name}'..."
+            log.info(
+                "Terminating managed A2A process (PID: %d) for '%s'...",
+                pid, self.agent_name
             )
             try:
                 # Attempt graceful termination first
@@ -230,34 +237,36 @@ class A2AProcessManager:
                 try:
                     # Wait for a short period
                     self.process.wait(timeout=5)
-                    logger.info(f"Managed A2A process (PID: {pid}) for '{self.agent_name}' terminated gracefully.")
+                    log.info("Managed A2A process (PID: %d) for '%s' terminated gracefully.", pid, self.agent_name)
                 except subprocess.TimeoutExpired:
                     # Force kill if graceful termination fails
-                    logger.warning(
-                        f"Managed A2A process (PID: {pid}) for '{self.agent_name}' did not terminate gracefully after 5s, killing."
+                    log.warning(
+                        "Managed A2A process (PID: %d) for '%s' did not terminate gracefully after 5s, killing.",
+                        pid, self.agent_name
                     )
                     self.process.kill()
                     self.process.wait() # Wait for kill to complete
-                    logger.info(f"Managed A2A process (PID: {pid}) for '{self.agent_name}' killed.")
+                    log.info("Managed A2A process (PID: %d) for '%s' killed.", pid, self.agent_name)
             except Exception as e:
                 # Catch potential errors during termination (e.g., process already died)
-                logger.error(
-                    f"Error terminating managed A2A process (PID: {pid}) for '{self.agent_name}': {e}", exc_info=True
+                log.error(
+                    "Error terminating managed A2A process (PID: %s) for '%s': %s",
+                    pid if pid else 'unknown', self.agent_name, e, exc_info=True
                 )
             finally:
                  self.process = None # Ensure process handle is cleared
 
         # 3. Join the monitor thread
         if self.monitor_thread and self.monitor_thread.is_alive():
-            logger.info(f"Waiting for monitor thread of '{self.agent_name}' to exit...")
+            log.info("Waiting for monitor thread of '%s' to exit...", self.agent_name)
             self.monitor_thread.join(timeout=5) # Wait for thread to finish
             if self.monitor_thread.is_alive():
-                logger.warning(f"Monitor thread for '{self.agent_name}' did not exit cleanly after 5s.")
+                log.warning("Monitor thread for '%s' did not exit cleanly after 5s.", self.agent_name)
             else:
-                logger.info(f"Monitor thread for '{self.agent_name}' exited.")
+                log.info("Monitor thread for '%s' exited.", self.agent_name)
         self.monitor_thread = None # Clear thread handle
 
-        logger.info(f"A2AProcessManager for '{self.agent_name}' stopped.")
+        log.info("A2AProcessManager for '%s' stopped.", self.agent_name)
 
     def is_running(self) -> bool:
         """

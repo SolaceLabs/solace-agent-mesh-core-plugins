@@ -6,6 +6,7 @@ import threading
 from .test_helpers import create_test_component # Import helper
 # Import the class containing the method under test
 from src.agents.a2a_client.a2a_process_manager import A2AProcessManager
+from solace_ai_connector.common.log import log # Import the log object
 
 class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
 
@@ -36,7 +37,7 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
     # Patch time.sleep where it's used
     @patch('src.agents.a2a_client.a2a_process_manager.time.sleep', return_value=None)
     @patch.object(threading.Event, 'wait')
-    @patch('logging.Logger.error')
+    @patch('solace_ai_connector.common.log.log.error') # Patch the correct log object
     def test_monitor_process_crash_no_restart(self, mock_log_error, mock_event_wait, mock_sleep):
         """Test _monitor_loop logs error and exits if restart is disabled."""
         stop_event = threading.Event()
@@ -56,7 +57,7 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
         process_manager._monitor_loop() # Call the method directly
 
         self.assertEqual(mock_process.poll.call_count, 2)
-        mock_log_error.assert_called_once_with("Managed A2A process (PID: 1234) terminated with code 1.")
+        mock_log_error.assert_called_once_with("Managed A2A process (PID: %d) for '%s' terminated with code %d.", 1234, "test_no_restart", 1)
         process_manager.launch.assert_not_called()
         # wait should have been called once before the crash was detected
         mock_event_wait.assert_called_once_with(timeout=5)
@@ -64,8 +65,8 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
     # Patch time.sleep where it's used
     @patch('src.agents.a2a_client.a2a_process_manager.time.sleep', return_value=None)
     @patch.object(threading.Event, 'wait')
-    @patch('logging.Logger.error')
-    @patch('logging.Logger.info')
+    @patch('solace_ai_connector.common.log.log.error') # Patch the correct log object
+    @patch('solace_ai_connector.common.log.log.info') # Patch the correct log object
     def test_monitor_process_crash_with_restart(self, mock_log_info, mock_log_error, mock_event_wait, mock_sleep):
         """Test _monitor_loop attempts restart on crash if enabled."""
         stop_event = threading.Event()
@@ -93,7 +94,7 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
         process_manager._monitor_loop() # Call the method directly
 
         self.assertEqual(mock_process1.poll.call_count, 2)
-        mock_log_error.assert_called_once_with("Managed A2A process (PID: 1111) terminated with code 1.")
+        mock_log_error.assert_called_once_with("Managed A2A process (PID: %d) for '%s' terminated with code %d.", 1111, "test_restart", 1)
         process_manager.launch.assert_called_once() # Restart called
         self.assertEqual(mock_process2.poll.call_count, 2) # New process polled
         # Check wait calls: initial poll, restart delay, poll new process, stop
@@ -109,7 +110,7 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
     # Patch time.sleep where it's used
     @patch('src.agents.a2a_client.a2a_process_manager.time.sleep', return_value=None)
     @patch.object(threading.Event, 'wait')
-    @patch('logging.Logger.error')
+    @patch('solace_ai_connector.common.log.log.error') # Patch the correct log object
     def test_monitor_process_crash_restart_fail(self, mock_log_error, mock_event_wait, mock_sleep):
         """Test _monitor_loop exits if restart attempt fails."""
         stop_event = threading.Event()
@@ -157,7 +158,7 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
         mock_process.poll.assert_called_once()
         mock_event_wait.assert_called_once_with(timeout=5)
 
-    @patch('logging.Logger.warning')
+    @patch('solace_ai_connector.common.log.log.warning') # Patch the correct log object
     def test_monitor_process_no_process(self, mock_log_warning):
         """Test _monitor_loop exits if there's no process initially."""
         stop_event = threading.Event()
@@ -168,7 +169,7 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
 
         process_manager._monitor_loop() # Call the method directly
 
-        mock_log_warning.assert_called_with("Monitor thread: No A2A process to monitor. Exiting.")
+        mock_log_warning.assert_called_with("Monitor thread (%s): No A2A process to monitor. Exiting.", "test_no_proc")
 
 if __name__ == '__main__':
     unittest.main()

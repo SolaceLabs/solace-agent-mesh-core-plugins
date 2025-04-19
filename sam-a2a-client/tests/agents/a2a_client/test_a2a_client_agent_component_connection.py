@@ -17,6 +17,7 @@ from .test_helpers import (
 from src.agents.a2a_client.a2a_connection_handler import A2AConnectionHandler
 # Import the class needed for the fix in test_initialize_connection_launch_fail
 from src.agents.a2a_client.a2a_process_manager import A2AProcessManager
+from solace_ai_connector.common.log import log # Import the log object
 
 
 class TestA2AClientAgentComponentConnection(unittest.TestCase):
@@ -420,7 +421,7 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
     )
     @patch("src.agents.a2a_client.a2a_connection_handler.A2ACardResolver") # Correct path
     @patch("src.agents.a2a_client.a2a_connection_handler.A2AClient") # Correct path
-    @patch("logging.Logger.warning")
+    @patch("solace_ai_connector.common.log.log.warning") # Patch the correct log object
     def test_initialize_connection_bearer_auth_missing(
         self, mock_log_warning, mock_a2a_client_cls, mock_resolver_cls, mock_wait_ready
     ):
@@ -475,7 +476,8 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         mock_resolver_instance.get_agent_card.assert_called_once()
         # Verify warning was logged for the bearer token
         mock_log_warning.assert_called_with(
-            "A2A Agent Card requires Bearer token, but none configured ('a2a_bearer_token'). Proceeding without authentication."
+            "A2A Agent Card for '%s' requires Bearer token, but none configured ('a2a_bearer_token'). Proceeding without authentication.",
+            mock_card.name
         )
         # Verify A2AClient was still called, but without the token
         mock_a2a_client_cls.assert_called_once_with(
@@ -486,7 +488,7 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
     # Removed the global patch for wait_for_ready
     @patch("src.agents.a2a_client.a2a_connection_handler.A2ACardResolver") # Correct path
     @patch("src.agents.a2a_client.a2a_connection_handler.A2AClient") # Correct path
-    @patch("logging.Logger.warning")
+    @patch("solace_ai_connector.common.log.log.warning") # Patch the correct log object
     def test_initialize_connection_bearer_auth_not_required(
         self, mock_log_warning, mock_a2a_client_cls, mock_resolver_cls
     ):

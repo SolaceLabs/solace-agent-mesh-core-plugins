@@ -2,18 +2,16 @@
 Factory functions for creating SAM Actions based on A2A Agent capabilities.
 """
 
-import logging
 from typing import List, Dict, Any, TYPE_CHECKING
 
 from solace_agent_mesh.common.action import Action
 from .actions.a2a_client_action import A2AClientAction
 from ...common_a2a.types import AgentCard, AgentSkill
+from solace_ai_connector.common.log import log # Use solace-ai-connector log
 
 # Use TYPE_CHECKING to avoid circular import issues at runtime
 if TYPE_CHECKING:
     from .a2a_client_agent_component import A2AClientAgentComponent
-
-logger = logging.getLogger(__name__)
 
 
 def infer_params_from_skill(skill: AgentSkill) -> List[Dict[str, Any]]:
@@ -31,7 +29,7 @@ def infer_params_from_skill(skill: AgentSkill) -> List[Dict[str, Any]]:
     Returns:
         A list of dictionaries, each defining a SAM action parameter.
     """
-    logger.debug(f"Inferring parameters for skill '{skill.id}'. Using generic 'prompt' and 'files'.")
+    log.debug("Inferring parameters for skill '%s'. Using generic 'prompt' and 'files'.", skill.id)
     # TODO: Implement more sophisticated parameter inference based on skill details
     # For now, always return a standard 'prompt' and optional 'files'
     return [
@@ -67,17 +65,19 @@ def create_actions_from_card(
     """
     actions: List[Action] = []
     if not agent_card or not agent_card.skills:
-        logger.warning(
-            f"No skills found in AgentCard for '{component.agent_name}'. No dynamic actions created."
+        log.warning(
+            "No skills found in AgentCard for '%s'. No dynamic actions created.", component.agent_name
         )
         return actions
 
-    logger.info(
-        f"Creating actions for agent '{component.agent_name}' based on {len(agent_card.skills)} AgentCard skills..."
+    log.info(
+        "Creating actions for agent '%s' based on %d AgentCard skills...",
+        component.agent_name, len(agent_card.skills)
     )
     for skill in agent_card.skills:
         if not skill.id:
-             logger.warning(f"Skipping skill with missing ID in AgentCard for '{component.agent_name}'. Skill: {skill.name or 'Unnamed'}")
+             log.warning("Skipping skill with missing ID in AgentCard for '%s'. Skill: %s",
+                         component.agent_name, skill.name or 'Unnamed')
              continue
         try:
             # Infer parameters for the SAM action based on the A2A skill
@@ -87,11 +87,12 @@ def create_actions_from_card(
                 skill=skill, component=component, inferred_params=inferred_params
             )
             actions.append(action)
-            logger.info(f"Created action '{action.name}' for skill '{skill.id}' for agent '{component.agent_name}'.")
+            log.info("Created action '%s' for skill '%s' for agent '%s'.", action.name, skill.id, component.agent_name)
         except Exception as e:
             # Log errors during individual action creation but continue with others
-            logger.error(
-                f"Failed to create action for skill '{skill.id}' for agent '{component.agent_name}': {e}", exc_info=True
+            log.error(
+                "Failed to create action for skill '%s' for agent '%s': %s",
+                skill.id, component.agent_name, e, exc_info=True
             )
     return actions
 
@@ -145,5 +146,5 @@ def create_provide_input_action(component: "A2AClientAgentComponent") -> Action:
     # Note: The handler function needs to be set on this action instance
     # by the component after creation, e.g.,
     # provide_input_action.set_handler(component._handle_provide_required_input)
-    logger.info(f"Created static action '{provide_input_action.name}' for agent '{component.agent_name}'.")
+    log.info("Created static action '%s' for agent '%s'.", provide_input_action.name, component.agent_name)
     return provide_input_action

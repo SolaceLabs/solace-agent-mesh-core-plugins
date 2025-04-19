@@ -8,6 +8,7 @@ from src.agents.a2a_client.actions.a2a_client_action import A2AClientAction, Age
 # We will patch these specifically in tests where instantiation failure is expected
 # from src.agents.a2a_client.actions.a2a_client_action import TaskSendParams, A2AMessage, TextPart, FilePart, FileContent
 from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo
+from solace_ai_connector.common.log import log # Import the log object
 
 # Mock the parent component and services
 class MockFileService:
@@ -51,12 +52,6 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
         self.mock_component.file_service = MagicMock(spec=MockFileService)
         # If needed for other tests, configure the mock's behavior:
         # self.mock_component.file_service.resolve_url.side_effect = MockFileService().resolve_url
-
-        # Mock inferred parameters
-        self.mock_params_def = [
-            {"name": "prompt", "desc": "User prompt", "type": "string", "required": True},
-            {"name": "files", "desc": "List of file URLs", "type": "list", "required": False}
-        ]
 
         # Instantiate the action - REMOVED global patch on TextPart
         self.action = A2AClientAction(
@@ -118,8 +113,8 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
         params = {"prompt": "Multiple files", "files": ["valid_url", "invalid_url", "error_url", 123]} # Include non-string
         meta = {"session_id": "session789"}
 
-        with patch('src.agents.a2a_client.actions.a2a_client_action.logger.warning') as mock_log_warn, \
-             patch('src.agents.a2a_client.actions.a2a_client_action.logger.error') as mock_log_err:
+        with patch('solace_ai_connector.common.log.log.warning') as mock_log_warn, \
+             patch('solace_ai_connector.common.log.log.error') as mock_log_err:
             # Call invoke - Expecting TextPart to raise TypeError
             response = self.action.invoke(params, meta)
 
@@ -133,7 +128,8 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
 
         # Check that the error log for TextPart failure was called
         mock_log_err.assert_any_call(
-            "Failed to create TextPart for action 'test_skill_id': Simulated TextPart instantiation error",
+            "Failed to create TextPart for action '%s' prompt: %s",
+            'test_skill_id', "Simulated TextPart instantiation error",
             exc_info=True
         )
         # Ensure file processing logs were NOT reached because TextPart failed first
@@ -168,13 +164,13 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
         generated_uuid = '12345678-1234-5678-1234-567812345678'
 
         with patch('src.agents.a2a_client.actions.a2a_client_action.uuid.uuid4') as mock_uuid, \
-             patch('src.agents.a2a_client.actions.a2a_client_action.logger.warning') as mock_log_warn:
+             patch('solace_ai_connector.common.log.log.warning') as mock_log_warn:
             mock_uuid.return_value = uuid.UUID(generated_uuid)
             # Call invoke - Expecting TextPart to raise TypeError
             response = self.action.invoke(params, meta)
 
         # Assert session ID warning was logged
-        mock_log_warn.assert_called_with(f"No session_id found in meta for action 'test_skill_id'. Generated new one: {generated_uuid}")
+        mock_log_warn.assert_called_with("No session_id found in meta for action '%s'. Generated new one: %s", 'test_skill_id', generated_uuid)
 
         # Assert that an error response is returned due to TextPart failure
         mock_text_part_constructor.assert_called_once_with(text="Generate session")

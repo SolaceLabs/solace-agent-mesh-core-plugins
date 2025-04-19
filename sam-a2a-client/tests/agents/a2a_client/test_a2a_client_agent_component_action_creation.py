@@ -12,6 +12,7 @@ from .test_helpers import (
 from src.agents.a2a_client import a2a_action_factory
 from src.agents.a2a_client.actions.a2a_client_action import A2AClientAction
 from solace_agent_mesh.common.action import Action
+from solace_ai_connector.common.log import log # Import the log object
 
 
 class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
@@ -22,7 +23,7 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
     @patch(
         "src.agents.a2a_client.a2a_action_factory.Action"
     )  # Patch where static action is created
-    @patch("logging.Logger.info")
+    @patch("solace_ai_connector.common.log.log.info") # Patch the correct log object
     def test_create_actions_with_skills(
         self, mock_log_info, mock_base_action_cls, mock_a2a_action_cls
     ):
@@ -94,10 +95,15 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
         original_description = component.info.get(
             "description", "Component to interact with an external A2A agent."
         )
-        action_names = [a.name for a in component.action_list.actions]
-        if action_names:
+        # Exclude static action name from the description update check
+        dynamic_action_names = [a.name for a in dynamic_actions]
+        if dynamic_action_names:
             component.info["description"] = (
-                f"{original_description}\nDiscovered Actions: {', '.join(action_names)}"
+                f"{original_description}\nDiscovered Actions: {', '.join(dynamic_action_names)}"
+            )
+        else:
+             component.info["description"] = (
+                f"{original_description}\nNo dynamic actions discovered."
             )
         # --- End of simulated run logic ---
 
@@ -124,7 +130,7 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
         # Assertions for static action
         expected_static_def = {
             "name": "provide_required_input",
-            "prompt_directive": "Provides the required input to continue a pending A2A task.",
+            "prompt_directive": "Provides the required input to continue a pending A2A task identified by a follow-up ID.",
             "params": [
                 {
                     "name": "follow_up_id",
@@ -163,7 +169,9 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
         self.assertIn("Discovered Actions:", component.info["description"])
         self.assertIn(mock_a2a_action_instance1.name, component.info["description"])
         self.assertIn(mock_a2a_action_instance2.name, component.info["description"])
-        self.assertIn(mock_static_action_instance.name, component.info["description"])
+        # Static action name should NOT be in the description
+        self.assertNotIn(mock_static_action_instance.name, component.info["description"])
+
 
     @patch(
         "src.agents.a2a_client.a2a_action_factory.A2AClientAction"
@@ -171,8 +179,8 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
     @patch(
         "src.agents.a2a_client.a2a_action_factory.Action"
     )  # Patch where static action is created
-    @patch("logging.Logger.warning")
-    @patch("logging.Logger.info")
+    @patch("solace_ai_connector.common.log.log.warning") # Patch the correct log object
+    @patch("solace_ai_connector.common.log.log.info") # Patch the correct log object
     def test_create_actions_no_skills(
         self, mock_log_info, mock_log_warning, mock_base_action_cls, mock_a2a_action_cls
     ):
@@ -221,16 +229,21 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
         original_description = component.info.get(
             "description", "Component to interact with an external A2A agent."
         )
-        action_names = [a.name for a in component.action_list.actions]
-        if action_names:
+        # Exclude static action name from the description update check
+        dynamic_action_names = [a.name for a in dynamic_actions]
+        if dynamic_action_names:
             component.info["description"] = (
-                f"{original_description}\nDiscovered Actions: {', '.join(action_names)}"
+                f"{original_description}\nDiscovered Actions: {', '.join(dynamic_action_names)}"
+            )
+        else:
+             component.info["description"] = (
+                f"{original_description}\nNo dynamic actions discovered."
             )
         # --- End of simulated run logic ---
 
         # Assertions
         mock_log_warning.assert_called_once_with(
-            f"No skills found in AgentCard for '{component.agent_name}'. No dynamic actions created."
+            "No skills found in AgentCard for '%s'. No dynamic actions created.", component.agent_name
         )
         a2a_action_factory.infer_params_from_skill.assert_not_called()
         mock_a2a_action_cls.assert_not_called()
@@ -244,7 +257,7 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
 
         # Assert component description update
         self.assertIn(
-            "Discovered Actions: provide_required_input", component.info["description"]
+            "No dynamic actions discovered.", component.info["description"]
         )
 
     @patch(
@@ -253,8 +266,8 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
     @patch(
         "src.agents.a2a_client.a2a_action_factory.Action"
     )  # Patch where static action is created
-    @patch("logging.Logger.warning")
-    @patch("logging.Logger.info")
+    @patch("solace_ai_connector.common.log.log.warning") # Patch the correct log object
+    @patch("solace_ai_connector.common.log.log.info") # Patch the correct log object
     def test_create_actions_no_agent_card(
         self, mock_log_info, mock_log_warning, mock_base_action_cls, mock_a2a_action_cls
     ):
@@ -299,16 +312,21 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
         original_description = component.info.get(
             "description", "Component to interact with an external A2A agent."
         )
-        action_names = [a.name for a in component.action_list.actions]
-        if action_names:
+        # Exclude static action name from the description update check
+        dynamic_action_names = [a.name for a in dynamic_actions]
+        if dynamic_action_names:
             component.info["description"] = (
-                f"{original_description}\nDiscovered Actions: {', '.join(action_names)}"
+                f"{original_description}\nDiscovered Actions: {', '.join(dynamic_action_names)}"
+            )
+        else:
+             component.info["description"] = (
+                f"{original_description}\nNo dynamic actions discovered."
             )
         # --- End of simulated run logic ---
 
         # Assertions
         mock_log_warning.assert_called_once_with(
-            f"No skills found in AgentCard for '{component.agent_name}'. No dynamic actions created."
+            "No skills found in AgentCard for '%s'. No dynamic actions created.", component.agent_name
         )
         a2a_action_factory.infer_params_from_skill.assert_not_called()
         mock_a2a_action_cls.assert_not_called()
@@ -322,7 +340,7 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
 
         # Assert component description update
         self.assertIn(
-            "Discovered Actions: provide_required_input", component.info["description"]
+            "No dynamic actions discovered.", component.info["description"]
         )
 
 
