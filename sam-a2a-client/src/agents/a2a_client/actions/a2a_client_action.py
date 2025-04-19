@@ -7,7 +7,7 @@ import logging
 import uuid
 import json
 import base64
-from typing import Dict, Any, List, TYPE_CHECKING
+from typing import Dict, Any, List, TYPE_CHECKING, Optional # Added Optional
 
 from solace_agent_mesh.common.action import Action
 from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo
