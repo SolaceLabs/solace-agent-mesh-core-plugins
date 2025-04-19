@@ -18,7 +18,7 @@ from solace_agent_mesh.agents.base_agent_component import (
 from solace_agent_mesh.common.action_list import ActionList
 from solace_agent_mesh.services.file_service import FileService
 from solace_agent_mesh.common.action_response import ActionResponse
-from solace_ai_connector.common.log import log # Use solace-ai-connector log
+from solace_ai_connector.common.log import log  # Use solace-ai-connector log
 
 # Import helpers
 from .a2a_process_manager import A2AProcessManager
@@ -128,9 +128,7 @@ class A2AClientAgentComponent(BaseAgentComponent):
             # This should ideally be caught by SAM core config validation, but added for safety
             raise ValueError("Missing required configuration: 'agent_name'")
 
-        log.info(
-            "Initializing A2AClientAgentComponent for agent '%s'", self.agent_name
-        )
+        log.info("Initializing A2AClientAgentComponent for agent '%s'", self.agent_name)
 
         # Configuration
         self.a2a_server_url: str = self.get_config("a2a_server_url")
@@ -156,7 +154,8 @@ class A2AClientAgentComponent(BaseAgentComponent):
         if self.cache_service is None:
             log.warning(
                 "Cache service not provided to A2AClientAgentComponent '%s'. "
-                "INPUT_REQUIRED state will not be supported.", self.agent_name
+                "INPUT_REQUIRED state will not be supported.",
+                self.agent_name,
             )
 
         # Action List (initially empty, populated in run)
@@ -189,9 +188,7 @@ class A2AClientAgentComponent(BaseAgentComponent):
         and then enters the base component's run loop for handling messages
         and timers (like registration).
         """
-        log.info(
-            "Starting run loop for A2AClientAgentComponent '%s'", self.agent_name
-        )
+        log.info("Starting run loop for A2AClientAgentComponent '%s'", self.agent_name)
         try:
             # 1. Initialize Process Manager (if command provided)
             if self.a2a_server_command:
@@ -219,8 +216,7 @@ class A2AClientAgentComponent(BaseAgentComponent):
             if not self.connection_handler.wait_for_ready():
                 # Error logged within wait_for_ready
                 raise TimeoutError(
-                    "A2A agent at %s did not become ready within %ds.",
-                    self.a2a_server_url, self.a2a_server_startup_timeout
+                    f"A2A agent at {self.a2a_server_url} did not become ready within {self.a2a_server_startup_timeout}s."
                 )
             self.connection_handler.initialize_client()  # Can raise ValueError
 
@@ -253,7 +249,8 @@ class A2AClientAgentComponent(BaseAgentComponent):
                 )
             log.info(
                 "Action creation complete for '%s'. Total actions: %d",
-                self.agent_name, len(self.action_list.actions)
+                self.agent_name,
+                len(self.action_list.actions),
             )
 
             # 5. Start Process Monitor (if applicable)
@@ -264,7 +261,7 @@ class A2AClientAgentComponent(BaseAgentComponent):
             self._initialized.set()
             log.info(
                 "A2AClientAgentComponent '%s' initialization complete. Entering main loop.",
-                self.agent_name
+                self.agent_name,
             )
             # Call the base class run method which handles message processing and registration timers
             super().run()
@@ -272,7 +269,8 @@ class A2AClientAgentComponent(BaseAgentComponent):
         except (TimeoutError, ConnectionError, ValueError, FileNotFoundError) as e:
             log.critical(
                 "CRITICAL: Initialization failed for A2AClientAgentComponent '%s': %s. Component will not run.",
-                self.agent_name, e,
+                self.agent_name,
+                e,
                 exc_info=True,
             )
             self.stop_component()  # Attempt cleanup
@@ -282,7 +280,8 @@ class A2AClientAgentComponent(BaseAgentComponent):
             # Catch any other unexpected errors during setup
             log.critical(
                 "CRITICAL: Unexpected error during A2AClientAgentComponent '%s' setup: %s",
-                self.agent_name, e,
+                self.agent_name,
+                e,
                 exc_info=True,
             )
             self.stop_component()  # Attempt cleanup
