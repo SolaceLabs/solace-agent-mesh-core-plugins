@@ -11,7 +11,7 @@ from typing import Optional
 
 from ...common_a2a.client import A2AClient, A2ACardResolver
 from ...common_a2a.types import AgentCard
-from solace_ai_connector.common.log import log # Use solace-ai-connector log
+from solace_ai_connector.common.log import log  # Use solace-ai-connector log
 
 
 class A2AConnectionHandler:
@@ -65,11 +65,12 @@ class A2AConnectionHandler:
         agent_card_url = urljoin(self.server_url, "/.well-known/agent.json")
         deadline = time.time() + self.startup_timeout
         check_interval = 1  # Seconds between readiness checks
-        request_timeout = 5 # Seconds for the HTTP request itself
+        request_timeout = 5  # Seconds for the HTTP request itself
 
         log.info(
             "Waiting up to %ds for A2A agent at %s to become ready...",
-            self.startup_timeout, self.server_url
+            self.startup_timeout,
+            self.server_url,
         )
 
         while time.time() < deadline:
@@ -86,12 +87,14 @@ class A2AConnectionHandler:
                     # Log non-200 status codes as warnings for visibility
                     log.warning(
                         "A2A agent at %s responded with status %d. Retrying...",
-                        agent_card_url, response.status_code
+                        agent_card_url,
+                        response.status_code,
                     )
             except requests.exceptions.ConnectionError:
                 log.debug(
                     "A2A agent connection refused at %s. Retrying in %ds...",
-                    self.server_url, check_interval
+                    self.server_url,
+                    check_interval,
                 )
             except requests.exceptions.Timeout:
                 log.warning(
@@ -101,7 +104,9 @@ class A2AConnectionHandler:
                 # Log other request exceptions as warnings
                 log.warning(
                     "Error checking A2A agent readiness at %s: %s. Retrying in %ds...",
-                    agent_card_url, e, check_interval
+                    agent_card_url,
+                    e,
+                    check_interval,
                 )
 
             # Wait for the check interval, but break early if stop_event is set
@@ -112,7 +117,8 @@ class A2AConnectionHandler:
         # Loop finished without success
         log.error(
             "A2A agent at %s did not become ready within %d seconds.",
-            self.server_url, self.startup_timeout
+            self.server_url,
+            self.startup_timeout,
         )
         return False
 
@@ -135,7 +141,12 @@ class A2AConnectionHandler:
                 raise ValueError("A2ACardResolver returned None.")
             log.info("Successfully fetched Agent Card for '%s'", self.agent_card.name)
         except Exception as e:
-            log.error("Error fetching/parsing Agent Card from %s: %s", self.server_url, e, exc_info=True)
+            log.error(
+                "Error fetching/parsing Agent Card from %s: %s",
+                self.server_url,
+                e,
+                exc_info=True,
+            )
             # Wrap the original exception for better context
             raise ValueError(
                 f"Failed to get Agent Card from {self.server_url}: {e}"
@@ -151,24 +162,32 @@ class A2AConnectionHandler:
                 for scheme in self.agent_card.authentication.schemes
             ):
                 bearer_required = True
-                log.info("AgentCard for '%s' indicates Bearer authentication support.", self.agent_card.name)
+                log.info(
+                    "AgentCard for '%s' indicates Bearer authentication support.",
+                    self.agent_card.name,
+                )
 
         if bearer_required:
             if self.bearer_token:
                 auth_token = self.bearer_token
-                log.info("Using configured Bearer token for A2A client connecting to '%s'.", self.agent_card.name)
+                log.info(
+                    "Using configured Bearer token for A2A client connecting to '%s'.",
+                    self.agent_card.name,
+                )
             else:
                 # Log a warning if required but not provided, but proceed without it
                 log.warning(
                     "A2A Agent Card for '%s' requires Bearer token, but none configured ('a2a_bearer_token'). "
-                    "Proceeding without authentication.", self.agent_card.name
+                    "Proceeding without authentication.",
+                    self.agent_card.name,
                 )
         elif self.bearer_token:
-             # Log if a token is configured but not required by the card
-             log.info(
-                  "Bearer token is configured but not explicitly required by AgentCard for '%s'. "
-                  "A2AClient will be initialized without the token.", self.agent_card.name
-             )
+            # Log if a token is configured but not required by the card
+            log.info(
+                "Bearer token is configured but not explicitly required by AgentCard for '%s'. "
+                "A2AClient will be initialized without the token.",
+                self.agent_card.name,
+            )
 
         # TODO: Add logic here to handle other authentication schemes (e.g., API Key)
         # based on self.agent_card.authentication and component configuration.
@@ -176,9 +195,21 @@ class A2AConnectionHandler:
         # 3. Initialize A2AClient
         try:
             # Pass the determined auth_token (which might be None)
-            self.a2a_client = A2AClient(agent_card=self.agent_card, auth_token=auth_token)
-            log.info("A2AClient initialized successfully for '%s'.", self.agent_card.name)
+            # <inst>
+            # auth_token is not a parameter of A2AClient
+            # </inst>
+            self.a2a_client = A2AClient(
+                agent_card=self.agent_card, auth_token=auth_token
+            )
+            log.info(
+                "A2AClient initialized successfully for '%s'.", self.agent_card.name
+            )
         except Exception as e:
-            log.error("Failed to initialize A2AClient for '%s': %s", self.agent_card.name, e, exc_info=True)
+            log.error(
+                "Failed to initialize A2AClient for '%s': %s",
+                self.agent_card.name,
+                e,
+                exc_info=True,
+            )
             # Wrap the original exception
             raise ValueError(f"Could not initialize A2AClient: {e}") from e
