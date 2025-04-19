@@ -1,6 +1,6 @@
 import httpx
 from httpx_sse import connect_sse
-from typing import Any, AsyncIterable
+from typing import Any, AsyncIterable, Optional # Added Optional
 from ...common_a2a.types import (
     AgentCard,
     GetTaskRequest,
@@ -23,13 +23,22 @@ import json
 
 
 class A2AClient:
-    def __init__(self, agent_card: AgentCard = None, url: str = None):
+    def __init__(
+        self,
+        agent_card: AgentCard = None,
+        url: str = None,
+        auth_token: Optional[str] = None, # Added auth_token parameter
+    ):
         if agent_card:
             self.url = agent_card.url
         elif url:
             self.url = url
         else:
             raise ValueError("Must provide either agent_card or url")
+        self.auth_token = auth_token # Store the token
+        self.headers = {} # Initialize headers
+        if self.auth_token:
+            self.headers["Authorization"] = f"Bearer {self.auth_token}"
 
     async def send_task(self, payload: dict[str, Any]) -> SendTaskResponse:
         request = SendTaskRequest(params=payload)
@@ -39,7 +48,8 @@ class A2AClient:
         self, payload: dict[str, Any]
     ) -> AsyncIterable[SendTaskStreamingResponse]:
         request = SendTaskStreamingRequest(params=payload)
-        with httpx.Client(timeout=None) as client:
+        # Pass headers to connect_sse
+        with httpx.Client(timeout=None, headers=self.headers) as client:
             with connect_sse(
                 client, "POST", self.url, json=request.model_dump()
             ) as event_source:
@@ -52,7 +62,8 @@ class A2AClient:
                     raise A2AClientHTTPError(400, str(e)) from e
 
     async def _send_request(self, request: JSONRPCRequest) -> dict[str, Any]:
-        async with httpx.AsyncClient() as client:
+        # Use self.headers which includes the auth token if provided
+        async with httpx.AsyncClient(headers=self.headers) as client:
             try:
                 # Image generation could take time, adding timeout
                 response = await client.post(
