@@ -9,7 +9,6 @@ the invocation of those actions, including managing the INPUT_REQUIRED state.
 
 import copy
 import threading
-import logging
 from typing import Dict, Any, Optional, List
 
 from solace_agent_mesh.agents.base_agent_component import (
@@ -19,6 +18,7 @@ from solace_agent_mesh.agents.base_agent_component import (
 from solace_agent_mesh.common.action_list import ActionList
 from solace_agent_mesh.services.file_service import FileService
 from solace_agent_mesh.common.action_response import ActionResponse
+from solace_ai_connector.common.log import log # Use solace-ai-connector log
 
 # Import helpers
 from .a2a_process_manager import A2AProcessManager
@@ -85,8 +85,6 @@ info.update(
     }
 )
 
-logger = logging.getLogger(__name__)
-
 
 class A2AClientAgentComponent(BaseAgentComponent):
     """
@@ -130,8 +128,8 @@ class A2AClientAgentComponent(BaseAgentComponent):
             # This should ideally be caught by SAM core config validation, but added for safety
             raise ValueError("Missing required configuration: 'agent_name'")
 
-        logger.info(
-            f"Initializing A2AClientAgentComponent for agent '{self.agent_name}'"
+        log.info(
+            "Initializing A2AClientAgentComponent for agent '%s'", self.agent_name
         )
 
         # Configuration
@@ -156,9 +154,9 @@ class A2AClientAgentComponent(BaseAgentComponent):
         self.file_service = FileService()
         self.cache_service = kwargs.get("cache_service")
         if self.cache_service is None:
-            logger.warning(
-                f"Cache service not provided to A2AClientAgentComponent '{self.agent_name}'. "
-                "INPUT_REQUIRED state will not be supported."
+            log.warning(
+                "Cache service not provided to A2AClientAgentComponent '%s'. "
+                "INPUT_REQUIRED state will not be supported.", self.agent_name
             )
 
         # Action List (initially empty, populated in run)
@@ -166,8 +164,8 @@ class A2AClientAgentComponent(BaseAgentComponent):
 
         # Update component info (agent_name is crucial for registration)
         self.info["agent_name"] = self.agent_name
-        logger.info(
-            f"A2AClientAgentComponent '{self.agent_name}' initialized configuration."
+        log.info(
+            "A2AClientAgentComponent '%s' initialized configuration.", self.agent_name
         )
 
     # --- Properties to access underlying client/card ---
@@ -191,13 +189,13 @@ class A2AClientAgentComponent(BaseAgentComponent):
         and then enters the base component's run loop for handling messages
         and timers (like registration).
         """
-        logger.info(
-            f"Starting run loop for A2AClientAgentComponent '{self.agent_name}'"
+        log.info(
+            "Starting run loop for A2AClientAgentComponent '%s'", self.agent_name
         )
         try:
             # 1. Initialize Process Manager (if command provided)
             if self.a2a_server_command:
-                logger.info(f"Initializing A2AProcessManager for '{self.agent_name}'.")
+                log.info("Initializing A2AProcessManager for '%s'.", self.agent_name)
                 self.process_manager = A2AProcessManager(
                     command=self.a2a_server_command,
                     restart_on_crash=self.a2a_server_restart_on_crash,
@@ -205,10 +203,10 @@ class A2AClientAgentComponent(BaseAgentComponent):
                     stop_event=self.stop_monitor,
                 )
                 self.process_manager.launch()  # Can raise FileNotFoundError etc.
-                logger.info(f"A2A process launched for '{self.agent_name}'.")
+                log.info("A2A process launched for '%s'.", self.agent_name)
 
             # 2. Initialize Connection Handler
-            logger.info(f"Initializing A2AConnectionHandler for '{self.agent_name}'.")
+            log.info("Initializing A2AConnectionHandler for '%s'.", self.agent_name)
             self.connection_handler = A2AConnectionHandler(
                 server_url=self.a2a_server_url,
                 startup_timeout=self.a2a_server_startup_timeout,
@@ -217,16 +215,17 @@ class A2AClientAgentComponent(BaseAgentComponent):
             )
 
             # 3. Wait for Readiness and Initialize Client
-            logger.info(f"Waiting for A2A agent '{self.agent_name}' to become ready...")
+            log.info("Waiting for A2A agent '%s' to become ready...", self.agent_name)
             if not self.connection_handler.wait_for_ready():
                 # Error logged within wait_for_ready
                 raise TimeoutError(
-                    f"A2A agent at {self.a2a_server_url} did not become ready within {self.a2a_server_startup_timeout}s."
+                    "A2A agent at %s did not become ready within %ds.",
+                    self.a2a_server_url, self.a2a_server_startup_timeout
                 )
             self.connection_handler.initialize_client()  # Can raise ValueError
 
             # 4. Create Actions
-            logger.info(f"Creating SAM actions for '{self.agent_name}'...")
+            log.info("Creating SAM actions for '%s'...", self.agent_name)
             dynamic_actions = create_actions_from_card(self.agent_card, self)
             static_action = create_provide_input_action(self)
             # Set the handler for the static action
@@ -252,8 +251,9 @@ class A2AClientAgentComponent(BaseAgentComponent):
                 self.info["description"] = (
                     f"{original_description}\nNo dynamic actions discovered."
                 )
-            logger.info(
-                f"Action creation complete for '{self.agent_name}'. Total actions: {len(self.action_list.actions)}"
+            log.info(
+                "Action creation complete for '%s'. Total actions: %d",
+                self.agent_name, len(self.action_list.actions)
             )
 
             # 5. Start Process Monitor (if applicable)
@@ -262,15 +262,17 @@ class A2AClientAgentComponent(BaseAgentComponent):
 
             # 6. Signal Initialization Complete and Run Base Loop
             self._initialized.set()
-            logger.info(
-                f"A2AClientAgentComponent '{self.agent_name}' initialization complete. Entering main loop."
+            log.info(
+                "A2AClientAgentComponent '%s' initialization complete. Entering main loop.",
+                self.agent_name
             )
             # Call the base class run method which handles message processing and registration timers
             super().run()
 
         except (TimeoutError, ConnectionError, ValueError, FileNotFoundError) as e:
-            logger.critical(
-                f"CRITICAL: Initialization failed for A2AClientAgentComponent '{self.agent_name}': {e}. Component will not run.",
+            log.critical(
+                "CRITICAL: Initialization failed for A2AClientAgentComponent '%s': %s. Component will not run.",
+                self.agent_name, e,
                 exc_info=True,
             )
             self.stop_component()  # Attempt cleanup
@@ -278,22 +280,23 @@ class A2AClientAgentComponent(BaseAgentComponent):
             return
         except Exception as e:
             # Catch any other unexpected errors during setup
-            logger.critical(
-                f"CRITICAL: Unexpected error during A2AClientAgentComponent '{self.agent_name}' setup: {e}",
+            log.critical(
+                "CRITICAL: Unexpected error during A2AClientAgentComponent '%s' setup: %s",
+                self.agent_name, e,
                 exc_info=True,
             )
             self.stop_component()  # Attempt cleanup
             # Do not proceed to super().run()
             return
 
-        logger.info(f"Exiting run loop for A2AClientAgentComponent '{self.agent_name}'")
+        log.info("Exiting run loop for A2AClientAgentComponent '%s'", self.agent_name)
 
     def stop_component(self):
         """
         Stops the component, terminating the managed A2A process (if any)
         and signaling helper threads to exit.
         """
-        logger.info(f"Stopping A2AClientAgentComponent '{self.agent_name}'...")
+        log.info("Stopping A2AClientAgentComponent '%s'...", self.agent_name)
         self.stop_monitor.set()  # Signal monitor thread and connection handler waits
 
         if self.process_manager:
@@ -311,7 +314,7 @@ class A2AClientAgentComponent(BaseAgentComponent):
         self._initialized.clear()
 
         super().stop_component()  # Call base class cleanup
-        logger.info(f"A2AClientAgentComponent '{self.agent_name}' stopped.")
+        log.info("A2AClientAgentComponent '%s' stopped.", self.agent_name)
 
     # --- Helper Methods ---
     def _infer_params_from_skill(self, skill: AgentSkill) -> List[Dict[str, Any]]:
