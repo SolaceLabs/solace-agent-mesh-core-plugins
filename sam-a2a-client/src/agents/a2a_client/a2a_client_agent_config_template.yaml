@@ -1,0 +1,102 @@
+# This is the configuration template for the A2A Client agent.
+#
+# It defines the standard SAM agent flows:
+# 1. Periodic registration with the orchestrator.
+# 2. Processing action requests received from the orchestrator.
+#
+# Environment variables are used for configuration. Replace <AGENT_NAME_UPPER>
+# with the uppercase version of the agent name chosen during `solace-agent-mesh add agent`.
+#
+# Required Environment Variables:
+# - SOLACE_BROKER_URL
+# - SOLACE_BROKER_USERNAME
+# - SOLACE_BROKER_PASSWORD
+# - SOLACE_BROKER_VPN
+# - SOLACE_AGENT_MESH_NAMESPACE
+# - <AGENT_NAME_UPPER>_A2A_SERVER_URL: URL of the target A2A agent.
+#
+# Optional Environment Variables:
+# - <AGENT_NAME_UPPER>_A2A_SERVER_COMMAND: Command to launch the A2A agent process.
+# - <AGENT_NAME_UPPER>_A2A_SERVER_STARTUP_TIMEOUT: Timeout for launched agent readiness (default: 30).
+# - <AGENT_NAME_UPPER>_A2A_SERVER_RESTART_ON_CRASH: Restart crashed process (default: true).
+# - <AGENT_NAME_UPPER>_A2A_BEARER_TOKEN: Bearer token for A2A requests.
+# - <AGENT_NAME_UPPER>_INPUT_REQUIRED_TTL: TTL for INPUT_REQUIRED state (default: 300).
+# - USE_TEMPORARY_QUEUES: Use temporary queues (default: false).
+# - SOLACE_DEV_MODE: Use local queues instead of broker (default: false).
+
+---
+log:
+  stdout_log_level: INFO
+  log_file_level: INFO
+  log_file: solace_ai_connector.log
+
+# trace:
+#   trace_file: agent_a2a_client_{{SNAKE_CASE_NAME}}.trace
+
+shared_config:
+  - broker_config: &broker_connection
+      broker_connection_share: ${SOLACE_BROKER_URL}
+      dev_mode: ${SOLACE_DEV_MODE, false}
+      broker_url: ${SOLACE_BROKER_URL}
+      broker_username: ${SOLACE_BROKER_USERNAME}
+      broker_password: ${SOLACE_BROKER_PASSWORD}
+      broker_vpn: ${SOLACE_BROKER_VPN}
+      temporary_queue: ${USE_TEMPORARY_QUEUES, false}
+
+flows:
+  # Flow to handle action requests for this specific A2A agent instance
+  - name: {{SNAKE_CASE_NAME}}_action_request_processor
+    components:
+      # Input from Solace broker, subscribing to actions for this agent
+      - component_name: broker_input
+        component_module: broker_input
+        component_config:
+          <<: *broker_connection
+          payload_encoding: utf-8
+          payload_format: json
+          broker_queue_name: ${SOLACE_AGENT_MESH_NAMESPACE}agent_{{SNAKE_CASE_NAME}}_action_request
+          broker_subscriptions:
+            # Subscribe to actions specifically targeted at this agent instance
+            - topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/actionRequest/*/*/{{SNAKE_CASE_NAME}}/>
+              qos: 1
+
+      # The A2A Client Agent Component
+      - component_name: action_request_processor
+        component_base_path: . # Assumes running from project root where src is visible
+        component_module: src.agents.a2a_client.a2a_client_agent_component
+        component_config:
+          # --- Core A2A Client Config ---
+          agent_name: {{SNAKE_CASE_NAME}} # Set dynamically by SAM CLI
+          a2a_server_url: ${{{{AGENT_NAME_UPPER}}}_A2A_SERVER_URL}
+          a2a_server_command: ${{{{AGENT_NAME_UPPER}}}_A2A_SERVER_COMMAND, null} # Optional
+          a2a_server_startup_timeout: ${{{{AGENT_NAME_UPPER}}}_A2A_SERVER_STARTUP_TIMEOUT, 30} # Optional, default 30
+          a2a_server_restart_on_crash: ${{{{AGENT_NAME_UPPER}}}_A2A_SERVER_RESTART_ON_CRASH, true} # Optional, default true
+          a2a_bearer_token: ${{{{AGENT_NAME_UPPER}}}_A2A_BEARER_TOKEN, null} # Optional
+          input_required_ttl: ${{{{AGENT_NAME_UPPER}}}_INPUT_REQUIRED_TTL, 300} # Optional, default 300
+
+          # --- Standard Agent Config ---
+          registration_interval: 30 # Default registration interval
+          # llm_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/llm-service/request/general-good/ # Uncomment if component needs LLM
+          # embedding_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/embedding-service/request/text/ # Uncomment if component needs Embedding
+
+        # Enable broker request/response if the component needs to call other SAM services (like LLM)
+        # broker_request_response:
+        #   enabled: true
+        #   broker_config: *broker_connection
+        #   request_expiry_ms: 120000
+        #   payload_encoding: utf-8
+        #   payload_format: json
+        #   response_topic_prefix: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1
+        #   response_queue_prefix: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1
+
+        component_input:
+          source_expression: input.payload # Standard input from broker
+
+      # Output action responses back to the Solace broker
+      - component_name: broker_output
+        component_module: broker_output
+        component_config:
+          <<: *broker_connection
+          payload_encoding: utf-8
+          payload_format: json
+          copy_user_properties: true # Preserve session_id etc.

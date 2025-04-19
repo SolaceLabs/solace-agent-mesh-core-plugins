@@ -57,10 +57,10 @@ When implementing code, do not add comments to describe the change you are doing
 
 ## Phase 5: Configuration and Finalization
 
-- [ ] **Step 5.1.1:** Create configuration template file (`a2a_client_agent_config_template.yaml`).
-- [ ] **Step 5.1.2:** Define standard SAM agent config structure in template.
-- [ ] **Step 5.1.3:** Define `action_request_processor` component config in template.
-- [ ] **Step 5.1.4:** Testing for Step 5.1 (Manual review).
+- [x] **Step 5.1.1:** Create configuration template file (`a2a_client_agent_config_template.yaml`).
+- [x] **Step 5.1.2:** Define standard SAM agent config structure in template.
+- [x] **Step 5.1.3:** Define `action_request_processor` component config in template.
+- [x] **Step 5.1.4:** Testing for Step 5.1 (Manual review).
 - [ ] **Step 5.2.1:** Code refinement, comments, docstrings, logging.
 - [ ] **Step 5.2.2:** Update `README.md`.
 - [ ] **Step 5.2.3:** Update `pyproject.toml`.
