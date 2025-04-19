@@ -47,6 +47,7 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
             config_overrides={
                 "a2a_server_command": "run_agent",
                 "a2a_server_restart_on_crash": True,
+                "a2a_server_startup_timeout": 15, # Example timeout
             },
             cache_service_instance=mock_cache,
         )
@@ -86,7 +87,8 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
             component.connection_handler = mock_conn_handler_instance
 
             # 3. Wait for Readiness and Initialize Client
-            if not component.connection_handler.wait_for_ready():
+            # Pass the timeout value to wait_for_ready
+            if not component.connection_handler.wait_for_ready(component.a2a_server_startup_timeout):
                 raise TimeoutError("Simulated Timeout")
             component.connection_handler.initialize_client()
 
@@ -98,7 +100,8 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
 
         # Assertions
         mock_process_manager_instance.launch.assert_called_once()
-        mock_conn_handler_instance.wait_for_ready.assert_called_once()
+        # Check wait_for_ready was called with the timeout
+        mock_conn_handler_instance.wait_for_ready.assert_called_once_with(component.a2a_server_startup_timeout)
         mock_conn_handler_instance.initialize_client.assert_called_once()
         # Check that the resolver and client were used *inside* initialize_client (implicitly tested by mocking initialize_client)
         mock_process_manager_instance.start_monitor.assert_called_once()
@@ -129,7 +132,10 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         # Provide a mock cache service
         mock_cache = MagicMock()
         component = create_test_component(
-            config_overrides={"a2a_server_command": None},  # No command
+            config_overrides={
+                "a2a_server_command": None, # No command
+                "a2a_server_startup_timeout": 20, # Example timeout
+            },
             cache_service_instance=mock_cache,
         )
         # Conditionally use spec
@@ -158,7 +164,8 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
             component.connection_handler = mock_conn_handler_instance
 
             # 3. Wait for Readiness and Initialize Client
-            if not component.connection_handler.wait_for_ready():
+            # Pass the timeout value to wait_for_ready
+            if not component.connection_handler.wait_for_ready(component.a2a_server_startup_timeout):
                 raise TimeoutError("Simulated Timeout")
             component.connection_handler.initialize_client()
 
@@ -166,7 +173,8 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         # --- End of simulated run logic ---
 
         mock_process_manager_cls.assert_not_called() # Process manager not created
-        mock_conn_handler_instance.wait_for_ready.assert_called_once()  # Still checks readiness
+        # Check wait_for_ready was called with the timeout
+        mock_conn_handler_instance.wait_for_ready.assert_called_once_with(component.a2a_server_startup_timeout)
         mock_conn_handler_instance.initialize_client.assert_called_once()
         mock_thread_cls.assert_not_called()  # No monitor thread in connect mode
 
@@ -226,7 +234,10 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         # Provide a mock cache service
         mock_cache = MagicMock()
         component = create_test_component(
-            config_overrides={"a2a_server_command": "run_agent"},
+            config_overrides={
+                "a2a_server_command": "run_agent",
+                "a2a_server_startup_timeout": 10, # Example timeout
+            },
             cache_service_instance=mock_cache,
         )
 
@@ -246,11 +257,13 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
                 component.connection_handler = mock_conn_handler_instance
 
                 # 3. Wait for Readiness (will fail)
-                if not component.connection_handler.wait_for_ready():
+                # Pass the timeout value to wait_for_ready
+                if not component.connection_handler.wait_for_ready(component.a2a_server_startup_timeout):
                     raise TimeoutError("Simulated Timeout") # Raise error as run() would
 
         mock_launch.assert_called_once()
-        mock_wait_ready.assert_called_once()
+        # Check wait_for_ready was called with the timeout
+        mock_wait_ready.assert_called_once_with(component.a2a_server_startup_timeout)
         mock_stop.assert_called_once()
         self.assertIsNone(component.agent_card)
         self.assertIsNone(component.a2a_client)
@@ -270,6 +283,7 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         # Provide a mock cache service
         mock_cache = MagicMock()
         component = create_test_component(
+            config_overrides={"a2a_server_startup_timeout": 5}, # Example timeout
             cache_service_instance=mock_cache
         )  # Connect mode
         mock_resolver_instance = mock_resolver_cls.return_value
@@ -286,12 +300,14 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
                 component.connection_handler = mock_conn_handler_instance
 
                 # 3. Wait for Readiness and Initialize Client (will fail)
-                if not component.connection_handler.wait_for_ready():
+                # Pass the timeout value to wait_for_ready
+                if not component.connection_handler.wait_for_ready(component.a2a_server_startup_timeout):
                     raise TimeoutError("Simulated Timeout")
                 component.connection_handler.initialize_client() # This raises the error
 
         self.assertIn("Failed to get Agent Card", str(cm.exception))
-        mock_wait_ready.assert_called_once()
+        # Check wait_for_ready was called with the timeout
+        mock_wait_ready.assert_called_once_with(component.a2a_server_startup_timeout)
         # get_agent_card is called inside initialize_client, which we mocked to raise
         # mock_resolver_instance.get_agent_card.assert_called_once() # Cannot assert this directly now
         mock_stop.assert_called_once()
@@ -313,7 +329,10 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         """Test initialization fails if A2AClient initialization fails."""
         # Provide a mock cache service
         mock_cache = MagicMock()
-        component = create_test_component(cache_service_instance=mock_cache)
+        component = create_test_component(
+            config_overrides={"a2a_server_startup_timeout": 5}, # Example timeout
+            cache_service_instance=mock_cache
+        )
         # Conditionally use spec
         if _is_instance_mock(AgentCard):
             mock_card = MagicMock()
@@ -334,13 +353,15 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
                 component.connection_handler = mock_conn_handler_instance
 
                 # 3. Wait for Readiness and Initialize Client (will fail)
-                if not component.connection_handler.wait_for_ready():
+                # Pass the timeout value to wait_for_ready
+                if not component.connection_handler.wait_for_ready(component.a2a_server_startup_timeout):
                     raise TimeoutError("Simulated Timeout")
                 component.connection_handler.initialize_client() # This raises the error
 
         self.assertIn("Could not initialize A2AClient", str(cm.exception))
         # Assert on the instance mock
-        mock_conn_handler_instance.wait_for_ready.assert_called_once()
+        # Check wait_for_ready was called with the timeout
+        mock_conn_handler_instance.wait_for_ready.assert_called_once_with(component.a2a_server_startup_timeout)
         # Assertions on mocks inside initialize_client are tricky, but we know it was called
         # mock_resolver_instance.get_agent_card.assert_called_once()
         # mock_a2a_client_cls.assert_called_once() # Constructor was called (and failed)
@@ -353,8 +374,8 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         "src.agents.a2a_client.a2a_connection_handler.A2AConnectionHandler.wait_for_ready",
         return_value=True,
     )
-    @patch("src.agents.a2a_client.a2a_connection_handler.A2ACardResolver") # Correct path
-    @patch("src.agents.a2a_client.a2a_connection_handler.A2AClient") # Correct path
+    @patch("src.agents.a2a_client.a2a_connection_handler.A2ACardResolver") # Corrected path
+    @patch("src.agents.a2a_client.a2a_connection_handler.A2AClient") # Corrected path
     def test_initialize_connection_bearer_auth_success(
         self, mock_a2a_client_cls, mock_resolver_cls, mock_wait_ready
     ):
@@ -363,7 +384,10 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         # Provide a mock cache service
         mock_cache = MagicMock()
         component = create_test_component(
-            config_overrides={"a2a_bearer_token": token},
+            config_overrides={
+                "a2a_bearer_token": token,
+                "a2a_server_startup_timeout": 5, # Example timeout
+            },
             cache_service_instance=mock_cache,
         )
         # Conditionally use spec
@@ -387,12 +411,12 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         # --- Simulate the relevant parts of the run() method ---
         with patch("src.agents.a2a_client.a2a_client_agent_component.A2AConnectionHandler") as mock_conn_handler_cls:
             # Configure the real handler's dependencies
-            mock_conn_handler_cls.side_effect = lambda server_url, startup_timeout, bearer_token, stop_event: \
-                A2AConnectionHandler(server_url, startup_timeout, bearer_token, stop_event)
+            # Remove startup_timeout from constructor call
+            mock_conn_handler_cls.side_effect = lambda server_url, bearer_token, stop_event: \
+                A2AConnectionHandler(server_url, bearer_token, stop_event)
 
             component.connection_handler = A2AConnectionHandler(
                 server_url=component.a2a_server_url,
-                startup_timeout=component.a2a_server_startup_timeout,
                 bearer_token=component.a2a_bearer_token,
                 stop_event=component.stop_monitor,
             )
@@ -401,13 +425,15 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
             component.connection_handler.wait_for_ready = MagicMock(return_value=True)
 
             # 3. Wait for Readiness and Initialize Client
-            if not component.connection_handler.wait_for_ready():
+            # Pass the timeout value to wait_for_ready
+            if not component.connection_handler.wait_for_ready(component.a2a_server_startup_timeout):
                 raise TimeoutError("Simulated Timeout")
             # Call the real initialize_client, which uses the patched A2AClient and A2ACardResolver
             component.connection_handler.initialize_client()
         # --- End of simulated run logic ---
 
-        component.connection_handler.wait_for_ready.assert_called_once() # Check instance mock
+        # Check wait_for_ready was called with the timeout
+        component.connection_handler.wait_for_ready.assert_called_once_with(component.a2a_server_startup_timeout)
         mock_resolver_instance.get_agent_card.assert_called_once()
         # Verify A2AClient was called with the token
         mock_a2a_client_cls.assert_called_once_with(
@@ -419,8 +445,8 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         "src.agents.a2a_client.a2a_connection_handler.A2AConnectionHandler.wait_for_ready",
         return_value=True,
     )
-    @patch("src.agents.a2a_client.a2a_connection_handler.A2ACardResolver") # Correct path
-    @patch("src.agents.a2a_client.a2a_connection_handler.A2AClient") # Correct path
+    @patch("src.agents.a2a_client.a2a_connection_handler.A2ACardResolver") # Corrected path
+    @patch("src.agents.a2a_client.a2a_connection_handler.A2AClient") # Corrected path
     @patch("solace_ai_connector.common.log.log.warning") # Patch the correct log object
     def test_initialize_connection_bearer_auth_missing(
         self, mock_log_warning, mock_a2a_client_cls, mock_resolver_cls, mock_wait_ready
@@ -429,7 +455,10 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         # Provide a mock cache service
         mock_cache = MagicMock()
         component = create_test_component(
-            config_overrides={"a2a_bearer_token": None},  # No token configured
+            config_overrides={
+                "a2a_bearer_token": None,  # No token configured
+                "a2a_server_startup_timeout": 5, # Example timeout
+            },
             cache_service_instance=mock_cache,
         )
         # Conditionally use spec
@@ -453,12 +482,12 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         # --- Simulate the relevant parts of the run() method ---
         with patch("src.agents.a2a_client.a2a_client_agent_component.A2AConnectionHandler") as mock_conn_handler_cls:
             # Configure the real handler's dependencies
-            mock_conn_handler_cls.side_effect = lambda server_url, startup_timeout, bearer_token, stop_event: \
-                A2AConnectionHandler(server_url, startup_timeout, bearer_token, stop_event)
+            # Remove startup_timeout from constructor call
+            mock_conn_handler_cls.side_effect = lambda server_url, bearer_token, stop_event: \
+                A2AConnectionHandler(server_url, bearer_token, stop_event)
 
             component.connection_handler = A2AConnectionHandler(
                 server_url=component.a2a_server_url,
-                startup_timeout=component.a2a_server_startup_timeout,
                 bearer_token=component.a2a_bearer_token, # Will be None
                 stop_event=component.stop_monitor,
             )
@@ -466,13 +495,15 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
             component.connection_handler.wait_for_ready = MagicMock(return_value=True)
 
             # 3. Wait for Readiness and Initialize Client
-            if not component.connection_handler.wait_for_ready():
+            # Pass the timeout value to wait_for_ready
+            if not component.connection_handler.wait_for_ready(component.a2a_server_startup_timeout):
                 raise TimeoutError("Simulated Timeout")
             # Call the real initialize_client
             component.connection_handler.initialize_client()
         # --- End of simulated run logic ---
 
-        component.connection_handler.wait_for_ready.assert_called_once() # Check instance mock
+        # Check wait_for_ready was called with the timeout
+        component.connection_handler.wait_for_ready.assert_called_once_with(component.a2a_server_startup_timeout)
         mock_resolver_instance.get_agent_card.assert_called_once()
         # Verify warning was logged for the bearer token
         mock_log_warning.assert_called_with(
@@ -486,8 +517,8 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         self.assertIsNotNone(component.a2a_client)
 
     # Removed the global patch for wait_for_ready
-    @patch("src.agents.a2a_client.a2a_connection_handler.A2ACardResolver") # Correct path
-    @patch("src.agents.a2a_client.a2a_connection_handler.A2AClient") # Correct path
+    @patch("src.agents.a2a_client.a2a_connection_handler.A2ACardResolver") # Corrected path
+    @patch("src.agents.a2a_client.a2a_connection_handler.A2AClient") # Corrected path
     @patch("solace_ai_connector.common.log.log.warning") # Patch the correct log object
     def test_initialize_connection_bearer_auth_not_required(
         self, mock_log_warning, mock_a2a_client_cls, mock_resolver_cls
@@ -498,7 +529,10 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         # Provide a mock cache service
         mock_cache = MagicMock()
         component = create_test_component(
-            config_overrides={"a2a_bearer_token": token},
+            config_overrides={
+                "a2a_bearer_token": token,
+                "a2a_server_startup_timeout": 5, # Example timeout
+            },
             cache_service_instance=mock_cache,
         )
         # Conditionally use spec
@@ -515,12 +549,12 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
         # --- Simulate the relevant parts of the run() method ---
         with patch("src.agents.a2a_client.a2a_client_agent_component.A2AConnectionHandler") as mock_conn_handler_cls:
             # Configure the real handler's dependencies
-            mock_conn_handler_cls.side_effect = lambda server_url, startup_timeout, bearer_token, stop_event: \
-                A2AConnectionHandler(server_url, startup_timeout, bearer_token, stop_event)
+            # Remove startup_timeout from constructor call
+            mock_conn_handler_cls.side_effect = lambda server_url, bearer_token, stop_event: \
+                A2AConnectionHandler(server_url, bearer_token, stop_event)
 
             component.connection_handler = A2AConnectionHandler(
                 server_url=component.a2a_server_url,
-                startup_timeout=component.a2a_server_startup_timeout,
                 bearer_token=component.a2a_bearer_token, # Will be the token
                 stop_event=component.stop_monitor,
             )
@@ -528,14 +562,16 @@ class TestA2AClientAgentComponentConnection(unittest.TestCase):
             component.connection_handler.wait_for_ready = MagicMock(return_value=True)
 
             # 3. Wait for Readiness and Initialize Client
-            if not component.connection_handler.wait_for_ready():
+            # Pass the timeout value to wait_for_ready
+            if not component.connection_handler.wait_for_ready(component.a2a_server_startup_timeout):
                 raise TimeoutError("Simulated Timeout")
             # Call the real initialize_client
             component.connection_handler.initialize_client()
         # --- End of simulated run logic ---
 
         # Assert on the instance mock
-        component.connection_handler.wait_for_ready.assert_called_once()
+        # Check wait_for_ready was called with the timeout
+        component.connection_handler.wait_for_ready.assert_called_once_with(component.a2a_server_startup_timeout)
         mock_resolver_instance.get_agent_card.assert_called_once()
         mock_log_warning.assert_not_called()  # No warning about missing token
         # Verify A2AClient was called without the token (as it wasn't required)

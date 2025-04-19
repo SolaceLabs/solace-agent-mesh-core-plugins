@@ -156,8 +156,8 @@ class A2AClientAgentComponent(BaseAgentComponent):
         self.file_service = FileService()
         self.cache_service = kwargs.get("cache_service")
         if self.cache_service is None:
-            raise ValueError(
-                "Cache service not provided. INPUT_REQUIRED needs this service."
+            log.warning(
+                "Cache service not provided to A2AClientAgentComponent. INPUT_REQUIRED state will not be supported."
             )
 
         # Action List (initially empty, populated in run)
@@ -208,7 +208,6 @@ class A2AClientAgentComponent(BaseAgentComponent):
             log.debug("Initializing A2AConnectionHandler for '%s'.", self.agent_name)
             self.connection_handler = A2AConnectionHandler(
                 server_url=self.a2a_server_url,
-                startup_timeout=self.a2a_server_startup_timeout,
                 bearer_token=self.a2a_bearer_token,
                 stop_event=self.stop_monitor,
             )
@@ -218,7 +217,7 @@ class A2AClientAgentComponent(BaseAgentComponent):
             # <inst>
             # Change this to pass in the timeout to wait_for_ready instead of passing it in the constructor
             # </inst>
-            if not self.connection_handler.wait_for_ready():
+            if not self.connection_handler.wait_for_ready(self.a2a_server_startup_timeout):
                 # Error logged within wait_for_ready
                 raise TimeoutError(
                     f"A2A agent at {self.a2a_server_url} did not become ready within {self.a2a_server_startup_timeout}s."

@@ -13,8 +13,9 @@ class TestA2AClientAgentComponentReadiness(unittest.TestCase):
     @patch('src.agents.a2a_client.a2a_connection_handler.requests.get') # Patch where requests is used
     @patch.object(threading.Event, 'wait', return_value=False) # Simulate wait timeout
     def test_wait_for_agent_ready_success_immediate(self, mock_event_wait, mock_requests_get):
-        """Test _wait_for_agent_ready succeeds on the first try."""
-        component = create_test_component({"a2a_server_startup_timeout": 5})
+        """Test wait_for_ready succeeds on the first try."""
+        timeout = 5
+        component = create_test_component({"a2a_server_startup_timeout": timeout})
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_requests_get.return_value = mock_response
@@ -22,9 +23,9 @@ class TestA2AClientAgentComponentReadiness(unittest.TestCase):
         # Instantiate the handler and call the method
         from src.agents.a2a_client.a2a_connection_handler import A2AConnectionHandler
         handler = A2AConnectionHandler(
-            component.a2a_server_url, component.a2a_server_startup_timeout, None, component.stop_monitor
+            component.a2a_server_url, None, component.stop_monitor # Pass None for token
         )
-        result = handler.wait_for_ready()
+        result = handler.wait_for_ready(timeout) # Pass timeout here
 
         self.assertTrue(result)
         mock_requests_get.assert_called_once_with(
@@ -36,8 +37,9 @@ class TestA2AClientAgentComponentReadiness(unittest.TestCase):
     @patch('src.agents.a2a_client.a2a_connection_handler.requests.get') # Patch where requests is used
     @patch.object(threading.Event, 'wait', return_value=False)
     def test_wait_for_agent_ready_success_retry(self, mock_event_wait, mock_requests_get):
-        """Test _wait_for_agent_ready succeeds after a few retries."""
-        component = create_test_component({"a2a_server_startup_timeout": 5})
+        """Test wait_for_agent_ready succeeds after a few retries."""
+        timeout = 5
+        component = create_test_component({"a2a_server_startup_timeout": timeout})
         mock_response_fail = MagicMock()
         mock_response_fail.status_code = 503
         mock_response_success = MagicMock()
@@ -47,9 +49,9 @@ class TestA2AClientAgentComponentReadiness(unittest.TestCase):
         # Instantiate the handler and call the method
         from src.agents.a2a_client.a2a_connection_handler import A2AConnectionHandler
         handler = A2AConnectionHandler(
-            component.a2a_server_url, component.a2a_server_startup_timeout, None, component.stop_monitor
+            component.a2a_server_url, None, component.stop_monitor # Pass None for token
         )
-        result = handler.wait_for_ready()
+        result = handler.wait_for_ready(timeout) # Pass timeout here
 
         self.assertTrue(result)
         self.assertEqual(mock_requests_get.call_count, 3)
@@ -60,7 +62,7 @@ class TestA2AClientAgentComponentReadiness(unittest.TestCase):
     @patch.object(threading.Event, 'wait', return_value=False)
     @patch('src.agents.a2a_client.a2a_connection_handler.time.time') # Mock time where it's used
     def test_wait_for_agent_ready_timeout(self, mock_time, mock_event_wait, mock_requests_get):
-        """Test _wait_for_agent_ready returns False on timeout."""
+        """Test wait_for_agent_ready returns False on timeout."""
         timeout = 3 # seconds for test
         component = create_test_component({"a2a_server_startup_timeout": timeout})
         mock_response_fail = MagicMock()
@@ -82,9 +84,9 @@ class TestA2AClientAgentComponentReadiness(unittest.TestCase):
         # Instantiate the handler and call the method
         from src.agents.a2a_client.a2a_connection_handler import A2AConnectionHandler
         handler = A2AConnectionHandler(
-            component.a2a_server_url, component.a2a_server_startup_timeout, None, component.stop_monitor
+            component.a2a_server_url, None, component.stop_monitor # Pass None for token
         )
-        result = handler.wait_for_ready()
+        result = handler.wait_for_ready(timeout) # Pass timeout here
 
         self.assertFalse(result)
         self.assertEqual(mock_requests_get.call_count, 3) # Should try 3 times
@@ -110,9 +112,9 @@ class TestA2AClientAgentComponentReadiness(unittest.TestCase):
         # Instantiate the handler and call the method
         from src.agents.a2a_client.a2a_connection_handler import A2AConnectionHandler
         handler = A2AConnectionHandler(
-            component.a2a_server_url, component.a2a_server_startup_timeout, None, component.stop_monitor
+            component.a2a_server_url, None, component.stop_monitor # Pass None for token
         )
-        result = handler.wait_for_ready()
+        result = handler.wait_for_ready(timeout) # Pass timeout here
 
         self.assertFalse(result)
         self.assertEqual(mock_requests_get.call_count, 2) # Tries twice before timeout
@@ -122,7 +124,8 @@ class TestA2AClientAgentComponentReadiness(unittest.TestCase):
     @patch.object(threading.Event, 'wait', return_value=True) # Simulate stop event set during wait
     def test_wait_for_agent_ready_stop_event(self, mock_event_wait, mock_requests_get):
         """Test _wait_for_agent_ready returns False immediately if stop event is set during wait."""
-        component = create_test_component({"a2a_server_startup_timeout": 10})
+        timeout = 10
+        component = create_test_component({"a2a_server_startup_timeout": timeout})
         # Simulate request failing once before wait detects stop
         mock_response_fail = MagicMock()
         mock_response_fail.status_code = 503
@@ -131,9 +134,9 @@ class TestA2AClientAgentComponentReadiness(unittest.TestCase):
         # Instantiate the handler and call the method
         from src.agents.a2a_client.a2a_connection_handler import A2AConnectionHandler
         handler = A2AConnectionHandler(
-            component.a2a_server_url, component.a2a_server_startup_timeout, None, component.stop_monitor
+            component.a2a_server_url, None, component.stop_monitor # Pass None for token
         )
-        result = handler.wait_for_ready()
+        result = handler.wait_for_ready(timeout) # Pass timeout here
 
         self.assertFalse(result)
         mock_requests_get.assert_called_once() # Request IS called once before wait detects stop

@@ -21,7 +21,6 @@ class A2AConnectionHandler:
 
     Attributes:
         server_url (str): The base URL of the target A2A agent.
-        startup_timeout (int): Maximum time in seconds to wait for the agent to become ready.
         bearer_token (Optional[str]): Bearer token for authentication, if required.
         stop_event (threading.Event): Event to signal termination during waits.
         agent_card (Optional[AgentCard]): The fetched AgentCard of the target agent.
@@ -31,7 +30,6 @@ class A2AConnectionHandler:
     def __init__(
         self,
         server_url: str,
-        startup_timeout: int,
         bearer_token: Optional[str],
         stop_event: threading.Event,
     ):
@@ -40,36 +38,37 @@ class A2AConnectionHandler:
 
         Args:
             server_url: The base URL of the target A2A agent.
-            startup_timeout: Seconds to wait for the agent to become ready.
             bearer_token: Optional Bearer token for authentication.
             stop_event: A threading.Event to signal termination.
         """
         self.server_url = server_url.rstrip("/")
-        self.startup_timeout = startup_timeout
         self.bearer_token = bearer_token
         self.stop_event = stop_event
         self.agent_card: Optional[AgentCard] = None
         self.a2a_client: Optional[A2AClient] = None
         log.debug("A2AConnectionHandler initialized for URL: %s", self.server_url)
 
-    def wait_for_ready(self) -> bool:
+    def wait_for_ready(self, timeout: int) -> bool:
         """
         Polls the A2A agent's '/.well-known/agent.json' endpoint until it
-        responds successfully (HTTP 200) or the startup timeout is reached.
+        responds successfully (HTTP 200) or the specified timeout is reached.
 
         Checks the `stop_event` periodically to allow for early termination.
+
+        Args:
+            timeout (int): Maximum time in seconds to wait for the agent to become ready.
 
         Returns:
             True if the agent becomes ready within the timeout, False otherwise.
         """
         agent_card_url = urljoin(self.server_url, "/.well-known/agent.json")
-        deadline = time.time() + self.startup_timeout
+        deadline = time.time() + timeout
         check_interval = 1  # Seconds between readiness checks
         request_timeout = 5  # Seconds for the HTTP request itself
 
         log.info(
             "Waiting up to %ds for A2A agent at %s to become ready...",
-            self.startup_timeout,
+            timeout,
             self.server_url,
         )
 
@@ -118,7 +117,7 @@ class A2AConnectionHandler:
         log.error(
             "A2A agent at %s did not become ready within %d seconds.",
             self.server_url,
-            self.startup_timeout,
+            timeout,
         )
         return False
 
