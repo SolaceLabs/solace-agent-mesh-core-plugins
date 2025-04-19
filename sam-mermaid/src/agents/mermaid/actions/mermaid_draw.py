@@ -31,17 +31,17 @@ class DrawAction(Action):
         )
 
     def invoke(self, params, meta={}) -> ActionResponse:
-        log.debug("Invoking mermaid draw action for agent %s", self.parent_component.agent_name)
+        log.debug("Invoking mermaid draw action for agent %s", self.agent.info.get("agent_name"))
         session_id = meta.get("session_id")
         mermaid_code = params.get("mermaid_code")
         if not mermaid_code:
             return ActionResponse(message="Error: 'mermaid_code' parameter is required.", status_code=400)
 
         # Retrieve mermaid_server_url from the parent component's config
-        mermaid_server_url = self.parent_component.get_config("mermaid_server_url")
+        mermaid_server_url = self.get_config("mermaid_server_url")
         if not mermaid_server_url:
-             log.error("Mermaid server URL not configured for agent %s", self.parent_component.agent_name)
-             return ActionResponse(message="Error: Mermaid server URL is not configured.", status_code=500)
+            log.error("Mermaid server URL not configured for agent %s", self.agent.info.get("agent_name"))
+            return ActionResponse(message="Error: Mermaid server URL is not configured.", status_code=500)
 
         return self.do_action(mermaid_code, mermaid_server_url, session_id)
 
