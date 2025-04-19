@@ -2,101 +2,129 @@
 #
 # It defines the standard SAM agent flows:
 # 1. Periodic registration with the orchestrator.
-# 2. Processing action requests received from the orchestrator.
+# 2. Processing action requests received from the orchestrator for this agent.
 #
 # Environment variables are used for configuration. Replace <AGENT_NAME_UPPER>
 # with the uppercase version of the agent name chosen during `solace-agent-mesh add agent`.
+# Example: If agent name is 'crewai_image', use 'CREWAI_IMAGE_A2A_SERVER_URL'.
 #
 # Required Environment Variables:
-# - SOLACE_BROKER_URL
-# - SOLACE_BROKER_USERNAME
-# - SOLACE_BROKER_PASSWORD
-# - SOLACE_BROKER_VPN
-# - SOLACE_AGENT_MESH_NAMESPACE
-# - <AGENT_NAME_UPPER>_A2A_SERVER_URL: URL of the target A2A agent.
+# - SOLACE_BROKER_URL:              URL of the Solace broker.
+# - SOLACE_BROKER_USERNAME:         Username for the Solace broker.
+# - SOLACE_BROKER_PASSWORD:         Password for the Solace broker.
+# - SOLACE_BROKER_VPN:              Message VPN on the Solace broker.
+# - SOLACE_AGENT_MESH_NAMESPACE:    Namespace prefix for SAM topics.
+# - <AGENT_NAME_UPPER>_A2A_SERVER_URL: URL of the target A2A agent (e.g., http://localhost:10001).
 #
 # Optional Environment Variables:
-# - <AGENT_NAME_UPPER>_A2A_SERVER_COMMAND: Command to launch the A2A agent process.
-# - <AGENT_NAME_UPPER>_A2A_SERVER_STARTUP_TIMEOUT: Timeout for launched agent readiness (default: 30).
-# - <AGENT_NAME_UPPER>_A2A_SERVER_RESTART_ON_CRASH: Restart crashed process (default: true).
-# - <AGENT_NAME_UPPER>_A2A_BEARER_TOKEN: Bearer token for A2A requests.
-# - <AGENT_NAME_UPPER>_INPUT_REQUIRED_TTL: TTL for INPUT_REQUIRED state (default: 300).
-# - USE_TEMPORARY_QUEUES: Use temporary queues (default: false).
-# - SOLACE_DEV_MODE: Use local queues instead of broker (default: false).
+# - <AGENT_NAME_UPPER>_A2A_SERVER_COMMAND: Command to launch the A2A agent process (if managed by SAM).
+#                                         Example: "python -m my_a2a_agent --port 10001"
+# - <AGENT_NAME_UPPER>_A2A_SERVER_STARTUP_TIMEOUT: Timeout (seconds) for launched agent readiness (default: 30).
+# - <AGENT_NAME_UPPER>_A2A_SERVER_RESTART_ON_CRASH: Restart crashed managed process (default: true).
+# - <AGENT_NAME_UPPER>_A2A_BEARER_TOKEN: Bearer token for A2A requests if required by the target agent.
+# - <AGENT_NAME_UPPER>_INPUT_REQUIRED_TTL: TTL (seconds) for storing INPUT_REQUIRED state in cache (default: 300).
+# - USE_TEMPORARY_QUEUES:           Use temporary queues instead of durable ones (default: false).
+# - SOLACE_DEV_MODE:                Use local queues instead of broker for development (default: false).
 
 ---
+# Logging configuration
 log:
-  stdout_log_level: INFO
-  log_file_level: INFO
-  log_file: solace_ai_connector.log
+  stdout_log_level: INFO # Log level for console output
+  log_file_level: INFO   # Log level for file output
+  log_file: solace_ai_connector.log # Log file name
 
+# Trace configuration (uncomment to enable)
 # trace:
-#   trace_file: agent_a2a_client_{{SNAKE_CASE_NAME}}.trace
+#   trace_file: agent_a2a_client_{{SNAKE_CASE_NAME}}.trace # Trace file specific to this agent instance
 
+# Shared configuration blocks
 shared_config:
+  # Define broker connection details once
   - broker_config: &broker_connection
-      broker_connection_share: ${SOLACE_BROKER_URL}
-      dev_mode: ${SOLACE_DEV_MODE, false}
+      broker_connection_share: ${SOLACE_BROKER_URL} # Optional: Share connection context based on URL
+      dev_mode: ${SOLACE_DEV_MODE, false} # Use local queues if true
       broker_url: ${SOLACE_BROKER_URL}
       broker_username: ${SOLACE_BROKER_USERNAME}
       broker_password: ${SOLACE_BROKER_PASSWORD}
       broker_vpn: ${SOLACE_BROKER_VPN}
-      temporary_queue: ${USE_TEMPORARY_QUEUES, false}
+      temporary_queue: ${USE_TEMPORARY_QUEUES, false} # Use durable queues by default
 
+# Define the flows for this agent
 flows:
-  # Flow to handle action requests for this specific A2A agent instance
+  # Flow to handle action requests targeted at this specific A2A agent instance
   - name: {{SNAKE_CASE_NAME}}_action_request_processor
     components:
-      # Input from Solace broker, subscribing to actions for this agent
+      # 1. Input from Solace broker
       - component_name: broker_input
-        component_module: broker_input
+        component_module: broker_input # Standard SAM broker input component
         component_config:
-          <<: *broker_connection
+          <<: *broker_connection # Use shared broker connection details
           payload_encoding: utf-8
           payload_format: json
+          # Unique queue name for this agent instance
           broker_queue_name: ${SOLACE_AGENT_MESH_NAMESPACE}agent_{{SNAKE_CASE_NAME}}_action_request
           broker_subscriptions:
-            # Subscribe to actions specifically targeted at this agent instance
+            # Subscribe to action requests specifically targeted at this agent instance
+            # Format: <namespace>/solace-agent-mesh/v1/actionRequest/<gateway_id>/<session_id>/<agent_name>/<action_name>
             - topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/actionRequest/*/*/{{SNAKE_CASE_NAME}}/>
-              qos: 1
+              qos: 1 # Quality of Service 1 (persistent, guaranteed delivery)
 
-      # The A2A Client Agent Component
+      # 2. The A2A Client Agent Component - This is the core of the plugin
       - component_name: action_request_processor
         component_base_path: . # Assumes running from project root where src is visible
-        component_module: src.agents.a2a_client.a2a_client_agent_component
+        component_module: src.agents.a2a_client.a2a_client_agent_component # Path to the component class
         component_config:
-          # --- Core A2A Client Config ---
-          agent_name: {{SNAKE_CASE_NAME}} # Set dynamically by SAM CLI
+          # --- Core A2A Client Configuration ---
+          # agent_name is automatically set by SAM CLI using the template variable
+          agent_name: {{SNAKE_CASE_NAME}}
+          # URL of the target A2A agent (Mandatory)
           a2a_server_url: ${{{{AGENT_NAME_UPPER}}}_A2A_SERVER_URL}
-          a2a_server_command: ${{{{AGENT_NAME_UPPER}}}_A2A_SERVER_COMMAND, null} # Optional
-          a2a_server_startup_timeout: ${{{{AGENT_NAME_UPPER}}}_A2A_SERVER_STARTUP_TIMEOUT, 30} # Optional, default 30
-          a2a_server_restart_on_crash: ${{{{AGENT_NAME_UPPER}}}_A2A_SERVER_RESTART_ON_CRASH, true} # Optional, default true
-          a2a_bearer_token: ${{{{AGENT_NAME_UPPER}}}_A2A_BEARER_TOKEN, null} # Optional
-          input_required_ttl: ${{{{AGENT_NAME_UPPER}}}_INPUT_REQUIRED_TTL, 300} # Optional, default 300
+          # Command to launch the A2A agent process (Optional)
+          a2a_server_command: ${{{{AGENT_NAME_UPPER}}}_A2A_SERVER_COMMAND, null}
+          # Timeout for launched agent readiness check (Optional, default 30s)
+          a2a_server_startup_timeout: ${{{{AGENT_NAME_UPPER}}}_A2A_SERVER_STARTUP_TIMEOUT, 30}
+          # Whether to restart the managed process if it crashes (Optional, default true)
+          a2a_server_restart_on_crash: ${{{{AGENT_NAME_UPPER}}}_A2A_SERVER_RESTART_ON_CRASH, true}
+          # Bearer token for A2A requests (Optional)
+          a2a_bearer_token: ${{{{AGENT_NAME_UPPER}}}_A2A_BEARER_TOKEN, null}
+          # TTL for INPUT_REQUIRED state cache (Optional, default 300s)
+          input_required_ttl: ${{{{AGENT_NAME_UPPER}}}_INPUT_REQUIRED_TTL, 300}
 
-          # --- Standard Agent Config ---
-          registration_interval: 30 # Default registration interval
-          # llm_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/llm-service/request/general-good/ # Uncomment if component needs LLM
-          # embedding_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/embedding-service/request/text/ # Uncomment if component needs Embedding
+          # --- Standard SAM Agent Configuration ---
+          # Interval (seconds) for sending registration messages to the orchestrator
+          registration_interval: 30 # Default: 30 seconds
 
-        # Enable broker request/response if the component needs to call other SAM services (like LLM)
+          # --- Optional Service Dependencies ---
+          # Uncomment and configure if this component needs to call SAM LLM or Embedding services
+          # llm_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/llm-service/request/general-good/
+          # embedding_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/embedding-service/request/text/
+
+        # --- Optional Broker Request/Response ---
+        # Enable this section if the component needs to make synchronous requests
+        # to other SAM services (like LLM or Embedding services configured above).
         # broker_request_response:
         #   enabled: true
-        #   broker_config: *broker_connection
-        #   request_expiry_ms: 120000
+        #   broker_config: *broker_connection # Use shared broker details
+        #   request_expiry_ms: 120000 # Timeout for waiting for responses (e.g., 2 minutes)
         #   payload_encoding: utf-8
         #   payload_format: json
+        #   # Define where responses to this component's requests should be sent
         #   response_topic_prefix: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1
         #   response_queue_prefix: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1
 
+        # Define how the component receives input from the previous component (broker_input)
         component_input:
-          source_expression: input.payload # Standard input from broker
+          source_expression: input.payload # Standard: takes the payload from the broker message
 
-      # Output action responses back to the Solace broker
+      # 3. Output action responses back to the Solace broker
       - component_name: broker_output
-        component_module: broker_output
+        component_module: broker_output # Standard SAM broker output component
         component_config:
-          <<: *broker_connection
+          <<: *broker_connection # Use shared broker connection details
           payload_encoding: utf-8
           payload_format: json
-          copy_user_properties: true # Preserve session_id etc.
+          copy_user_properties: true # Crucial: Preserve metadata like session_id, gateway_id etc.
+          # The output topic is determined dynamically by the A2AClientAgentComponent
+          # based on the action response and originator.
+```
+sam-a2a-client/implementation-checklist.md

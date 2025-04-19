@@ -1,20 +1,27 @@
-plugin_schema_version: 1
+# Solace Agent Mesh Plugin Definition File
+plugin_schema_version: 1 # Specifies the version of the plugin manifest schema
 
 plugin_info:
-  name: sam-a2a-client
-  version: "0.1.0" # This might be dynamically updated by build process
-  description: "Provides a SAM agent component to interact with A2A protocol agents."
+  name: sam-a2a-client # The unique name of the plugin package
+  version: "0.1.0" # Plugin version (consider using dynamic versioning from pyproject.toml)
+  description: "Provides a SAM agent component to discover and interact with external A2A (Agent-to-Agent) protocol compliant agents."
   author: SolaceLabs
   license: Apache-2.0
-  # url: # Optional: Link to plugin repository or documentation
+  # url: # Optional: Link to plugin repository or documentation (e.g., GitHub)
 
+# Defines the types of agents this plugin provides
 agent_types:
-  - name: a2a_client
-    description: "A SAM agent that acts as a client to an external A2A agent."
-    config_template: "src/agents/a2a_client/a2a_client_agent_config_template.yaml" # Path relative to plugin root
+  - name: a2a_client # The identifier used when adding an agent of this type (e.g., `sam add agent my_a2a_agent --copy-from sam-a2a-client:a2a_client`)
+    description: "A SAM agent that acts as a client bridge to an external A2A agent, exposing its skills as SAM actions."
+    # Path to the configuration template file, relative to the plugin's root directory
+    config_template: "src/agents/a2a_client/a2a_client_agent_config_template.yaml"
 
-# gateway_types: # None defined in this plugin
+# gateway_types: # No gateway types defined in this plugin
 #   - name: ...
+#     description: ...
+#     config_template: ...
 
-# service_types: # None defined in this plugin
+# service_types: # No service types defined in this plugin
 #   - name: ...
+#     description: ...
+#     config_template: ...

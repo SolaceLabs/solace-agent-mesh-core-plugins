@@ -19,34 +19,47 @@ dependencies = [
   # "solace-agent-mesh",
   "requests>=2.30.0", # For checking agent readiness
   # Dependency for the google/A2A common library needs to be determined.
-  # Option 1: If published as a package:
-  # "a2a-common-python",
-  # Option 2: Git dependency (adjust branch/tag as needed)
-  # "a2a-common-python @ git+https://github.com/google/A2A.git#subdirectory=samples/python/common",
-  # Option 3: Local path (for development)
-  # "a2a-common-python @ {root:uri}/../google-a2a/samples/python/common"
-  # Placeholder - needs finalization:
-  "pydantic>=2.0" # Likely needed by A2A common types
+  # Assuming it's installed via the workspace for now.
+  # If published: "a2a-common-python",
+  # If git: "a2a-common-python @ git+https://github.com/google/A2A.git#subdirectory=samples/python/common",
+  "pydantic>=2.0", # Needed by A2A common types
+  "httpx>=0.25.0", # Needed by A2A common client
+  "httpx-sse>=0.4.0", # Needed by A2A common client for streaming (though not used initially)
+  "jwcrypto>=1.5.0", # Likely needed if push notification auth is used by common lib
+  "python-jose>=3.3.0", # Alternative/complement to jwcrypto for JWT
+  "starlette>=0.30.0", # Needed by A2A common server (used in tests/samples)
+  "sse-starlette>=1.0.0", # Needed by A2A common server for streaming
+  "uvicorn>=0.20.0", # Needed by A2A common server (used in tests/samples)
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Intended Audience :: Developers",
 ]
 
 [tool.hatch.version]
-path = "src/__init__.py"
+path = "src/__init__.py" # Assuming version is stored here
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agents"]
+packages = ["src/agents"] # Include the agents directory in the wheel
 
 [tool.hatch.build.targets.wheel.force-include]
+# Ensure plugin structure is included in the wheel relative to a 'sam_a2a_client' root
 "src" = "sam_a2a_client/src"
 "configs" = "sam_a2a_client/configs" # Add if config templates are created
 "solace-agent-mesh-plugin.yaml" = "sam_a2a_client/solace-agent-mesh-plugin.yaml"
 
-# Add linters and formatters if desired
+# Optional: Add linters and formatters
 # [tool.black]
 # line-length = 88
+# [tool.ruff]
+# line-length = 88
+# select = ["E", "W", "F", "I", "UP", "B", "C4"] # Example selection
+# ignore = ["E501"] # Ignore line length, handled by black
 # [tool.mypy]
-# ...
+# python_version = "3.10"
+# warn_return_any = true
+# warn_unused_configs = true
+# ignore_missing_imports = true # May be needed depending on A2A common lib structure

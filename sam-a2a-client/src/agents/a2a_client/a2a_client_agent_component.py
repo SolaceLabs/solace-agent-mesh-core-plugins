@@ -1,7 +1,16 @@
+"""
+Main SAM Agent Component for interacting with external A2A agents.
+
+This component manages the connection to an A2A agent (either by launching
+a process or connecting to an existing URL), discovers its capabilities (skills)
+via its AgentCard, dynamically creates corresponding SAM Actions, and handles
+the invocation of those actions, including managing the INPUT_REQUIRED state.
+"""
+
 import copy
 import threading
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from solace_agent_mesh.agents.base_agent_component import (
     BaseAgentComponent,
@@ -9,12 +18,15 @@ from solace_agent_mesh.agents.base_agent_component import (
 )
 from solace_agent_mesh.common.action_list import ActionList
 from solace_agent_mesh.services.file_service import FileService
+from solace_agent_mesh.common.action_response import ActionResponse
 
 # Import helpers
 from .a2a_process_manager import A2AProcessManager
 from .a2a_connection_handler import A2AConnectionHandler
 from .a2a_action_factory import create_actions_from_card, create_provide_input_action
 from .a2a_input_handler import handle_provide_required_input
+from ...common_a2a.types import AgentCard, AgentSkill
+from ...common_a2a.client import A2AClient
 
 # Define component configuration schema by extending the base
 info = copy.deepcopy(base_agent_info)
@@ -79,19 +91,50 @@ logger = logging.getLogger(__name__)
 class A2AClientAgentComponent(BaseAgentComponent):
     """
     SAM Agent Component that acts as a client to an external A2A agent.
-    Uses helper classes for process management and connection handling.
+
+    This component initializes and manages the connection to a target A2A agent,
+    discovers its skills, creates corresponding SAM actions, and handles the
+    invocation flow, including managing the `INPUT_REQUIRED` state using the
+    Cache Service. It can optionally manage the lifecycle of the A2A agent process.
+
+    Attributes:
+        agent_name (str): Unique name for this SAM agent instance.
+        a2a_server_url (str): URL of the target A2A agent.
+        a2a_server_command (Optional[str]): Command to launch the A2A agent process.
+        a2a_server_startup_timeout (int): Timeout for agent readiness check.
+        a2a_server_restart_on_crash (bool): Whether to restart the managed process.
+        a2a_bearer_token (Optional[str]): Bearer token for A2A requests.
+        input_required_ttl (int): TTL for INPUT_REQUIRED state cache entries.
+        stop_monitor (threading.Event): Event to signal termination to helper threads.
+        _initialized (threading.Event): Event set when initialization is complete.
+        process_manager (Optional[A2AProcessManager]): Helper for managing the A2A process.
+        connection_handler (Optional[A2AConnectionHandler]): Helper for managing the connection.
+        file_service (FileService): SAM File Service instance.
+        cache_service (Optional[Any]): SAM Cache Service instance.
+        action_list (ActionList): List of actions exposed by this component.
     """
 
     info = info
 
     def __init__(self, module_info: Optional[Dict[str, Any]] = None, **kwargs):
+        """
+        Initializes the A2AClientAgentComponent.
+
+        Args:
+            module_info: Component configuration information.
+            **kwargs: Additional keyword arguments, including core services like 'cache_service'.
+        """
         super().__init__(module_info or info, **kwargs)
+        self.agent_name: str = self.get_config("agent_name")
+        if not self.agent_name:
+            # This should ideally be caught by SAM core config validation, but added for safety
+            raise ValueError("Missing required configuration: 'agent_name'")
+
         logger.info(
-            f"Initializing A2AClientAgentComponent for agent '{self.get_config('agent_name', 'UNKNOWN')}'"
+            f"Initializing A2AClientAgentComponent for agent '{self.agent_name}'"
         )
 
         # Configuration
-        self.agent_name: str = self.get_config("agent_name")
         self.a2a_server_url: str = self.get_config("a2a_server_url")
         self.a2a_server_command: Optional[str] = self.get_config("a2a_server_command")
         self.a2a_server_startup_timeout: int = self.get_config(
@@ -114,42 +157,56 @@ class A2AClientAgentComponent(BaseAgentComponent):
         self.cache_service = kwargs.get("cache_service")
         if self.cache_service is None:
             logger.warning(
-                "Cache service not provided to A2AClientAgentComponent. INPUT_REQUIRED state will not be supported."
+                f"Cache service not provided to A2AClientAgentComponent '{self.agent_name}'. "
+                "INPUT_REQUIRED state will not be supported."
             )
 
-        # Action List (initially empty)
+        # Action List (initially empty, populated in run)
         self.action_list = ActionList([], agent=self, config_fn=self.get_config)
 
-        # Update component info
+        # Update component info (agent_name is crucial for registration)
         self.info["agent_name"] = self.agent_name
-        logger.info(f"A2AClientAgentComponent '{self.agent_name}' initialized.")
+        logger.info(f"A2AClientAgentComponent '{self.agent_name}' initialized configuration.")
 
     # --- Properties to access underlying client/card ---
     @property
-    def a2a_client(self):
+    def a2a_client(self) -> Optional[A2AClient]:
+        """Provides access to the initialized A2AClient instance."""
         return self.connection_handler.a2a_client if self.connection_handler else None
 
     @property
-    def agent_card(self):
+    def agent_card(self) -> Optional[AgentCard]:
+        """Provides access to the fetched AgentCard."""
         return self.connection_handler.agent_card if self.connection_handler else None
 
     # --- Lifecycle Methods ---
     def run(self):
+        """
+        Starts the component's main execution loop.
+
+        Initializes the connection to the A2A agent (launching if necessary),
+        discovers skills, creates actions, starts monitoring (if applicable),
+        and then enters the base component's run loop for handling messages
+        and timers (like registration).
+        """
         logger.info(
             f"Starting run loop for A2AClientAgentComponent '{self.agent_name}'"
         )
         try:
             # 1. Initialize Process Manager (if command provided)
             if self.a2a_server_command:
+                logger.info(f"Initializing A2AProcessManager for '{self.agent_name}'.")
                 self.process_manager = A2AProcessManager(
                     command=self.a2a_server_command,
                     restart_on_crash=self.a2a_server_restart_on_crash,
                     agent_name=self.agent_name,
                     stop_event=self.stop_monitor,
                 )
-                self.process_manager.launch()
+                self.process_manager.launch() # Can raise FileNotFoundError etc.
+                logger.info(f"A2A process launched for '{self.agent_name}'.")
 
             # 2. Initialize Connection Handler
+            logger.info(f"Initializing A2AConnectionHandler for '{self.agent_name}'.")
             self.connection_handler = A2AConnectionHandler(
                 server_url=self.a2a_server_url,
                 startup_timeout=self.a2a_server_startup_timeout,
@@ -158,39 +215,41 @@ class A2AClientAgentComponent(BaseAgentComponent):
             )
 
             # 3. Wait for Readiness and Initialize Client
+            logger.info(f"Waiting for A2A agent '{self.agent_name}' to become ready...")
             if not self.connection_handler.wait_for_ready():
+                # Error logged within wait_for_ready
                 raise TimeoutError(
                     f"A2A agent at {self.a2a_server_url} did not become ready within {self.a2a_server_startup_timeout}s."
                 )
-            self.connection_handler.initialize_client()
+            self.connection_handler.initialize_client() # Can raise ValueError
 
             # 4. Create Actions
+            logger.info(f"Creating SAM actions for '{self.agent_name}'...")
             dynamic_actions = create_actions_from_card(self.agent_card, self)
             static_action = create_provide_input_action(self)
-            static_action.set_handler(
-                lambda params, meta: handle_provide_required_input(self, params, meta)
-            )
-            # Add actions individually
+            # Set the handler for the static action
+            static_action.set_handler(self._handle_provide_required_input)
+
+            # Add actions individually to the list
             for action in dynamic_actions:
                 self.action_list.add_action(action)
             self.action_list.add_action(static_action)
 
-
-            # Update component description
+            # Update component description with discovered actions
             original_description = self.info.get(
                 "description", "Component to interact with an external A2A agent."
             )
-            action_names = [a.name for a in self.action_list.actions]
+            action_names = [a.name for a in self.action_list.actions if a.name != static_action.name] # Exclude static action from list
             if action_names:
                 self.info["description"] = (
                     f"{original_description}\nDiscovered Actions: {', '.join(action_names)}"
                 )
             else:
-                self.info["description"] = (
-                    f"{original_description}\nNo actions discovered or created."
+                 self.info["description"] = (
+                    f"{original_description}\nNo dynamic actions discovered."
                 )
             logger.info(
-                f"Action creation complete. Total actions: {len(self.action_list.actions)}"
+                f"Action creation complete for '{self.agent_name}'. Total actions: {len(self.action_list.actions)}"
             )
 
             # 5. Start Process Monitor (if applicable)
@@ -200,8 +259,9 @@ class A2AClientAgentComponent(BaseAgentComponent):
             # 6. Signal Initialization Complete and Run Base Loop
             self._initialized.set()
             logger.info(
-                f"A2AClientAgentComponent '{self.agent_name}' initialization complete."
+                f"A2AClientAgentComponent '{self.agent_name}' initialization complete. Entering main loop."
             )
+            # Call the base class run method which handles message processing and registration timers
             super().run()
 
         except (TimeoutError, ConnectionError, ValueError, FileNotFoundError) as e:
@@ -209,62 +269,80 @@ class A2AClientAgentComponent(BaseAgentComponent):
                 f"CRITICAL: Initialization failed for A2AClientAgentComponent '{self.agent_name}': {e}. Component will not run.",
                 exc_info=True,
             )
-            self.stop_component()
+            self.stop_component() # Attempt cleanup
+            # Do not proceed to super().run()
             return
         except Exception as e:
+            # Catch any other unexpected errors during setup
             logger.critical(
-                f"CRITICAL: Unexpected error in A2AClientAgentComponent '{self.agent_name}' run loop: {e}",
+                f"CRITICAL: Unexpected error during A2AClientAgentComponent '{self.agent_name}' setup: {e}",
                 exc_info=True,
             )
-            self.stop_component()
+            self.stop_component() # Attempt cleanup
+            # Do not proceed to super().run()
             return
 
         logger.info(f"Exiting run loop for A2AClientAgentComponent '{self.agent_name}'")
 
     def stop_component(self):
+        """
+        Stops the component, terminating the managed A2A process (if any)
+        and signaling helper threads to exit.
+        """
         logger.info(f"Stopping A2AClientAgentComponent '{self.agent_name}'...")
-        self.stop_monitor.set()
+        self.stop_monitor.set() # Signal monitor thread and connection handler waits
 
         if self.process_manager:
             self.process_manager.stop()
             self.process_manager = None
 
-        # Reset connection handler state
+        # Reset connection handler state (client and card)
         if self.connection_handler:
+            # No explicit stop needed for handler, but clear refs
             self.connection_handler.agent_card = None
             self.connection_handler.a2a_client = None
             self.connection_handler = None
 
-        super().stop_component()
+        # Reset initialization state
+        self._initialized.clear()
+
+        super().stop_component() # Call base class cleanup
         logger.info(f"A2AClientAgentComponent '{self.agent_name}' stopped.")
 
     # --- Helper Methods ---
-    # (Keep _infer_params_from_skill here or move to factory if preferred)
-    def _infer_params_from_skill(self, skill: Any) -> list[dict[str, Any]]:
+    def _infer_params_from_skill(self, skill: AgentSkill) -> List[Dict[str, Any]]:
         """
-        Infers SAM action parameters from an A2A skill.
-        Simple initial implementation: always returns a generic 'prompt' and 'files'.
+        Infers SAM action parameters from an A2A skill definition.
+
+        Currently uses a simple approach, returning generic 'prompt' and 'files'
+        parameters. Future enhancements could involve parsing skill descriptions
+        or structured parameter definitions if available in the AgentCard.
+
+        Args:
+            skill: The A2A AgentSkill object.
+
+        Returns:
+            A list of dictionaries, each defining a SAM action parameter.
         """
-        logger.debug(
-            f"Inferring parameters for skill '{getattr(skill, 'id', 'UNKNOWN')}'. Using generic 'prompt' and 'files'."
-        )
-        return [
-            {
-                "name": "prompt",
-                "desc": "The user request or prompt for the agent.",
-                "type": "string",
-                "required": True,
-            },
-            {
-                "name": "files",
-                "desc": "Optional list of file URLs to include with the prompt.",
-                "type": "list",
-                "required": False,
-            },
-        ]
+        # The actual implementation is now in a2a_action_factory.py
+        # This method remains for potential future direct use or overrides.
+        from .a2a_action_factory import infer_params_from_skill
+        return infer_params_from_skill(skill)
 
     def _handle_provide_required_input(
         self, params: Dict[str, Any], meta: Dict[str, Any]
-    ) -> Any: # Return type should be ActionResponse
-        """Wrapper to call the input handler function."""
+    ) -> ActionResponse:
+        """
+        Wrapper method to handle the 'provide_required_input' static action.
+        Delegates the actual logic to the handler function.
+
+        Args:
+            params: Parameters provided to the action (follow_up_id, user_response, files).
+            meta: Metadata associated with the action invocation (session_id).
+
+        Returns:
+            An ActionResponse containing the result of the follow-up A2A call.
+        """
+        # This method acts as the entry point registered with the static Action instance.
+        # It calls the separate handler function, passing 'self' (the component instance).
         return handle_provide_required_input(self, params, meta)

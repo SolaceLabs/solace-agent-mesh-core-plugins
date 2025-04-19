@@ -1,23 +1,51 @@
+"""
+Handler function for the 'provide_required_input' static SAM action.
+This function orchestrates the process of sending follow-up input to an A2A agent
+when it previously returned an INPUT_REQUIRED state.
+"""
+
 import logging
 import uuid
 import json
 import base64
-from typing import Dict, Any, List, TYPE_CHECKING
+from typing import Dict, Any, List, TYPE_CHECKING, Optional
 
 from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo
-from ...common_a2a.types import (
-    TaskSendParams,
-    Message as A2AMessage,
-    TextPart,
-    FilePart,
-    FileContent,
-    Task,
-    TaskState,
-)
+
+# Import A2A types safely
+try:
+    from ...common_a2a.types import (
+        TaskSendParams,
+        Message as A2AMessage,
+        TextPart,
+        FilePart,
+        FileContent,
+        DataPart, # Added DataPart
+        Task,
+        TaskState,
+    )
+    A2A_TYPES_AVAILABLE = True
+except ImportError as e:
+    logging.getLogger(__name__).error(f"Failed to import A2A types: {e}. Follow-up input handling may not function correctly.")
+    A2A_TYPES_AVAILABLE = False
+    # Define dummy types if import fails
+    TaskSendParams = Any
+    A2AMessage = Any
+    TextPart = Any
+    FilePart = Any
+    FileContent = Any
+    DataPart = Any
+    Task = Any
+    TaskState = Any # type: ignore
+
+# Use constants defined in a2a_client_action for consistency
 from .actions.a2a_client_action import (
     A2A_TASK_STATE_COMPLETED,
     A2A_TASK_STATE_FAILED,
     A2A_TASK_STATE_INPUT_REQUIRED,
+    A2A_PART_TYPE_TEXT,
+    A2A_PART_TYPE_FILE,
+    A2A_PART_TYPE_DATA,
 )
 
 # Use TYPE_CHECKING to avoid circular import issues at runtime
@@ -31,104 +59,142 @@ def handle_provide_required_input(
     component: "A2AClientAgentComponent", params: Dict[str, Any], meta: Dict[str, Any]
 ) -> ActionResponse:
     """
-    Handles the 'provide_required_input' action. Retrieves the original A2A task ID,
-    sends the user's response to the A2A agent, and processes the subsequent result.
+    Handles the 'provide_required_input' SAM action.
+
+    1.  Validates input parameters (`follow_up_id`, `user_response`).
+    2.  Retrieves the original A2A `taskId` from the Cache Service using the `follow_up_id`.
+    3.  Maps the `user_response` and optional `files` to A2A `Message.parts`.
+    4.  Constructs `TaskSendParams` using the retrieved A2A `taskId`.
+    5.  Sends the follow-up request to the A2A agent using `A2AClient.send_task()`.
+    6.  Processes the subsequent A2A `Task` response (handling `COMPLETED`, `FAILED`,
+        or even another `INPUT_REQUIRED` state) and returns the final `ActionResponse`.
+
+    Args:
+        component: The parent A2AClientAgentComponent instance.
+        params: Dictionary containing action parameters: 'follow_up_id', 'user_response',
+                and optionally 'files' (list of URLs).
+        meta: Metadata dictionary, expected to contain 'session_id'.
+
+    Returns:
+        An ActionResponse containing the result of the follow-up A2A call or error information.
     """
-    logger.info(f"Handling 'provide_required_input' with params: {params}")
+    action_name = "provide_required_input" # For logging context
+    logger.info(f"Handling '{action_name}' for agent '{component.agent_name}' with params: {params}")
+
+    if not A2A_TYPES_AVAILABLE:
+         logger.error("Cannot handle follow-up input: A2A common types failed to import.")
+         return ActionResponse(message="Internal Error: A2A library types not available.", error_info=ErrorInfo("Import Error"))
 
     follow_up_id = params.get("follow_up_id")
     user_response_text = params.get("user_response")
-    file_urls = params.get("files", [])
+    file_urls = params.get("files", []) # Default to empty list
 
-    # 1. Validate Input
-    if not follow_up_id or not user_response_text:
+    # 1. Validate Input Parameters
+    if not follow_up_id:
+        logger.error(f"Missing 'follow_up_id' parameter for '{action_name}'.")
         return ActionResponse(
-            message="Missing required parameters: 'follow_up_id' and 'user_response'.",
-            error_info=ErrorInfo("Missing Parameters"),
+            message="Missing required parameter: 'follow_up_id'.",
+            error_info=ErrorInfo("Missing Parameter"),
+        )
+    if user_response_text is None: # Allow empty string, but not None
+         logger.error(f"Missing 'user_response' parameter for '{action_name}'.")
+         return ActionResponse(
+            message="Missing required parameter: 'user_response'.",
+            error_info=ErrorInfo("Missing Parameter"),
         )
 
-    # 2. Check Services
+    # 2. Check Availability of Services
     cache_service = component.cache_service
     a2a_client = component.a2a_client
     file_service = component.file_service
 
     if not cache_service:
         logger.error(
-            "CacheService not available. Cannot handle 'provide_required_input'."
+            f"CacheService not available for '{component.agent_name}'. Cannot handle '{action_name}'."
         )
         return ActionResponse(
-            message="Internal Error: Cache Service not available.",
+            message="Internal Error: Cache Service not available for follow-up.",
             error_info=ErrorInfo("Cache Service Missing"),
         )
     if not a2a_client:
-        logger.error("A2AClient not available. Cannot handle 'provide_required_input'.")
+        logger.error(f"A2AClient not available for '{component.agent_name}'. Cannot handle '{action_name}'.")
         return ActionResponse(
-            message="Internal Error: A2A Client not available.",
+            message="Internal Error: A2A Client not available for follow-up.",
             error_info=ErrorInfo("A2A Client Missing"),
         )
     if not file_service:
+        # File service is needed even if no files are provided in *this* call,
+        # because the *response* might contain files that need processing.
         logger.error(
-            "FileService not available. Cannot handle 'provide_required_input' with files."
+            f"FileService not available for '{component.agent_name}'. Cannot handle '{action_name}'."
         )
         return ActionResponse(
-            message="Internal Error: File Service not available.",
+            message="Internal Error: File Service not available for follow-up.",
             error_info=ErrorInfo("File Service Missing"),
         )
 
-    # 3. Retrieve Original Task ID
+    # 3. Retrieve Original A2A Task ID from Cache
     cache_key = f"a2a_follow_up:{follow_up_id}"
+    a2a_taskId: Optional[str] = None
     try:
         a2a_taskId = cache_service.get(cache_key)
         if a2a_taskId is None:
             logger.warning(
-                f"Follow-up ID '{follow_up_id}' not found in cache or expired."
+                f"Follow-up ID '{follow_up_id}' not found in cache or expired for agent '{component.agent_name}'."
             )
             return ActionResponse(
-                message="Invalid or expired follow-up ID. Please start the task again.",
+                message="Invalid or expired follow-up ID. The context may have timed out. Please start the task again.",
                 error_info=ErrorInfo("Invalid Follow-up ID"),
             )
+        # Delete the entry immediately after retrieval to prevent reuse
         cache_service.delete(cache_key)
         logger.info(
-            f"Retrieved original A2A task ID '{a2a_taskId}' for follow-up ID '{follow_up_id}'."
+            f"Retrieved original A2A task ID '{a2a_taskId}' for follow-up ID '{follow_up_id}' (agent '{component.agent_name}'). Cache entry deleted."
         )
     except Exception as e:
         logger.error(
-            f"Error retrieving task ID from cache for follow-up ID '{follow_up_id}': {e}",
+            f"Error retrieving task ID from cache for follow-up ID '{follow_up_id}' (agent '{component.agent_name}'): {e}",
             exc_info=True,
         )
         return ActionResponse(
-            message="Internal Error: Failed to retrieve follow-up state.",
+            message="Internal Error: Failed to retrieve follow-up state from cache.",
             error_info=ErrorInfo(f"Cache Error: {e}"),
         )
 
     # 4. Map Input to A2A Message Parts
     session_id = meta.get("session_id")
     if not session_id:
+        # If session_id is missing, we should ideally try to retrieve it from the original task context
+        # stored in cache, or generate a new one as a last resort. For simplicity now, generate new.
         session_id = str(uuid.uuid4())
         logger.warning(
-            f"No session_id in meta for follow-up. Generated new one: {session_id}"
+            f"No session_id in meta for follow-up action '{action_name}'. Generated new one: {session_id}"
         )
 
     parts: List[Any] = []
+    # Add TextPart for the user's response
     try:
-        parts.append(TextPart(text=str(user_response_text)))
+        parts.append(TextPart(text=str(user_response_text))) # Ensure string
     except Exception as e:
         logger.error(
-            f"Failed to create TextPart for follow-up response: {e}", exc_info=True
+            f"Failed to create TextPart for follow-up response (task '{a2a_taskId}'): {e}", exc_info=True
         )
         return ActionResponse(
-            message="Internal Error: Could not process user response text.",
+            message="Internal Error: Could not process user response text for follow-up.",
             error_info=ErrorInfo(f"TextPart Error: {e}"),
         )
 
-    if isinstance(file_urls, str):
+    # Add FileParts if file URLs are provided
+    if isinstance(file_urls, str): # Handle single URL case
         file_urls = [file_urls]
     if file_urls and isinstance(file_urls, list):
-        logger.info(f"Processing {len(file_urls)} file URLs for follow-up.")
+        logger.info(f"Processing {len(file_urls)} file URLs for follow-up (task '{a2a_taskId}').")
         for file_url in file_urls:
             if not isinstance(file_url, str):
+                logger.warning(f"Skipping non-string item in 'files' list for follow-up: {file_url}")
                 continue
             try:
+                logger.debug(f"Resolving follow-up file URL: {file_url}")
                 resolved_file = file_service.resolve_url(
                     file_url, session_id=session_id
                 )
@@ -138,35 +204,39 @@ def handle_provide_required_input(
                     and hasattr(resolved_file, "name")
                     and hasattr(resolved_file, "mime_type")
                 ):
-                    encoded_bytes = base64.b64encode(resolved_file.bytes).decode(
-                        "utf-8"
-                    )
+                    try:
+                        encoded_bytes = base64.b64encode(resolved_file.bytes).decode("utf-8")
+                    except Exception as b64_e:
+                         logger.error(f"Failed to base64 encode follow-up file content for '{resolved_file.name}': {b64_e}")
+                         continue # Skip this file
+
                     file_content = FileContent(
                         bytes=encoded_bytes,
                         name=resolved_file.name,
                         mimeType=resolved_file.mime_type,
                     )
                     parts.append(FilePart(file=file_content))
+                    logger.debug(f"Successfully created FilePart for follow-up file '{resolved_file.name}'.")
                 else:
                     logger.error(
-                        f"Failed to resolve file URL '{file_url}' for follow-up."
+                        f"Failed to resolve follow-up file URL '{file_url}' or resolved object is invalid."
                     )
+                    # Decide if this should be a fatal error for the follow-up
             except Exception as e:
                 logger.error(
-                    f"Error resolving file URL '{file_url}' for follow-up: {e}",
+                    f"Error resolving follow-up file URL '{file_url}' (task '{a2a_taskId}'): {e}",
                     exc_info=True,
                 )
+                # Decide if this should be a fatal error
 
     # 5. Create TaskSendParams (using retrieved a2a_taskId)
     try:
         a2a_message = A2AMessage(role="user", parts=parts)
+        # Use the same broad accepted modes as the initial action
         accepted_modes = [
-            "text",
-            "text/plain",
-            "image/*",
-            "application/json",
-            "application/*",
+            "text", "text/plain", "image/*", "application/json", "application/*"
         ]
+        # Crucially, use the *retrieved* a2a_taskId here
         task_params = TaskSendParams(
             id=a2a_taskId,
             sessionId=session_id,
@@ -189,75 +259,83 @@ def handle_provide_required_input(
     # 6. Call A2A Agent and Process Response
     try:
         logger.info(f"Sending follow-up input for A2A task '{a2a_taskId}'...")
+        # Send the follow-up request
         response_task: Task = a2a_client.send_task(task_params.model_dump())
         task_state = getattr(getattr(response_task, "status", None), "state", None)
         logger.info(
-            f"Received follow-up response for task '{a2a_taskId}'. State: {task_state}"
+            f"Received follow-up response for task '{a2a_taskId}'. New A2A State: {task_state}"
         )
 
-        # Find *any* A2AClientAction instance to call its _process_parts helper
-        # This relies on the component having processed actions already.
-        action_instance_for_processing = None
-        for act in component.action_list.actions:
-            # Import locally to avoid circular dependency at module level
-            from .actions.a2a_client_action import A2AClientAction
-            if isinstance(act, A2AClientAction):
-                action_instance_for_processing = act
-                break
+        # Find *any* A2AClientAction instance on the component to reuse its _process_parts logic.
+        # This avoids duplicating the response processing logic here.
+        action_instance_for_processing: Optional['A2AClientAction'] = None
+        if hasattr(component, 'action_list') and component.action_list:
+             for act in component.action_list.actions:
+                # Import locally only if needed, reducing initial load time
+                from .actions.a2a_client_action import A2AClientAction
+                if isinstance(act, A2AClientAction):
+                    action_instance_for_processing = act
+                    break # Found one, no need to look further
 
         if not action_instance_for_processing:
+            # This should not happen if the component initialized correctly
             logger.error(
-                "Cannot process A2A response: No A2AClientAction instance found on component."
+                f"Cannot process A2A response for task '{a2a_taskId}': No A2AClientAction instance found on component '{component.agent_name}'."
             )
             return ActionResponse(
-                message="Internal Error: Cannot process A2A response.",
+                message="Internal Error: Cannot process A2A response due to component setup issue.",
                 error_info=ErrorInfo("Processing Setup Error"),
             )
 
-        # Process the response using the helper method from an action instance
+        # --- Process the response based on the *new* state ---
         if task_state == A2A_TASK_STATE_COMPLETED:
+            logger.info(f"Follow-up for task '{a2a_taskId}' resulted in COMPLETED state.")
             final_message = ""
             final_files = []
-            final_data = {}
+            final_data = {} # Accumulator for DataParts
+
+            # Process final status message parts
             status_message = getattr(response_task.status, "message", None)
             if status_message:
                 msg_parts = getattr(status_message, "parts", [])
                 msg_text, msg_files = action_instance_for_processing._process_parts(
-                    msg_parts, session_id, final_data
+                    msg_parts, session_id, final_data # Pass accumulator
                 )
                 if msg_text:
                     final_message += msg_text
                 final_files.extend(msg_files)
+
+            # Process final artifact parts
             artifacts = getattr(response_task, "artifacts", [])
             if artifacts:
                 for artifact in artifacts:
                     artifact_parts = getattr(artifact, "parts", [])
                     art_text, art_files = action_instance_for_processing._process_parts(
-                        artifact_parts, session_id, final_data
+                        artifact_parts, session_id, final_data # Pass accumulator
                     )
                     if art_text:
-                        if final_message:
-                            final_message += "\n\n--- Artifact ---\n"
+                        if final_message: final_message += "\n\n--- Artifact ---\n"
                         final_message += art_text
                     final_files.extend(art_files)
 
-            response_msg = final_message.strip() or "Task completed."
+            # Construct final message, including data if present
+            response_msg = final_message.strip() or "Task completed after follow-up."
             if final_data:
                 try:
                     data_str = json.dumps(final_data, indent=2)
-                    response_msg += f"\n\nData:\n{data_str}"
+                    response_msg += f"\n\n--- Data ---\n{data_str}"
                 except Exception as json_e:
-                    logger.warning(f"Could not serialize final_data to JSON: {json_e}")
-                    response_msg += "\n\nData: [Could not serialize]"
+                    logger.warning(f"Could not serialize final_data to JSON (follow-up task '{a2a_taskId}'): {json_e}")
+                    response_msg += "\n\n--- Data ---\n[Could not serialize data]"
 
             return ActionResponse(
                 message=response_msg,
                 files=final_files or None,
-                # No data parameter
             )
 
         elif task_state == A2A_TASK_STATE_FAILED:
-            error_message = "A2A Task Failed (after follow-up)"
+            logger.error(f"Follow-up for task '{a2a_taskId}' resulted in FAILED state.")
+            error_message = f"A2A Task '{action_name}' Failed (after follow-up)"
             error_details = ""
             status_message = getattr(response_task.status, "message", None)
             if status_message:
@@ -266,17 +344,20 @@ def handle_provide_required_input(
                     try:
                         first_part_text = getattr(msg_parts[0], "text", "")
                         if first_part_text:
-                            error_details = first_part_text
+                            error_details = str(first_part_text)
                             error_message += f": {error_details}"
-                    except Exception:
-                        pass
+                    except Exception as e:
+                         logger.warning(f"Could not extract error details from FAILED follow-up task '{a2a_taskId}': {e}")
+
             return ActionResponse(
                 message=error_message,
-                error_info=ErrorInfo(error_details or "A2A Task Failed"),
+                error_info=ErrorInfo(error_details or f"A2A Task {action_name} Failed"),
             )
 
         elif task_state == A2A_TASK_STATE_INPUT_REQUIRED:
-            agent_question = "A2A Task requires further input (again)."
+            # Handle the case where the agent asks for *more* input after the follow-up
+            logger.warning(f"Follow-up for task '{a2a_taskId}' resulted in *another* INPUT_REQUIRED state.")
+            agent_question = "A2A Task requires even more input." # Default nested question
             status_message = getattr(response_task.status, "message", None)
             if status_message:
                 msg_parts = getattr(status_message, "parts", [])
@@ -284,23 +365,26 @@ def handle_provide_required_input(
                     try:
                         question_details = getattr(msg_parts[0], "text", "")
                         if question_details:
-                            agent_question = question_details
-                    except Exception:
-                        pass
+                            agent_question = str(question_details)
+                    except Exception as e:
+                         logger.warning(f"Could not extract nested question details from task '{a2a_taskId}': {e}")
 
+            # Generate a *new* SAM follow-up ID for this nested request
             new_sam_follow_up_id = str(uuid.uuid4())
             new_cache_key = f"a2a_follow_up:{new_sam_follow_up_id}"
             try:
+                # Store the *original* A2A task ID again, associated with the *new* follow-up ID
                 cache_service.set(
                     new_cache_key, a2a_taskId, ttl=component.input_required_ttl
                 )
                 logger.info(
-                    f"Stored *nested* INPUT_REQUIRED state for task '{a2a_taskId}' with follow-up ID '{new_sam_follow_up_id}'."
+                    f"Stored *nested* INPUT_REQUIRED state for A2A task '{a2a_taskId}' with new SAM follow-up ID '{new_sam_follow_up_id}'."
                 )
-                response_msg = f"{agent_question}\n\nPlease provide the required input using follow-up ID: `{new_sam_follow_up_id}`"
+                # Inform the user with the new question and the *new* follow-up ID
+                response_msg = f"{agent_question}\n\nPlease provide the required input using the 'provide_required_input' action with follow-up ID: `{new_sam_follow_up_id}`"
                 return ActionResponse(
                     message=response_msg,
-                    # No data parameter
+                    # error_info=ErrorInfo("Input Required", code="INPUT_REQUIRED") # Optional signal
                 )
             except Exception as e:
                 logger.error(
@@ -308,24 +392,26 @@ def handle_provide_required_input(
                     exc_info=True,
                 )
                 return ActionResponse(
-                    message="Internal Error: Failed to store required input state.",
+                    message="Internal Error: Failed to store required input state after follow-up.",
                     error_info=ErrorInfo(f"Cache Error: {e}"),
                 )
         else:
+            # Handle other unexpected states after follow-up
             logger.warning(
-                f"A2A Task '{a2a_taskId}' returned unhandled state after follow-up: {task_state}."
+                f"A2A Task '{a2a_taskId}' returned unhandled state after follow-up: {task_state}. Treating as error."
             )
             return ActionResponse(
-                message=f"A2A Task is currently in state: {task_state}",
+                message=f"A2A Task is currently in an unexpected state after follow-up: {task_state}",
                 error_info=ErrorInfo(f"Unhandled A2A State: {task_state}"),
             )
 
     except Exception as e:
+        # Catch communication errors or processing errors during the follow-up call
         logger.error(
-            f"Failed to communicate with A2A agent during follow-up for task '{a2a_taskId}': {e}",
+            f"Failed to communicate with or process response from A2A agent during follow-up for task '{a2a_taskId}': {e}",
             exc_info=True,
         )
         return ActionResponse(
-            message="Failed to communicate with A2A agent during follow-up",
-            error_info=ErrorInfo(f"A2A Communication Error: {e}"),
+            message=f"Failed to execute follow-up for action '{action_name}' due to communication or processing error.",
+            error_info=ErrorInfo(f"A2A Communication/Processing Error: {e}"),
         )
