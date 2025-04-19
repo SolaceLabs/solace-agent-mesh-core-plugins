@@ -2,27 +2,62 @@
 
 A plugin that provides comprehensive geographic information services including location lookup, timezone data, and weather information.
 
+---
+
 ## Features
 
 - Convert city names to geographic coordinates
 - Look up timezone information for cities
 - Get current weather conditions and forecasts for locations
 
-## Add a Geographic Location Agent to SAM
+---
 
-Add the plugin to your SAM instance:
+## Prerequisites
 
-```sh
-solace-agent-mesh plugin add sam_geo_information --pip -u git+https://github.com/SolaceLabs/solace-agent-mesh-core-plugins#subdirectory=sam-geo-information
+Before starting, make sure you have:
+
+- [Installed Solace Agent Mesh and the SAM CLI](https://solacelabs.github.io/solace-agent-mesh/docs/documentation/getting-started/installation/)
+- [Created a new Solace Agent Mesh project](https://solacelabs.github.io/solace-agent-mesh/docs/documentation/getting-started/quick-start)
+
+---
+
+## 🚀 Quick Start
+
+### ✅ Recommended: Add and create the agent via CLI
+
+#### 1. Add the plugin
+
+```bash
+sam plugin add sam_geo_information --pip -u git+https://github.com/SolaceLabs/solace-agent-mesh-core-plugins#subdirectory=sam-geo-information
 ```
 
-2.  **Instantiate the Agent:**
+#### 2. Create the agent
 
-To instantiate the agent, you can edit the SAM configuration file solace-agent-mesh.yaml:
+This creates a new agent named `geo_information`:
 
+```bash
+sam add agent geo_information --copy-from sam_geo_information
 ```
-  ...
-  plugins:
+
+You can now run Solace Agent Mesh and try it out! 🎉
+
+```bash
+sam run -b
+```
+
+Here are two example prompts you can try with your agent:
+
+- *What are the coordinates of Ottawa?*
+- *What’s the current weather and forecast in Tokyo?*
+
+---
+
+### Alternative: Edit your `solace-agent-mesh.yaml` config manually
+
+You can add the following to your `solace-agent-mesh.yaml` file:
+
+```yaml
+plugins:
   - name: sam_geo_information
     load_unspecified_files: false
     includes_gateway_interface: false
@@ -32,56 +67,48 @@ To instantiate the agent, you can edit the SAM configuration file solace-agent-m
       gateways: []
       overwrites: []
     from_url: 
-      git+https://github.com/SolaceDev/solace-agent-mesh-core-plugins@ed/add-geo-info-agent#subdirectory=sam-geo-information
-  ...
+      git+https://github.com/SolaceLabs/solace-agent-mesh-core-plugins#subdirectory=sam-geo-information
 ```
 
-or use the `solace-agent-mesh add agent` command to create a configuration file for your specific geographic information agent instance. Replace `<new_agent_name>` with a descriptive name (e.g., `geo_info_primary`, `weather_lookup`).
+---
 
-```sh
-solace-agent-mesh add agent <new_agent_name> --copy-from sam_geo_information:geo_information
-```
+## Available Actions
 
-This command creates a new YAML file in `configs/agents/` named `<new_agent_name>.yaml`.
-
-## Environment Variables
-
-The following environment variables are required for **Solace connection** (used by all agents):
-- **SOLACE_BROKER_URL**
-- **SOLACE_BROKER_USERNAME**
-- **SOLACE_BROKER_PASSWORD**
-- **SOLACE_BROKER_VPN**
-- **SOLACE_AGENT_MESH_NAMESPACE**
-
-For **each Geographic Information agent instance**, you may need to set the following environment variables, replacing `<AGENT_NAME>` with the uppercase version of the name you chose during the `add agent` step (e.g., `GEO_INFO_PRIMARY`, `WEATHER_LOOKUP`):
-
-- **`<AGENT_NAME>_GEOCODING_API_KEY`** (Optional): API key for the geocode.maps.co service. Required for substantial volume usage.
-- **`<AGENT_NAME>_WEATHER_API_KEY`** (Optional): API key for the open-meteo.com service. Required only for commercial use.
-
-**Example Environment Variables:**
-
-For an agent named `geo_info_primary`:
-```bash
-# Optional: export GEO_INFO_PRIMARY_GEOCODING_API_KEY="your_maps.co_api_key"
-# Optional: export GEO_INFO_PRIMARY_WEATHER_API_KEY="your_open-meteo_api_key"
-```
-
-## Actions
-
-### city_to_coordinates
+### `city_to_coordinates`
 Converts a city name to its geographic coordinates. If multiple matches are found, all possibilities will be returned.
 
-### city_to_timezone
+### `city_to_timezone`
 Converts a city name to its timezone information, including current UTC offset and DST status.
 
-### get_weather
+### `get_weather`
 Gets current weather conditions and optional forecast for a location. Supports both metric and imperial units.
 
+---
 
-## GeoCode API
+## APIs Used
 
-Currently, this agent uses geocode.maps.co as the GeoCode API. You will need to sign up for an API key at [https://geocode.maps.co/](https://geocode.maps.co/) if you want to use it with any substantial volume.
+### GeoCode API
+Uses [geocode.maps.co](https://geocode.maps.co/)  
+Sign up for an API key for higher request volume.
 
-## Weather API
+### Weather API
+Uses [Open Meteo](https://open-meteo.com/)  
+Free for non-commercial use. For commercial use, get an API key.
 
-Currently, this agent uses Open Meteo as the weather API. You may use this for free as long as it is for non-commercial purposes. For commercial use, you will need to sign up for an API key at [https://open-meteo.com/](https://open-meteo.com/).
+---
+
+## Want to go further?
+
+To unlock more functionality or customize your agent, go to the generated config file in your agent configs directory (typically: `configs/agents/geo_information.yaml`) and update:
+
+```yaml
+agent_name: geo_information
+geocoding_api_key: ${GEOCODING_API_KEY}
+weather_api_key: ${WEATHER_API_KEY}
+```
+
+You can:
+- Rename the agent by changing `agent_name`
+- Add your API keys here, or supply them as environment variables
+
+---
