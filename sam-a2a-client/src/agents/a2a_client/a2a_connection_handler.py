@@ -195,9 +195,6 @@ class A2AConnectionHandler:
         # 3. Initialize A2AClient
         try:
             # Pass the determined auth_token (which might be None)
-            # <inst>
-            # auth_token is not a parameter of A2AClient
-            # </inst>
             self.a2a_client = A2AClient(
                 agent_card=self.agent_card, auth_token=auth_token
             )
