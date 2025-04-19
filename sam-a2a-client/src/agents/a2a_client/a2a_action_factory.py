@@ -5,6 +5,7 @@ Factory functions for creating SAM Actions based on A2A Agent capabilities.
 from typing import List, Dict, Any, TYPE_CHECKING
 
 from solace_agent_mesh.common.action import Action
+from solace_agent_mesh.common.action_response import ActionResponse # Import ActionResponse
 from .actions.a2a_client_action import A2AClientAction
 from ...common_a2a.types import AgentCard, AgentSkill
 from solace_ai_connector.common.log import log  # Use solace-ai-connector log
@@ -113,20 +114,54 @@ def create_actions_from_card(
     return actions
 
 
+# Define the concrete class for the static action
+class ProvideInputAction(Action):
+    """
+    Concrete SAM Action class for the 'provide_required_input' functionality.
+    """
+    def __init__(self, attributes: Dict[str, Any], component: "A2AClientAgentComponent"):
+        """
+        Initializes the ProvideInputAction.
+
+        Args:
+            attributes: The definition dictionary for this action.
+            component: The parent A2AClientAgentComponent instance.
+        """
+        super().__init__(attributes, agent=component, config_fn=component.get_config)
+        # Store component reference to call the handler method
+        self.component = component
+
+    def invoke(self, params: Dict[str, Any], meta: Dict[str, Any] = None) -> ActionResponse:
+        """
+        Invokes the action by calling the handler method on the parent component.
+
+        Args:
+            params: Parameters provided to the action (follow_up_id, user_response, files).
+            meta: Metadata associated with the action invocation (session_id).
+
+        Returns:
+            An ActionResponse containing the result of the follow-up A2A call.
+        """
+        # Directly call the handler method on the component instance
+        if meta is None:
+            meta = {}
+        # The handler function expects the component instance as the first argument,
+        # but the handler itself is now defined on the component, so we call it directly.
+        return self.component._handle_provide_required_input(params, meta)
+
+
 def create_provide_input_action(component: "A2AClientAgentComponent") -> Action:
     """
     Creates the static 'provide_required_input' SAM Action used for handling
     the A2A INPUT_REQUIRED state.
 
-    The actual handler logic for this action is implemented in the
-    `A2AClientAgentComponent._handle_provide_required_input` method and
-    set using `action.set_handler()`.
+    Instantiates the concrete `ProvideInputAction` class.
 
     Args:
         component: The parent A2AClientAgentComponent instance.
 
     Returns:
-        An initialized SAM `Action` instance for providing follow-up input.
+        An initialized `ProvideInputAction` instance.
     """
     action_name = "provide_required_input"
     provide_input_action_def = {
@@ -155,18 +190,9 @@ def create_provide_input_action(component: "A2AClientAgentComponent") -> Action:
         # Scope matches the component's agent name
         "required_scopes": [f"{component.agent_name}:{action_name}:execute"],
     }
-    # Create a standard SAM Action instance
-    # <inst>
-    # Look at the Action class definition for details on the parameters
-    # and their expected types.
-    # This is an abstract class...
-    # </inst>
-    provide_input_action = Action(
-        provide_input_action_def, agent=component, config_fn=component.get_config
-    )
-    # Note: The handler function needs to be set on this action instance
-    # by the component after creation, e.g.,
-    # provide_input_action.set_handler(component._handle_provide_required_input)
+    # Instantiate the concrete ProvideInputAction class
+    provide_input_action = ProvideInputAction(provide_input_action_def, component)
+
     log.info(
         "Created static action '%s' for agent '%s'.",
         provide_input_action.name,
