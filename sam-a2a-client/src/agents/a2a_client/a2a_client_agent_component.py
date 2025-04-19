@@ -20,11 +20,11 @@ from solace_agent_mesh.services.file_service import FileService
 from solace_agent_mesh.common.action_response import ActionResponse
 from solace_ai_connector.common.log import log  # Use solace-ai-connector log
 
-# Import helpers
+# Import helpers and types
 from .a2a_process_manager import A2AProcessManager
 from .a2a_connection_handler import A2AConnectionHandler
 from .a2a_action_factory import create_actions_from_card, create_provide_input_action
-from .a2a_input_handler import handle_provide_required_input
+from .a2a_input_handler import handle_provide_required_input # Import the handler function
 from ...common_a2a.types import AgentCard, AgentSkill
 from ...common_a2a.client import A2AClient
 
@@ -221,37 +221,7 @@ class A2AClientAgentComponent(BaseAgentComponent):
             self.connection_handler.initialize_client()  # Can raise ValueError
 
             # 4. Create Actions
-            log.info("Creating SAM actions for '%s'...", self.agent_name)
-            dynamic_actions = create_actions_from_card(self.agent_card, self)
-            static_action = create_provide_input_action(self)
-            # Set the handler for the static action
-            static_action.set_handler(self._handle_provide_required_input)
-
-            # Add actions individually to the list
-            for action in dynamic_actions:
-                self.action_list.add_action(action)
-            self.action_list.add_action(static_action)
-
-            # Update component description with discovered actions
-            original_description = self.info.get(
-                "description", "Component to interact with an external A2A agent."
-            )
-            action_names = [
-                a.name for a in self.action_list.actions if a.name != static_action.name
-            ]  # Exclude static action from list
-            if action_names:
-                self.info["description"] = (
-                    f"{original_description}\nDiscovered Actions: {', '.join(action_names)}"
-                )
-            else:
-                self.info["description"] = (
-                    f"{original_description}\nNo dynamic actions discovered."
-                )
-            log.info(
-                "Action creation complete for '%s'. Total actions: %d",
-                self.agent_name,
-                len(self.action_list.actions),
-            )
+            self._create_actions()
 
             # 5. Start Process Monitor (if applicable)
             if self.process_manager:
@@ -336,12 +306,51 @@ class A2AClientAgentComponent(BaseAgentComponent):
 
         return infer_params_from_skill(skill)
 
+    def _create_actions(self):
+        """
+        Creates dynamic actions based on the fetched AgentCard and adds the
+        static 'provide_required_input' action. Updates the component description.
+        """
+        log.info("Creating SAM actions for '%s'...", self.agent_name)
+        dynamic_actions = create_actions_from_card(self.agent_card, self)
+        static_action = create_provide_input_action(self)
+
+        # Set the handler for the static action to the component's method
+        # The ProvideInputAction class now handles calling the component method.
+        # No explicit set_handler call needed here if using the ProvideInputAction class.
+
+        # Add actions individually to the list
+        for action in dynamic_actions:
+            self.action_list.add_action(action)
+        self.action_list.add_action(static_action)
+
+        # Update component description with discovered actions
+        original_description = self.info.get(
+            "description", "Component to interact with an external A2A agent."
+        )
+        action_names = [
+            a.name for a in self.action_list.actions if a.name != static_action.name
+        ]  # Exclude static action from list
+        if action_names:
+            self.info["description"] = (
+                f"{original_description}\nDiscovered Actions: {', '.join(action_names)}"
+            )
+        else:
+            self.info["description"] = (
+                f"{original_description}\nNo dynamic actions discovered."
+            )
+        log.info(
+            "Action creation complete for '%s'. Total actions: %d",
+            self.agent_name,
+            len(self.action_list.actions),
+        )
+
     def _handle_provide_required_input(
         self, params: Dict[str, Any], meta: Dict[str, Any]
     ) -> ActionResponse:
         """
         Wrapper method to handle the 'provide_required_input' static action.
-        Delegates the actual logic to the handler function.
+        Delegates the actual logic to the handler function from a2a_input_handler.
 
         Args:
             params: Parameters provided to the action (follow_up_id, user_response, files).
