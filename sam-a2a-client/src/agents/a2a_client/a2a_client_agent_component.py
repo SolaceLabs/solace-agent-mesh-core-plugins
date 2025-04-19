@@ -166,7 +166,9 @@ class A2AClientAgentComponent(BaseAgentComponent):
 
         # Update component info (agent_name is crucial for registration)
         self.info["agent_name"] = self.agent_name
-        logger.info(f"A2AClientAgentComponent '{self.agent_name}' initialized configuration.")
+        logger.info(
+            f"A2AClientAgentComponent '{self.agent_name}' initialized configuration."
+        )
 
     # --- Properties to access underlying client/card ---
     @property
@@ -202,7 +204,7 @@ class A2AClientAgentComponent(BaseAgentComponent):
                     agent_name=self.agent_name,
                     stop_event=self.stop_monitor,
                 )
-                self.process_manager.launch() # Can raise FileNotFoundError etc.
+                self.process_manager.launch()  # Can raise FileNotFoundError etc.
                 logger.info(f"A2A process launched for '{self.agent_name}'.")
 
             # 2. Initialize Connection Handler
@@ -221,7 +223,7 @@ class A2AClientAgentComponent(BaseAgentComponent):
                 raise TimeoutError(
                     f"A2A agent at {self.a2a_server_url} did not become ready within {self.a2a_server_startup_timeout}s."
                 )
-            self.connection_handler.initialize_client() # Can raise ValueError
+            self.connection_handler.initialize_client()  # Can raise ValueError
 
             # 4. Create Actions
             logger.info(f"Creating SAM actions for '{self.agent_name}'...")
@@ -239,13 +241,15 @@ class A2AClientAgentComponent(BaseAgentComponent):
             original_description = self.info.get(
                 "description", "Component to interact with an external A2A agent."
             )
-            action_names = [a.name for a in self.action_list.actions if a.name != static_action.name] # Exclude static action from list
+            action_names = [
+                a.name for a in self.action_list.actions if a.name != static_action.name
+            ]  # Exclude static action from list
             if action_names:
                 self.info["description"] = (
                     f"{original_description}\nDiscovered Actions: {', '.join(action_names)}"
                 )
             else:
-                 self.info["description"] = (
+                self.info["description"] = (
                     f"{original_description}\nNo dynamic actions discovered."
                 )
             logger.info(
@@ -269,7 +273,7 @@ class A2AClientAgentComponent(BaseAgentComponent):
                 f"CRITICAL: Initialization failed for A2AClientAgentComponent '{self.agent_name}': {e}. Component will not run.",
                 exc_info=True,
             )
-            self.stop_component() # Attempt cleanup
+            self.stop_component()  # Attempt cleanup
             # Do not proceed to super().run()
             return
         except Exception as e:
@@ -278,7 +282,7 @@ class A2AClientAgentComponent(BaseAgentComponent):
                 f"CRITICAL: Unexpected error during A2AClientAgentComponent '{self.agent_name}' setup: {e}",
                 exc_info=True,
             )
-            self.stop_component() # Attempt cleanup
+            self.stop_component()  # Attempt cleanup
             # Do not proceed to super().run()
             return
 
@@ -290,7 +294,7 @@ class A2AClientAgentComponent(BaseAgentComponent):
         and signaling helper threads to exit.
         """
         logger.info(f"Stopping A2AClientAgentComponent '{self.agent_name}'...")
-        self.stop_monitor.set() # Signal monitor thread and connection handler waits
+        self.stop_monitor.set()  # Signal monitor thread and connection handler waits
 
         if self.process_manager:
             self.process_manager.stop()
@@ -306,7 +310,7 @@ class A2AClientAgentComponent(BaseAgentComponent):
         # Reset initialization state
         self._initialized.clear()
 
-        super().stop_component() # Call base class cleanup
+        super().stop_component()  # Call base class cleanup
         logger.info(f"A2AClientAgentComponent '{self.agent_name}' stopped.")
 
     # --- Helper Methods ---
@@ -327,6 +331,7 @@ class A2AClientAgentComponent(BaseAgentComponent):
         # The actual implementation is now in a2a_action_factory.py
         # This method remains for potential future direct use or overrides.
         from .a2a_action_factory import infer_params_from_skill
+
         return infer_params_from_skill(skill)
 
     def _handle_provide_required_input(
