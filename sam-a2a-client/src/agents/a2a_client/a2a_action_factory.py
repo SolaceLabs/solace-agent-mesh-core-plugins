@@ -5,7 +5,9 @@ Factory functions for creating SAM Actions based on A2A Agent capabilities.
 from typing import List, Dict, Any, TYPE_CHECKING
 
 from solace_agent_mesh.common.action import Action
-from solace_agent_mesh.common.action_response import ActionResponse # Import ActionResponse
+from solace_agent_mesh.common.action_response import (
+    ActionResponse,
+)  # Import ActionResponse
 from .actions.a2a_client_action import A2AClientAction
 from ...common_a2a.types import AgentCard, AgentSkill
 from solace_ai_connector.common.log import log  # Use solace-ai-connector log
@@ -119,7 +121,10 @@ class ProvideInputAction(Action):
     """
     Concrete SAM Action class for the 'provide_required_input' functionality.
     """
-    def __init__(self, attributes: Dict[str, Any], component: "A2AClientAgentComponent"):
+
+    def __init__(
+        self, attributes: Dict[str, Any], component: "A2AClientAgentComponent"
+    ):
         """
         Initializes the ProvideInputAction.
 
@@ -131,7 +136,9 @@ class ProvideInputAction(Action):
         # Store component reference to call the handler method
         self.component = component
 
-    def invoke(self, params: Dict[str, Any], meta: Dict[str, Any] = None) -> ActionResponse:
+    def invoke(
+        self, params: Dict[str, Any], meta: Dict[str, Any] = None
+    ) -> ActionResponse:
         """
         Invokes the action by calling the handler method on the parent component.
 
