@@ -24,7 +24,9 @@ from solace_ai_connector.common.log import log  # Use solace-ai-connector log
 from .a2a_process_manager import A2AProcessManager
 from .a2a_connection_handler import A2AConnectionHandler
 from .a2a_action_factory import create_actions_from_card, create_provide_input_action
-from .a2a_input_handler import handle_provide_required_input # Import the handler function
+from .a2a_input_handler import (
+    handle_provide_required_input,
+)  # Import the handler function
 from ...common_a2a.types import AgentCard, AgentSkill
 from ...common_a2a.client import A2AClient
 
@@ -128,7 +130,9 @@ class A2AClientAgentComponent(BaseAgentComponent):
             # This should ideally be caught by SAM core config validation, but added for safety
             raise ValueError("Missing required configuration: 'agent_name'")
 
-        log.info("Initializing A2AClientAgentComponent for agent '%s'", self.agent_name)
+        log.debug(
+            "Initializing A2AClientAgentComponent for agent '%s'", self.agent_name
+        )
 
         # Configuration
         self.a2a_server_url: str = self.get_config("a2a_server_url")
@@ -152,10 +156,8 @@ class A2AClientAgentComponent(BaseAgentComponent):
         self.file_service = FileService()
         self.cache_service = kwargs.get("cache_service")
         if self.cache_service is None:
-            log.warning(
-                "Cache service not provided to A2AClientAgentComponent '%s'. "
-                "INPUT_REQUIRED state will not be supported.",
-                self.agent_name,
+            raise ValueError(
+                "Cache service not provided. INPUT_REQUIRED needs this service."
             )
 
         # Action List (initially empty, populated in run)
@@ -188,11 +190,11 @@ class A2AClientAgentComponent(BaseAgentComponent):
         and then enters the base component's run loop for handling messages
         and timers (like registration).
         """
-        log.info("Starting run loop for A2AClientAgentComponent '%s'", self.agent_name)
+        log.debug("Starting run loop for A2AClientAgentComponent '%s'", self.agent_name)
         try:
             # 1. Initialize Process Manager (if command provided)
             if self.a2a_server_command:
-                log.info("Initializing A2AProcessManager for '%s'.", self.agent_name)
+                log.debug("Initializing A2AProcessManager for '%s'.", self.agent_name)
                 self.process_manager = A2AProcessManager(
                     command=self.a2a_server_command,
                     restart_on_crash=self.a2a_server_restart_on_crash,
@@ -200,10 +202,10 @@ class A2AClientAgentComponent(BaseAgentComponent):
                     stop_event=self.stop_monitor,
                 )
                 self.process_manager.launch()  # Can raise FileNotFoundError etc.
-                log.info("A2A process launched for '%s'.", self.agent_name)
+                log.debug("A2A process launched for '%s'.", self.agent_name)
 
             # 2. Initialize Connection Handler
-            log.info("Initializing A2AConnectionHandler for '%s'.", self.agent_name)
+            log.debug("Initializing A2AConnectionHandler for '%s'.", self.agent_name)
             self.connection_handler = A2AConnectionHandler(
                 server_url=self.a2a_server_url,
                 startup_timeout=self.a2a_server_startup_timeout,
@@ -212,7 +214,10 @@ class A2AClientAgentComponent(BaseAgentComponent):
             )
 
             # 3. Wait for Readiness and Initialize Client
-            log.info("Waiting for A2A agent '%s' to become ready...", self.agent_name)
+            log.debug("Waiting for A2A agent '%s' to become ready...", self.agent_name)
+            # <inst>
+            # Change this to pass in the timeout to wait_for_ready instead of passing it in the constructor
+            # </inst>
             if not self.connection_handler.wait_for_ready():
                 # Error logged within wait_for_ready
                 raise TimeoutError(
@@ -229,7 +234,7 @@ class A2AClientAgentComponent(BaseAgentComponent):
 
             # 6. Signal Initialization Complete and Run Base Loop
             self._initialized.set()
-            log.info(
+            log.debug(
                 "A2AClientAgentComponent '%s' initialization complete. Entering main loop.",
                 self.agent_name,
             )
