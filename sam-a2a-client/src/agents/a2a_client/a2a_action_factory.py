@@ -7,7 +7,7 @@ from typing import List, Dict, Any, TYPE_CHECKING
 from solace_agent_mesh.common.action import Action
 from .actions.a2a_client_action import A2AClientAction
 from ...common_a2a.types import AgentCard, AgentSkill
-from solace_ai_connector.common.log import log # Use solace-ai-connector log
+from solace_ai_connector.common.log import log  # Use solace-ai-connector log
 
 # Use TYPE_CHECKING to avoid circular import issues at runtime
 if TYPE_CHECKING:
@@ -29,7 +29,10 @@ def infer_params_from_skill(skill: AgentSkill) -> List[Dict[str, Any]]:
     Returns:
         A list of dictionaries, each defining a SAM action parameter.
     """
-    log.debug("Inferring parameters for skill '%s'. Using generic 'prompt' and 'files'.", skill.id)
+    log.debug(
+        "Inferring parameters for skill '%s'. Using generic 'prompt' and 'files'.",
+        skill.id,
+    )
     # TODO: Implement more sophisticated parameter inference based on skill details
     # For now, always return a standard 'prompt' and optional 'files'
     return [
@@ -42,7 +45,7 @@ def infer_params_from_skill(skill: AgentSkill) -> List[Dict[str, Any]]:
         {
             "name": "files",
             "desc": "Optional list of file URLs (e.g., from FileService) to include with the prompt.",
-            "type": "list", # SAM expects 'list' for array-like inputs
+            "type": "list",  # SAM expects 'list' for array-like inputs
             "required": False,
         },
     ]
@@ -66,19 +69,24 @@ def create_actions_from_card(
     actions: List[Action] = []
     if not agent_card or not agent_card.skills:
         log.warning(
-            "No skills found in AgentCard for '%s'. No dynamic actions created.", component.agent_name
+            "No skills found in AgentCard for '%s'. No dynamic actions created.",
+            component.agent_name,
         )
         return actions
 
     log.info(
         "Creating actions for agent '%s' based on %d AgentCard skills...",
-        component.agent_name, len(agent_card.skills)
+        component.agent_name,
+        len(agent_card.skills),
     )
     for skill in agent_card.skills:
         if not skill.id:
-             log.warning("Skipping skill with missing ID in AgentCard for '%s'. Skill: %s",
-                         component.agent_name, skill.name or 'Unnamed')
-             continue
+            log.warning(
+                "Skipping skill with missing ID in AgentCard for '%s'. Skill: %s",
+                component.agent_name,
+                skill.name or "Unnamed",
+            )
+            continue
         try:
             # Infer parameters for the SAM action based on the A2A skill
             inferred_params = infer_params_from_skill(skill)
@@ -87,12 +95,20 @@ def create_actions_from_card(
                 skill=skill, component=component, inferred_params=inferred_params
             )
             actions.append(action)
-            log.info("Created action '%s' for skill '%s' for agent '%s'.", action.name, skill.id, component.agent_name)
+            log.info(
+                "Created action '%s' for skill '%s' for agent '%s'.",
+                action.name,
+                skill.id,
+                component.agent_name,
+            )
         except Exception as e:
             # Log errors during individual action creation but continue with others
             log.error(
                 "Failed to create action for skill '%s' for agent '%s': %s",
-                skill.id, component.agent_name, e, exc_info=True
+                skill.id,
+                component.agent_name,
+                e,
+                exc_info=True,
             )
     return actions
 
@@ -140,11 +156,20 @@ def create_provide_input_action(component: "A2AClientAgentComponent") -> Action:
         "required_scopes": [f"{component.agent_name}:{action_name}:execute"],
     }
     # Create a standard SAM Action instance
+    # <inst>
+    # Look at the Action class definition for details on the parameters
+    # and their expected types.
+    # This is an abstract class...
+    # </inst>
     provide_input_action = Action(
         provide_input_action_def, agent=component, config_fn=component.get_config
     )
     # Note: The handler function needs to be set on this action instance
     # by the component after creation, e.g.,
     # provide_input_action.set_handler(component._handle_provide_required_input)
-    log.info("Created static action '%s' for agent '%s'.", provide_input_action.name, component.agent_name)
+    log.info(
+        "Created static action '%s' for agent '%s'.",
+        provide_input_action.name,
+        component.agent_name,
+    )
     return provide_input_action
