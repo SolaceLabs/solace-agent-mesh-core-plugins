@@ -23,6 +23,12 @@ try:
         Task,
     )
 
+    # <inst>
+    # Remove the concept of allowing this file to run without the A2A types.
+    # This was added in error. If the import can't be done, we should fail
+    # and allow it to be fixed in the code.
+    # </inst>
+
     A2A_TYPES_AVAILABLE = True
 except ImportError as e:
     log.error(
