@@ -129,13 +129,13 @@ def handle_provide_required_input(
         a2a_taskId = cache_service.get(cache_key)
         if a2a_taskId is None:
             log.warning(
-                "Follow-up ID '%s' not found in cache or expired for agent '%s'.",
+                "Follow-up ID '%s' not found in cache or expired for agent '%s'. Please start the task again.",
                 follow_up_id,
                 component.agent_name,
             )
             # The follow-up ID may have expired or been invalid. All we can do is inform the caller
             return ActionResponse(
-                message="Invalid or expired follow-up ID. The context may have timed out.",
+                message="Invalid or expired follow-up ID. Please start the task again.",
                 error_info=ErrorInfo("Invalid Follow-up ID"),
             )
         # Delete the entry immediately after retrieval to prevent reuse
@@ -208,44 +208,46 @@ def handle_provide_required_input(
                 # <inst>
                 # Look at the file service code and make sure this is correct
                 # </inst>
+                # Corrected logic: Use return_extra=True to get original bytes and metadata
                 log.debug("Resolving follow-up file URL: %s", file_url)
-                resolved_file = file_service.resolve_url(
-                    file_url, session_id=session_id
+                # resolved_content is the potentially transformed content (bytes or str)
+                # original_bytes is the raw file content
+                # file_metadata contains name, mime_type, etc.
+                resolved_content, original_bytes, file_metadata = file_service.resolve_url(
+                    file_url, session_id=session_id, return_extra=True
                 )
-                if (
-                    resolved_file
-                    and hasattr(resolved_file, "bytes")
-                    and hasattr(resolved_file, "name")
-                    and hasattr(resolved_file, "mime_type")
-                ):
+
+                if original_bytes and file_metadata:
+                    file_name = file_metadata.get("name", f"a2a_file_{uuid.uuid4().hex}")
+                    mime_type = file_metadata.get("mime_type", "application/octet-stream")
+
                     try:
-                        encoded_bytes = base64.b64encode(resolved_file.bytes).decode(
-                            "utf-8"
-                        )
+                        # Encode the *original* bytes for the FilePart
+                        encoded_bytes = base64.b64encode(original_bytes).decode("utf-8")
                     except Exception as b64_e:
                         log.error(
                             "Failed to base64 encode follow-up file content for '%s': %s",
-                            resolved_file.name,
+                            file_name,
                             b64_e,
                         )
                         continue  # Skip this file
 
                     file_content = FileContent(
                         bytes=encoded_bytes,
-                        name=resolved_file.name,
-                        mimeType=resolved_file.mime_type,
+                        name=file_name,
+                        mimeType=mime_type,
                     )
                     parts.append(FilePart(file=file_content))
                     log.debug(
                         "Successfully created FilePart for follow-up file '%s'.",
-                        resolved_file.name,
+                        file_name,
                     )
                 else:
+                    # Log if resolve_url didn't return expected tuple
                     log.error(
-                        "Failed to resolve follow-up file URL '%s' or resolved object is invalid.",
+                        "Failed to resolve follow-up file URL '%s' or resolve_url did not return expected data.",
                         file_url,
                     )
-                    # Decide if this should be a fatal error for the follow-up
             except Exception as e:
                 log.error(
                     "Error resolving follow-up file URL '%s' (task '%s'): %s",
