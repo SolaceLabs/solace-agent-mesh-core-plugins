@@ -20,7 +20,7 @@ from ...common_a2a.types import (
     FilePart,
     FileContent,
     Task,
-    TaskState, # Import TaskState directly
+    TaskState,  # Import TaskState directly
 )
 
 # Use constants defined in a2a_client_action for consistency
@@ -133,8 +133,9 @@ def handle_provide_required_input(
                 follow_up_id,
                 component.agent_name,
             )
+            # The follow-up ID may have expired or been invalid. All we can do is inform the caller
             return ActionResponse(
-                message="Invalid or expired follow-up ID. The context may have timed out. Please start the task again.",
+                message="Invalid or expired follow-up ID. The context may have timed out.",
                 error_info=ErrorInfo("Invalid Follow-up ID"),
             )
         # Delete the entry immediately after retrieval to prevent reuse
@@ -161,10 +162,6 @@ def handle_provide_required_input(
     # 4. Map Input to A2A Message Parts
     session_id = meta.get("session_id")
     if not session_id:
-        # <inst>
-        # This is a fatal error for processing the follow-up. We can't proceed without a session ID.
-        # Respond with an error message and end the follow-up process.
-        # </inst>
         log.error(
             "No session_id found in meta for follow-up action '%s' (follow_up_id: %s). Cannot proceed.",
             action_name,
@@ -195,7 +192,7 @@ def handle_provide_required_input(
     if isinstance(file_urls, str):  # Handle single URL case
         file_urls = [file_urls]
     if file_urls and isinstance(file_urls, list):
-        log.info(
+        log.debug(
             "Processing %d file URLs for follow-up (task '%s').",
             len(file_urls),
             a2a_taskId,
@@ -208,6 +205,9 @@ def handle_provide_required_input(
                 )
                 continue
             try:
+                # <inst>
+                # Look at the file service code and make sure this is correct
+                # </inst>
                 log.debug("Resolving follow-up file URL: %s", file_url)
                 resolved_file = file_service.resolve_url(
                     file_url, session_id=session_id
