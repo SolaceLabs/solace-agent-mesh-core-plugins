@@ -217,7 +217,9 @@ class A2AClientAgentComponent(BaseAgentComponent):
             # <inst>
             # Change this to pass in the timeout to wait_for_ready instead of passing it in the constructor
             # </inst>
-            if not self.connection_handler.wait_for_ready(self.a2a_server_startup_timeout):
+            if not self.connection_handler.wait_for_ready(
+                self.a2a_server_startup_timeout
+            ):
                 # Error logged within wait_for_ready
                 raise TimeoutError(
                     f"A2A agent at {self.a2a_server_url} did not become ready within {self.a2a_server_startup_timeout}s."
@@ -304,6 +306,10 @@ class A2AClientAgentComponent(BaseAgentComponent):
         Returns:
             A list of dictionaries, each defining a SAM action parameter.
         """
+        # <inst>
+        # This redirect is unnecessary. Just import at the top and call directly.
+        # Remove this method.
+        # </inst>
         # The actual implementation is now in a2a_action_factory.py
         # This method remains for potential future direct use or overrides.
         from .a2a_action_factory import infer_params_from_skill
