@@ -23,7 +23,11 @@ from solace_ai_connector.common.log import log  # Use solace-ai-connector log
 # Import helpers and types
 from .a2a_process_manager import A2AProcessManager
 from .a2a_connection_handler import A2AConnectionHandler
-from .a2a_action_factory import create_actions_from_card, create_provide_input_action
+from .a2a_action_factory import (
+    create_actions_from_card,
+    create_provide_input_action,
+    infer_params_from_skill,  # Import the function directly
+)
 from .a2a_input_handler import (
     handle_provide_required_input,
 )  # Import the handler function
@@ -214,9 +218,6 @@ class A2AClientAgentComponent(BaseAgentComponent):
 
             # 3. Wait for Readiness and Initialize Client
             log.debug("Waiting for A2A agent '%s' to become ready...", self.agent_name)
-            # <inst>
-            # Change this to pass in the timeout to wait_for_ready instead of passing it in the constructor
-            # </inst>
             if not self.connection_handler.wait_for_ready(
                 self.a2a_server_startup_timeout
             ):
@@ -292,29 +293,6 @@ class A2AClientAgentComponent(BaseAgentComponent):
         log.info("A2AClientAgentComponent '%s' stopped.", self.agent_name)
 
     # --- Helper Methods ---
-    def _infer_params_from_skill(self, skill: AgentSkill) -> List[Dict[str, Any]]:
-        """
-        Infers SAM action parameters from an A2A skill definition.
-
-        Currently uses a simple approach, returning generic 'prompt' and 'files'
-        parameters. Future enhancements could involve parsing skill descriptions
-        or structured parameter definitions if available in the AgentCard.
-
-        Args:
-            skill: The A2A AgentSkill object.
-
-        Returns:
-            A list of dictionaries, each defining a SAM action parameter.
-        """
-        # <inst>
-        # This redirect is unnecessary. Just import at the top and call directly.
-        # Remove this method.
-        # </inst>
-        # The actual implementation is now in a2a_action_factory.py
-        # This method remains for potential future direct use or overrides.
-        from .a2a_action_factory import infer_params_from_skill
-
-        return infer_params_from_skill(skill)
 
     def _create_actions(self):
         """
