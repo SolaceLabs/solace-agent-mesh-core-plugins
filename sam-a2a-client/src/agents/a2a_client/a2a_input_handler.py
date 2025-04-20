@@ -12,39 +12,16 @@ from typing import Dict, Any, List, TYPE_CHECKING, Optional
 from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo
 from solace_ai_connector.common.log import log  # Use solace-ai-connector log
 
-# Import A2A types safely
-try:
-    from ...common_a2a.types import (
-        TaskSendParams,
-        Message as A2AMessage,
-        TextPart,
-        FilePart,
-        FileContent,
-        Task,
-    )
-
-    # <inst>
-    # Remove the concept of allowing this file to run without the A2A types.
-    # This was added in error. If the import can't be done, we should fail
-    # and allow it to be fixed in the code.
-    # </inst>
-
-    A2A_TYPES_AVAILABLE = True
-except ImportError as e:
-    log.error(
-        "Failed to import A2A types: %s. Follow-up input handling may not function correctly.",
-        e,
-    )
-    A2A_TYPES_AVAILABLE = False
-    # Define dummy types if import fails
-    TaskSendParams = Any
-    A2AMessage = Any
-    TextPart = Any
-    FilePart = Any
-    FileContent = Any
-    DataPart = Any
-    Task = Any
-    TaskState = Any  # type: ignore
+# Import A2A types directly. If these fail, the module load will fail.
+from ...common_a2a.types import (
+    TaskSendParams,
+    Message as A2AMessage,
+    TextPart,
+    FilePart,
+    FileContent,
+    Task,
+    TaskState, # Import TaskState directly
+)
 
 # Use constants defined in a2a_client_action for consistency
 from .actions.a2a_client_action import (
@@ -88,13 +65,6 @@ def handle_provide_required_input(
         component.agent_name,
         params,
     )
-
-    if not A2A_TYPES_AVAILABLE:
-        log.error("Cannot handle follow-up input: A2A common types failed to import.")
-        return ActionResponse(
-            message="Internal Error: A2A library types not available.",
-            error_info=ErrorInfo("Import Error"),
-        )
 
     follow_up_id = params.get("follow_up_id")
     user_response_text = params.get("user_response")
