@@ -20,7 +20,6 @@ from ...common_a2a.types import (
     FilePart,
     FileContent,
     Task,
-    TaskState, # Import TaskState directly
 )
 
 # Use constants defined in a2a_client_action for consistency
@@ -84,21 +83,10 @@ def handle_provide_required_input(
             error_info=ErrorInfo("Missing Parameter"),
         )
 
-    # 2. Check Availability of Services
     cache_service = component.cache_service
     a2a_client = component.a2a_client
     file_service = component.file_service
 
-    if not cache_service:
-        log.error(
-            "CacheService not available for '%s'. Cannot handle '%s'.",
-            component.agent_name,
-            action_name,
-        )
-        return ActionResponse(
-            message="Internal Error: Cache Service not available for follow-up.",
-            error_info=ErrorInfo("Cache Service Missing"),
-        )
     if not a2a_client:
         log.error(
             "A2AClient not available for '%s'. Cannot handle '%s'.",
@@ -109,20 +97,8 @@ def handle_provide_required_input(
             message="Internal Error: A2A Client not available for follow-up.",
             error_info=ErrorInfo("A2A Client Missing"),
         )
-    if not file_service:
-        # File service is needed even if no files are provided in *this* call,
-        # because the *response* might contain files that need processing.
-        log.error(
-            "FileService not available for '%s'. Cannot handle '%s'.",
-            component.agent_name,
-            action_name,
-        )
-        return ActionResponse(
-            message="Internal Error: File Service not available for follow-up.",
-            error_info=ErrorInfo("File Service Missing"),
-        )
 
-    # 3. Retrieve Original A2A Task ID from Cache
+    # 2. Retrieve Original A2A Task ID from Cache
     cache_key = f"a2a_follow_up:{follow_up_id}"
     a2a_taskId: Optional[str] = None
     try:
@@ -134,7 +110,7 @@ def handle_provide_required_input(
                 component.agent_name,
             )
             return ActionResponse(
-                message="Invalid or expired follow-up ID. The context may have timed out. Please start the task again.",
+                message="Invalid or expired follow-up ID. The context may have timed out.",
                 error_info=ErrorInfo("Invalid Follow-up ID"),
             )
         # Delete the entry immediately after retrieval to prevent reuse
@@ -158,9 +134,13 @@ def handle_provide_required_input(
             error_info=ErrorInfo(f"Cache Error: {e}"),
         )
 
-    # 4. Map Input to A2A Message Parts
+    # 3. Map Input to A2A Message Parts
     session_id = meta.get("session_id")
     if not session_id:
+        # <inst>
+        # This is a fatal error for processing the follow-up. We can't proceed without a session ID.
+        # Respond with an error message and end the follow-up process.
+        # </inst>
         # If session_id is missing, we should ideally try to retrieve it from the original task context
         # stored in cache, or generate a new one as a last resort. For simplicity now, generate new.
         session_id = str(uuid.uuid4())
