@@ -11,7 +11,7 @@ from typing import Optional
 
 from ...common_a2a.client import A2AClient, A2ACardResolver
 from ...common_a2a.types import AgentCard
-from solace_ai_connector.common.log import log  # Use solace-ai-connector log
+from solace_ai_connector.common.log import log
 
 
 class A2AConnectionHandler:
@@ -66,7 +66,7 @@ class A2AConnectionHandler:
         check_interval = 1  # Seconds between readiness checks
         request_timeout = 5  # Seconds for the HTTP request itself
 
-        log.info(
+        log.debug(
             "Waiting up to %ds for A2A agent at %s to become ready...",
             timeout,
             self.server_url,
@@ -80,7 +80,7 @@ class A2AConnectionHandler:
                 # Use requests for simple GET polling
                 response = requests.get(agent_card_url, timeout=request_timeout)
                 if response.status_code == 200:
-                    log.info("A2A agent is ready at %s.", self.server_url)
+                    log.debug("A2A agent is ready at %s.", self.server_url)
                     return True
                 else:
                     # Log non-200 status codes as warnings for visibility
@@ -130,7 +130,7 @@ class A2AConnectionHandler:
             ValueError: If fetching the AgentCard fails or initializing the A2AClient fails.
         """
         # 1. Fetch Agent Card
-        log.info("Fetching Agent Card from %s", self.server_url)
+        log.debug("Fetching Agent Card from %s", self.server_url)
         try:
             resolver = A2ACardResolver(self.server_url)
             # Assuming get_agent_card is synchronous or handled appropriately by the library
@@ -138,7 +138,7 @@ class A2AConnectionHandler:
             if not self.agent_card:
                 # Should not happen if resolver raises exceptions on failure, but check anyway
                 raise ValueError("A2ACardResolver returned None.")
-            log.info("Successfully fetched Agent Card for '%s'", self.agent_card.name)
+            log.debug("Successfully fetched Agent Card for '%s'", self.agent_card.name)
         except Exception as e:
             log.error(
                 "Error fetching/parsing Agent Card from %s: %s",
@@ -161,7 +161,7 @@ class A2AConnectionHandler:
                 for scheme in self.agent_card.authentication.schemes
             ):
                 bearer_required = True
-                log.info(
+                log.debug(
                     "AgentCard for '%s' indicates Bearer authentication support.",
                     self.agent_card.name,
                 )
@@ -169,7 +169,7 @@ class A2AConnectionHandler:
         if bearer_required:
             if self.bearer_token:
                 auth_token = self.bearer_token
-                log.info(
+                log.debug(
                     "Using configured Bearer token for A2A client connecting to '%s'.",
                     self.agent_card.name,
                 )

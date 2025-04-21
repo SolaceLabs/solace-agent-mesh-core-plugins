@@ -213,13 +213,19 @@ def handle_provide_required_input(
                 # resolved_content is the potentially transformed content (bytes or str)
                 # original_bytes is the raw file content
                 # file_metadata contains name, mime_type, etc.
-                resolved_content, original_bytes, file_metadata = file_service.resolve_url(
-                    file_url, session_id=session_id, return_extra=True
+                resolved_content, original_bytes, file_metadata = (
+                    file_service.resolve_url(
+                        file_url, session_id=session_id, return_extra=True
+                    )
                 )
 
                 if original_bytes and file_metadata:
-                    file_name = file_metadata.get("name", f"a2a_file_{uuid.uuid4().hex}")
-                    mime_type = file_metadata.get("mime_type", "application/octet-stream")
+                    file_name = file_metadata.get(
+                        "name", f"a2a_file_{uuid.uuid4().hex}"
+                    )
+                    mime_type = file_metadata.get(
+                        "mime_type", "application/octet-stream"
+                    )
 
                     try:
                         # Encode the *original* bytes for the FilePart

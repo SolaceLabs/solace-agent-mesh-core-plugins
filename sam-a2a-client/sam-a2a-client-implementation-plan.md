@@ -146,7 +146,7 @@ All code must follow Google's Python style guide (PEP 8). Use `black` for format
 **Step 3.3: Implement `A2AClientAction.invoke` - Request Mapping**
 
 *   **3.3.1 Action:** In `A2AClientAction.invoke`:
-    *   Get `a2a_client`, `cache_service`, `file_service` from `self.component`. Check they exist.
+    *   Get `a2a_client`, `cache_service`, `file_service` from `self.component`. We know that the cache and file services are always available, so no need to check for `None`.
     *   Get `session_id` from `meta`. Generate `a2a_taskId = str(uuid.uuid4())`.
     *   Create `parts = []`.
     *   Find the main text prompt in `params` (e.g., `params['prompt']`). Add `parts.append(TextPart(text=prompt_text))`. Handle missing prompt.
@@ -210,7 +210,7 @@ All code must follow Google's Python style guide (PEP 8). Use `black` for format
 **Step 4.3: Implement `A2AClientAction.invoke` - State Handling (INPUT_REQUIRED)**
 
 *   **4.3.1 Action:** Add specific handling for `elif response_task.status.state == TaskState.INPUT_REQUIRED:` in `A2AClientAction.invoke`:
-    *   Check if `self.component.cache_service` is available. If not, return an error `ActionResponse` ("INPUT_REQUIRED not supported without CacheService").
+
     *   Generate `sam_follow_up_id = str(uuid.uuid4())`.
     *   Extract the original `a2a_taskId` from `response_task.id`.
     *   Store the mapping in cache: `self.component.cache_service.set(f"a2a_follow_up:{sam_follow_up_id}", a2a_taskId, ttl=self.component.input_required_ttl)`. Handle potential cache errors.
@@ -223,7 +223,7 @@ All code must follow Google's Python style guide (PEP 8). Use `black` for format
 
 *   **4.4.1 Action:** Implement the `_handle_provide_required_input(self, params: Dict, meta: Dict) -> ActionResponse` method in `A2AClientAgentComponent`.
     *   Get `follow_up_id`, `user_response`, optional `files` from `params`.
-    *   Get `a2a_client`, `cache_service`, `file_service`. Check they exist. Get `session_id` from `meta`.
+    *   Get `a2a_client`, `cache_service`, `file_service`. Get `session_id` from `meta`.
     *   Retrieve `a2a_taskId = self.cache_service.get(f"a2a_follow_up:{follow_up_id}")`.
     *   If `a2a_taskId` is None, return error `ActionResponse` ("Invalid or expired follow-up ID.").
     *   *(Optional but recommended)* Delete the cache entry: `self.cache_service.delete(f"a2a_follow_up:{follow_up_id}")`.
