@@ -11,40 +11,19 @@ from typing import Dict, Any, List, TYPE_CHECKING, Optional  # Added Optional
 
 from solace_agent_mesh.common.action import Action
 from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo
+from solace_agent_mesh.services.file_service import FS_PROTOCOL
 from solace_ai_connector.common.log import log  # Use solace-ai-connector log
-
-# Import A2A types safely
-try:
-    from ....common_a2a.types import (
-        AgentSkill,
-        TaskSendParams,
-        Message as A2AMessage,
-        TextPart,
-        FilePart,
-        FileContent,
-        DataPart,  # Added DataPart
-        Task,
-        TaskState,
-        SendTaskResponse,  # Import SendTaskResponse
-    )
-
-    A2A_TYPES_AVAILABLE = True
-except ImportError as e:
-    log.error(
-        "Failed to import A2A types: %s. A2A actions may not function correctly.", e
-    )
-    A2A_TYPES_AVAILABLE = False
-    # Define dummy types if import fails to prevent runtime errors in class definition
-    AgentSkill = Any
-    TaskSendParams = Any
-    A2AMessage = Any
-    TextPart = Any
-    FilePart = Any
-    FileContent = Any
-    DataPart = Any
-    Task = Any
-    TaskState = Any  # type: ignore
-    SendTaskResponse = Any  # type: ignore
+from ....common_a2a.types import (
+    AgentSkill,
+    TaskSendParams,
+    Message as A2AMessage,
+    TextPart,
+    FilePart,
+    FileContent,
+    Task,
+    TaskState,
+    SendTaskResponse,  # Import SendTaskResponse
+)
 
 
 # Define string constants based on imported enum for robustness in comparisons
@@ -88,10 +67,6 @@ class A2AClientAction(Action):
             inferred_params: The list of parameters inferred for this action
                              (e.g., from `infer_params_from_skill`).
         """
-        if not A2A_TYPES_AVAILABLE:
-            raise ImportError(
-                "Cannot initialize A2AClientAction: A2A common types failed to import."
-            )
 
         self.skill = skill
         self.component = component
@@ -333,13 +308,6 @@ class A2AClientAction(Action):
             params,
         )
 
-        if not A2A_TYPES_AVAILABLE:
-            log.error("Cannot invoke A2A action: A2A common types failed to import.")
-            return ActionResponse(
-                message="Internal Error: A2A library types not available.",
-                error_info=ErrorInfo("Import Error"),
-            )
-
         # 1. Get necessary services and IDs
         a2a_client = self.component.a2a_client
         cache_service = self.component.cache_service
@@ -413,8 +381,22 @@ class A2AClientAction(Action):
         file_urls = params.get("files", [])
         # Ensure file_urls is a list, handle single string case
         if file_urls and isinstance(file_urls, str):
-            file_urls = [file_urls]
-
+            try:
+                file_urls = json.loads(file_urls)  # Attempt to parse JSON string
+            except json.JSONDecodeError:
+                if file_urls.startswith(FS_PROTOCOL):
+                    # If it's a file URL, treat it as a single-item list
+                    file_urls = [file_urls]
+                else:
+                    log.error(
+                        "Invalid file URL string provided for action '%s': %s",
+                        action_name,
+                        file_urls,
+                    )
+                    return ActionResponse(
+                        message="Invalid file URL format.",
+                        error_info=ErrorInfo("Invalid File URL"),
+                    )
         if file_urls and isinstance(file_urls, list):
             log.info(
                 "Processing %d file URLs for action '%s' (task ID %s).",
