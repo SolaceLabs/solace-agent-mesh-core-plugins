@@ -90,6 +90,12 @@ class Task(BaseModel):
     history: List[Message] | None = None
     metadata: dict[str, Any] | None = None
 
+    def get_state(self) -> Optional[TaskState]:
+        """Safely retrieves the task state."""
+        if self.status:
+            return self.status.state
+        return None
+
 
 class TaskStatusUpdateEvent(BaseModel):
     id: str
@@ -100,7 +106,7 @@ class TaskStatusUpdateEvent(BaseModel):
 
 class TaskArtifactUpdateEvent(BaseModel):
     id: str
-    artifact: Artifact    
+    artifact: Artifact
     metadata: dict[str, Any] | None = None
 
 

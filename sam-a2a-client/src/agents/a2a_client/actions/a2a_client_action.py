@@ -24,6 +24,7 @@ try:
         DataPart, # Added DataPart
         Task,
         TaskState,
+        SendTaskResponse, # Import SendTaskResponse
     )
     A2A_TYPES_AVAILABLE = True
 except ImportError as e:
@@ -39,6 +40,7 @@ except ImportError as e:
     DataPart = Any
     Task = Any
     TaskState = Any # type: ignore
+    SendTaskResponse = Any # type: ignore
 
 
 # Define string constants based on imported enum for robustness in comparisons
@@ -355,31 +357,32 @@ class A2AClientAction(Action):
                 try:
                     log.debug("Resolving file URL for action '%s': %s", action_name, file_url)
                     # Use FileService to get file content and metadata
-                    resolved_file = file_service.resolve_url(
-                        file_url, session_id=session_id
+                    # Corrected: Use return_extra=True
+                    resolved_content, original_bytes, file_metadata = file_service.resolve_url(
+                        file_url, session_id=session_id, return_extra=True
                     )
-                    # Check if resolution was successful and returned expected attributes
-                    if (
-                        resolved_file
-                        and hasattr(resolved_file, "bytes")
-                        and hasattr(resolved_file, "name")
-                        and hasattr(resolved_file, "mime_type")
-                    ):
+
+                    # Check if resolution was successful and returned expected data
+                    if original_bytes and file_metadata:
+                        file_name = file_metadata.get("name", f"a2a_file_{uuid.uuid4().hex}")
+                        mime_type = file_metadata.get("mime_type", "application/octet-stream")
+
                         # A2A FileContent expects base64 encoded string for bytes
                         try:
-                            encoded_bytes = base64.b64encode(resolved_file.bytes).decode("utf-8")
+                            # Use original_bytes for encoding
+                            encoded_bytes = base64.b64encode(original_bytes).decode("utf-8")
                         except Exception as b64_e:
-                             log.error("Failed to base64 encode file content for '%s': %s", resolved_file.name, b64_e)
+                             log.error("Failed to base64 encode file content for '%s': %s", file_name, b64_e)
                              continue # Skip this file if encoding fails
 
                         file_content = FileContent(
                             bytes=encoded_bytes,
-                            name=resolved_file.name,
-                            mimeType=resolved_file.mime_type,
+                            name=file_name,
+                            mimeType=mime_type,
                         )
                         parts.append(FilePart(file=file_content))
                         log.debug(
-                            "Successfully created FilePart for '%s' for action '%s'.", resolved_file.name, action_name
+                            "Successfully created FilePart for '%s' for action '%s'.", file_name, action_name
                         )
                     else:
                         # Log if resolution failed or returned unexpected object
@@ -440,12 +443,35 @@ class A2AClientAction(Action):
                 a2a_taskId, self.component.agent_name, action_name
             )
             # Make the synchronous call to the A2A agent
-            response_task: Task = self.component.a2a_client.send_task(
-                task_params.model_dump() # Send the validated Pydantic model as dict
+            send_task_response: SendTaskResponse = self.component.a2a_client.send_task(
+                task_params.model_dump()
             )
 
-            # Safely get the task state from the response
-            task_state = getattr(getattr(response_task, "status", None), "state", None)
+            # Check for JSON-RPC level errors first
+            if send_task_response.error:
+                log.error(
+                    "A2A agent returned a JSON-RPC error for task '%s': Code %d, Message: %s",
+                    a2a_taskId, send_task_response.error.code, send_task_response.error.message
+                )
+                return ActionResponse(
+                    message=f"A2A agent reported an error: {send_task_response.error.message}",
+                    error_info=ErrorInfo(f"A2A Error Code {send_task_response.error.code}: {send_task_response.error.message}")
+                )
+
+            # Get the Task object from the result
+            response_task: Optional[Task] = send_task_response.result
+
+            # Check if the result (Task) is actually present
+            if response_task is None:
+                 log.error("A2A agent response did not contain a valid Task object for task '%s'.", a2a_taskId)
+                 return ActionResponse(
+                     message="Internal Error: Received invalid response from A2A agent.",
+                     error_info=ErrorInfo("Invalid A2A Response Structure")
+                 )
+
+            # Safely get the task state using the new helper method
+            task_state = response_task.get_state()
+
             log.info(
                 "Received response for task '%s'. A2A State: %s", a2a_taskId, task_state
             )
@@ -603,14 +629,14 @@ class A2AClientAction(Action):
                     )
 
             else:
-                # Handle any other unexpected A2A task states
+                # Handle any other unexpected A2A task states (including None)
                 log.warning(
-                    "A2A Task '%s' returned unhandled state: %s. Treating as error.", a2a_taskId, task_state
+                    "A2A Task '%s' returned unhandled or missing state: %s. Treating as error.", a2a_taskId, task_state
                 )
                 return ActionResponse(
                     message=f"A2A Task is currently in an unexpected state: {task_state}",
                     error_info=ErrorInfo(
-                        f"Unhandled A2A State: {task_state}"
+                        f"Unhandled or Missing A2A State: {task_state}"
                     ),
                 )
 
