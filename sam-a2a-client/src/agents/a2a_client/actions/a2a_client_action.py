@@ -709,10 +709,11 @@ class A2AClientAction(Action):
 
                 try:
                     # Store the mapping: SAM follow-up ID -> A2A Task ID in cache with TTL
-                    cache_service.set(
-                        cache_key,
-                        a2a_original_taskId,
-                        ttl=self.component.input_required_ttl,  # Use configured TTL
+                    # Use add_data instead of set
+                    cache_service.add_data(
+                        key=cache_key,
+                        value=a2a_original_taskId,
+                        expiry=self.component.input_required_ttl,  # Use configured TTL
                     )
                     log.info(
                         "Stored INPUT_REQUIRED state for A2A task '%s' with SAM follow-up ID '%s' (TTL: %ds).",
