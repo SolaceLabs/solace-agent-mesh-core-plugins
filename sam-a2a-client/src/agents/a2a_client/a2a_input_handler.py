@@ -7,6 +7,7 @@ when it previously returned an INPUT_REQUIRED state.
 import uuid
 import json
 import base64
+import asyncio # Import asyncio
 from typing import Dict, Any, List, TYPE_CHECKING, Optional
 
 from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo
@@ -46,7 +47,7 @@ def handle_provide_required_input(
     2.  Retrieves the original A2A `taskId` from the Cache Service using the `follow_up_id`.
     3.  Maps the `user_response` and optional `files` to A2A `Message.parts`.
     4.  Constructs `TaskSendParams` using the retrieved A2A `taskId`.
-    5.  Sends the follow-up request to the A2A agent using `A2AClient.send_task()`.
+    5.  Sends the follow-up request to the A2A agent using `A2AClient.send_task()` via `asyncio.run()`.
     6.  Processes the subsequent A2A `Task` response (handling `COMPLETED`, `FAILED`,
         or even another `INPUT_REQUIRED` state) and returns the final `ActionResponse`.
 
@@ -300,9 +301,9 @@ def handle_provide_required_input(
     # 6. Call A2A Agent and Process Response
     try:
         log.info("Sending follow-up input for A2A task '%s'...", a2a_taskId)
-        # Send the follow-up request
-        send_task_response: SendTaskResponse = a2a_client.send_task(
-            task_params.model_dump()
+        # Send the follow-up request using asyncio.run()
+        send_task_response: SendTaskResponse = asyncio.run(
+            a2a_client.send_task(task_params.model_dump())
         )
 
         # Check for JSON-RPC level errors first

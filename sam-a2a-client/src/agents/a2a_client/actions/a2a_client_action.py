@@ -6,6 +6,7 @@ Handles mapping SAM parameters to A2A requests and A2A responses back to SAM.
 import uuid
 import json
 import base64
+import asyncio # Import asyncio
 from typing import Dict, Any, List, TYPE_CHECKING, Optional # Added Optional
 
 from solace_agent_mesh.common.action import Action
@@ -192,7 +193,7 @@ class A2AClientAction(Action):
                         try:
                             # Use the FileService from the component
                             file_meta = file_service.upload_from_buffer(
-                                content=file_bytes,
+                                content=file_bytes, # Corrected: pass content=file_bytes
                                 file_name=file_name,
                                 session_id=session_id,
                                 mime_type=mime_type,
@@ -248,7 +249,7 @@ class A2AClientAction(Action):
         1.  Retrieves necessary services (A2AClient, FileService, CacheService) from the parent component.
         2.  Maps the input `params` (including resolving file URLs) to A2A `Message.parts`.
         3.  Constructs `TaskSendParams` with a unique A2A task ID and session ID.
-        4.  Calls the A2A agent using `A2AClient.send_task()`.
+        4.  Calls the A2A agent using `A2AClient.send_task()` via `asyncio.run()`.
         5.  Processes the A2A `Task` response based on its state:
             *   `COMPLETED`: Maps response parts/artifacts to `ActionResponse.message` and `ActionResponse.files`.
             *   `FAILED`: Extracts error details and returns an error `ActionResponse`.
@@ -442,9 +443,9 @@ class A2AClientAction(Action):
                 "Sending task '%s' to A2A agent '%s' for action '%s'...",
                 a2a_taskId, self.component.agent_name, action_name
             )
-            # Make the synchronous call to the A2A agent
-            send_task_response: SendTaskResponse = self.component.a2a_client.send_task(
-                task_params.model_dump()
+            # Make the call to the async A2A client method using asyncio.run()
+            send_task_response: SendTaskResponse = asyncio.run(
+                self.component.a2a_client.send_task(task_params.model_dump())
             )
 
             # Check for JSON-RPC level errors first
