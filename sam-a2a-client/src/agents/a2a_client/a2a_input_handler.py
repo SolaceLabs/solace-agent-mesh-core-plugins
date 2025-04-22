@@ -21,7 +21,7 @@ from ...common_a2a.types import (
     FileContent,
     Task,
     TaskState,  # Import TaskState directly
-    SendTaskResponse, # Import SendTaskResponse
+    SendTaskResponse,  # Import SendTaskResponse
 )
 
 # Use constants defined in a2a_client_action for consistency
@@ -301,17 +301,23 @@ def handle_provide_required_input(
     try:
         log.info("Sending follow-up input for A2A task '%s'...", a2a_taskId)
         # Send the follow-up request
-        send_task_response: SendTaskResponse = a2a_client.send_task(task_params.model_dump())
+        send_task_response: SendTaskResponse = a2a_client.send_task(
+            task_params.model_dump()
+        )
 
         # Check for JSON-RPC level errors first
         if send_task_response.error:
             log.error(
                 "A2A agent returned a JSON-RPC error during follow-up for task '%s': Code %d, Message: %s",
-                a2a_taskId, send_task_response.error.code, send_task_response.error.message
+                a2a_taskId,
+                send_task_response.error.code,
+                send_task_response.error.message,
             )
             return ActionResponse(
                 message=f"A2A agent reported an error during follow-up: {send_task_response.error.message}",
-                error_info=ErrorInfo(f"A2A Error Code {send_task_response.error.code}: {send_task_response.error.message}")
+                error_info=ErrorInfo(
+                    f"A2A Error Code {send_task_response.error.code}: {send_task_response.error.message}"
+                ),
             )
 
         # Get the Task object from the result
@@ -319,13 +325,15 @@ def handle_provide_required_input(
 
         # Check if the result (Task) is actually present
         if response_task is None:
-             log.error("A2A agent follow-up response did not contain a valid Task object for task '%s'.", a2a_taskId)
-             return ActionResponse(
-                 message="Internal Error: Received invalid follow-up response from A2A agent.",
-                 error_info=ErrorInfo("Invalid A2A Follow-up Response Structure")
-             )
+            log.error(
+                "A2A agent follow-up response did not contain a valid Task object for task '%s'.",
+                a2a_taskId,
+            )
+            return ActionResponse(
+                message="Internal Error: Received invalid follow-up response from A2A agent.",
+                error_info=ErrorInfo("Invalid A2A Follow-up Response Structure"),
+            )
 
-        # Safely get the task state using the new helper method
         task_state = response_task.get_state()
 
         log.info(

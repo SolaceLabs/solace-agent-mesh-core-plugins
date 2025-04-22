@@ -4,7 +4,7 @@
 # 1. Periodic registration with the orchestrator.
 # 2. Processing action requests received from the orchestrator for this agent.
 #
-# Environment variables are used for configuration. Replace <AGENT_NAME_UPPER>
+# Environment variables are used for configuration. Replace <SNAKE_UPPER_CASE_NAME>
 # with the uppercase version of the agent name chosen during `solace-agent-mesh add agent`.
 # Example: If agent name is 'crewai_image', use 'CREWAI_IMAGE_A2A_SERVER_URL'.
 #
@@ -14,15 +14,15 @@
 # - SOLACE_BROKER_PASSWORD:         Password for the Solace broker.
 # - SOLACE_BROKER_VPN:              Message VPN on the Solace broker.
 # - SOLACE_AGENT_MESH_NAMESPACE:    Namespace prefix for SAM topics.
-# - <AGENT_NAME_UPPER>_A2A_SERVER_URL: URL of the target A2A agent (e.g., http://localhost:10001).
+# - <SNAKE_UPPER_CASE_NAME>_A2A_SERVER_URL: URL of the target A2A agent (e.g., http://localhost:10001).
 #
 # Optional Environment Variables:
-# - <AGENT_NAME_UPPER>_A2A_SERVER_COMMAND: Command to launch the A2A agent process (if managed by SAM).
+# - <SNAKE_UPPER_CASE_NAME>_A2A_SERVER_COMMAND: Command to launch the A2A agent process (if managed by SAM).
 #                                         Example: "python -m my_a2a_agent --port 10001"
-# - <AGENT_NAME_UPPER>_A2A_SERVER_STARTUP_TIMEOUT: Timeout (seconds) for launched agent readiness (default: 30).
-# - <AGENT_NAME_UPPER>_A2A_SERVER_RESTART_ON_CRASH: Restart crashed managed process (default: true).
-# - <AGENT_NAME_UPPER>_A2A_BEARER_TOKEN: Bearer token for A2A requests if required by the target agent.
-# - <AGENT_NAME_UPPER>_INPUT_REQUIRED_TTL: TTL (seconds) for storing INPUT_REQUIRED state in cache (default: 300).
+# - <SNAKE_UPPER_CASE_NAME>_A2A_SERVER_STARTUP_TIMEOUT: Timeout (seconds) for launched agent readiness (default: 30).
+# - <SNAKE_UPPER_CASE_NAME>_A2A_SERVER_RESTART_ON_CRASH: Restart crashed managed process (default: true).
+# - <SNAKE_UPPER_CASE_NAME>_A2A_BEARER_TOKEN: Bearer token for A2A requests if required by the target agent.
+# - <SNAKE_UPPER_CASE_NAME>_INPUT_REQUIRED_TTL: TTL (seconds) for storing INPUT_REQUIRED state in cache (default: 300).
 # - USE_TEMPORARY_QUEUES:           Use temporary queues instead of durable ones (default: false).
 # - SOLACE_DEV_MODE:                Use local queues instead of broker for development (default: false).
 
@@ -78,17 +78,17 @@ flows:
           # agent_name is automatically set by SAM CLI using the template variable
           agent_name: {{SNAKE_CASE_NAME}}
           # URL of the target A2A agent (Mandatory)
-          a2a_server_url: ${{{{AGENT_NAME_UPPER}}}_A2A_SERVER_URL}
+          a2a_server_url: ${{{SNAKE_UPPER_CASE_NAME}}_A2A_SERVER_URL}
           # Command to launch the A2A agent process (Optional)
-          a2a_server_command: ${{{{AGENT_NAME_UPPER}}}_A2A_SERVER_COMMAND, null}
+          a2a_server_command: ${{{SNAKE_UPPER_CASE_NAME}}_A2A_SERVER_COMMAND, null}
           # Timeout for launched agent readiness check (Optional, default 30s)
-          a2a_server_startup_timeout: ${{{{AGENT_NAME_UPPER}}}_A2A_SERVER_STARTUP_TIMEOUT, 30}
+          a2a_server_startup_timeout: ${{{SNAKE_UPPER_CASE_NAME}}_A2A_SERVER_STARTUP_TIMEOUT, 30}
           # Whether to restart the managed process if it crashes (Optional, default true)
-          a2a_server_restart_on_crash: ${{{{AGENT_NAME_UPPER}}}_A2A_SERVER_RESTART_ON_CRASH, true}
+          a2a_server_restart_on_crash: ${{{SNAKE_UPPER_CASE_NAME}}_A2A_SERVER_RESTART_ON_CRASH, true}
           # Bearer token for A2A requests (Optional)
-          a2a_bearer_token: ${{{{AGENT_NAME_UPPER}}}_A2A_BEARER_TOKEN, null}
+          a2a_bearer_token: ${{{SNAKE_UPPER_CASE_NAME}}_A2A_BEARER_TOKEN, null}
           # TTL for INPUT_REQUIRED state cache (Optional, default 300s)
-          input_required_ttl: ${{{{AGENT_NAME_UPPER}}}_INPUT_REQUIRED_TTL, 300}
+          input_required_ttl: ${{{SNAKE_UPPER_CASE_NAME}}_INPUT_REQUIRED_TTL, 300}
 
           # --- Standard SAM Agent Configuration ---
           # Interval (seconds) for sending registration messages to the orchestrator
@@ -126,5 +126,3 @@ flows:
           copy_user_properties: true # Crucial: Preserve metadata like session_id, gateway_id etc.
           # The output topic is determined dynamically by the A2AClientAgentComponent
           # based on the action response and originator.
-```
-sam-a2a-client/implementation-checklist.md

@@ -119,6 +119,7 @@ class A2AClientAgentComponent(BaseAgentComponent):
     """
 
     info = info
+    actions = []  # Actions will be dynamically created based on the AgentCard
 
     def __init__(self, module_info: Optional[Dict[str, Any]] = None, **kwargs):
         """
