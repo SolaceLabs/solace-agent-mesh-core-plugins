@@ -227,7 +227,7 @@ class A2AClientAction(Action):
                         try:
                             # Use the FileService from the component
                             file_meta = file_service.upload_from_buffer(
-                                content=file_bytes,  # Corrected: pass content=file_bytes
+                                buffer=file_bytes,  # Correct parameter name
                                 file_name=file_name,
                                 session_id=session_id,
                                 mime_type=mime_type,
