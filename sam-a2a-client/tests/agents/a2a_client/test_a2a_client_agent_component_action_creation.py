@@ -35,9 +35,14 @@ class TestA2AClientAgentComponentActionCreation(unittest.TestCase):
         self.mock_create_provide_input = self.patcher_create_provide_input.start()
 
         # Mock the action instances returned by the factories
-        self.mock_dynamic_action1 = MagicMock(spec=A2AClientAction, name="dynamic_action_1")
-        self.mock_dynamic_action2 = MagicMock(spec=A2AClientAction, name="dynamic_action_2")
-        self.mock_static_action = MagicMock(spec=ProvideInputAction, name="provide_required_input")
+        # Explicitly set the name attribute after creation
+        self.mock_dynamic_action1 = MagicMock(spec=A2AClientAction)
+        self.mock_dynamic_action1.name = "dynamic_action_1"
+        self.mock_dynamic_action2 = MagicMock(spec=A2AClientAction)
+        self.mock_dynamic_action2.name = "dynamic_action_2"
+        self.mock_static_action = MagicMock(spec=ProvideInputAction)
+        self.mock_static_action.name = "provide_required_input"
+
 
         self.mock_create_actions.return_value = [] # Default to no dynamic actions
         self.mock_create_provide_input.return_value = self.mock_static_action
