@@ -7,9 +7,7 @@ import base64
 # Adjust import paths as necessary
 from src.agents.a2a_client.actions.a2a_client_action import (
     A2AClientAction,
-    AgentSkill,
     TaskSendParams,
-    A2AMessage,
     TextPart,
     FilePart,
     FileContent,
@@ -17,7 +15,14 @@ from src.agents.a2a_client.actions.a2a_client_action import (
     TaskState,
     SendTaskResponse, # Import SendTaskResponse
 )
-from src.common_a2a.types import TaskStatus, Artifact, DataPart # Import necessary types
+# Import Message directly from common_a2a.types
+from src.common_a2a.types import (
+    AgentSkill,
+    Message, # Changed from A2AMessage
+    TaskStatus,
+    Artifact,
+    DataPart, # Import necessary types
+)
 from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo
 from solace_ai_connector.common.log import log # Import the log object
 
@@ -126,7 +131,7 @@ class TestA2AClientActionInvokeCall(unittest.TestCase):
         mock_task.status = MagicMock(spec=TaskStatus)
         mock_task.status.state = state
         # Use getattr to safely access parts, default to empty list
-        mock_task.status.message = MagicMock(spec=A2AMessage, parts=getattr(message_parts, 'parts', [])) if message_parts else None
+        mock_task.status.message = MagicMock(spec=Message, parts=getattr(message_parts, 'parts', [])) if message_parts else None # Changed spec
         mock_task.artifacts = artifacts or []
         # Helper method to mimic Task.get_state()
         mock_task.get_state = MagicMock(return_value=state)

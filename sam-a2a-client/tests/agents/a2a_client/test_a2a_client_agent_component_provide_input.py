@@ -11,7 +11,7 @@ from src.common_a2a.types import (
     Task,
     TaskState,
     TaskStatus,
-    A2AMessage,
+    Message,  # Changed from A2AMessage
     TextPart,
     FilePart,
     FileContent,
@@ -36,7 +36,7 @@ def _create_mock_task_response(
     mock_task.status.state = state
     # Use getattr to safely access parts, default to empty list
     mock_task.status.message = (
-        MagicMock(spec=A2AMessage, parts=getattr(message_parts, "parts", []))
+        MagicMock(spec=Message, parts=getattr(message_parts, "parts", [])) # Changed spec
         if message_parts
         else None
     )

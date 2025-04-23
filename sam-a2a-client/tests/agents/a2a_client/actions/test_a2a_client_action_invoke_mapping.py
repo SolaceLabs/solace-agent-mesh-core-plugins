@@ -8,9 +8,7 @@ import json
 # Adjust import paths as necessary
 from src.agents.a2a_client.actions.a2a_client_action import (
     A2AClientAction,
-    AgentSkill,
     TaskSendParams,
-    A2AMessage,
     TextPart,
     FilePart,
     FileContent,
@@ -18,7 +16,14 @@ from src.agents.a2a_client.actions.a2a_client_action import (
     TaskState,
     SendTaskResponse,
 )
-from src.common_a2a.types import TaskStatus, Artifact, DataPart
+# Import Message directly from common_a2a.types
+from src.common_a2a.types import (
+    AgentSkill,
+    Message, # Changed from A2AMessage
+    TaskStatus,
+    Artifact,
+    DataPart,
+)
 from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo
 from solace_ai_connector.common.log import log
 
@@ -165,9 +170,10 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
             "src.agents.a2a_client.actions.a2a_client_action.FileContent",
             wraps=FileContent,
         )
+        # Patch the alias used in the action file, but wrap the original Message class
         self.a2a_message_patcher = patch(
             "src.agents.a2a_client.actions.a2a_client_action.A2AMessage",
-            wraps=A2AMessage,
+            wraps=Message,
         )
         self.task_send_params_patcher = patch(
             "src.agents.a2a_client.actions.a2a_client_action.TaskSendParams",
@@ -198,7 +204,7 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
         call_args, call_kwargs = self.MockTaskSendParams.call_args
         self.assertEqual(call_kwargs["sessionId"], self.meta["session_id"])
 
-        # Verify A2AMessage construction
+        # Verify Message construction (using the patched alias)
         self.MockA2AMessage.assert_called_once_with(role="user", parts=ANY)
         message_args, message_kwargs = self.MockA2AMessage.call_args
         sent_parts = message_kwargs["parts"]
@@ -246,7 +252,7 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
         file_part_args, file_part_kwargs = self.MockFilePart.call_args
         self.assertIsInstance(file_part_kwargs["file"], FileContent)
 
-        # Verify A2AMessage parts
+        # Verify Message parts (using the patched alias)
         self.MockA2AMessage.assert_called_once()
         message_args, message_kwargs = self.MockA2AMessage.call_args
         sent_parts = message_kwargs["parts"]
@@ -292,7 +298,7 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
         self.assertEqual(self.MockFileContent.call_count, 2)
         self.assertEqual(self.MockFilePart.call_count, 2)
 
-        # Verify A2AMessage parts
+        # Verify Message parts (using the patched alias)
         self.MockA2AMessage.assert_called_once()
         message_args, message_kwargs = self.MockA2AMessage.call_args
         sent_parts = message_kwargs["parts"]
@@ -319,7 +325,8 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
             "prompt": "Process with error",
             "files": json.dumps([file_url_valid, file_url_error]),
         }
-        self.action.invoke(params, self.meta)
+        # Expect invoke to return an error ActionResponse because file processing failed
+        response = self.action.invoke(params, self.meta)
 
         # Verify FileService calls (both attempted)
         self.assertEqual(self.mock_file_service.resolve_url.call_count, 2)
@@ -339,26 +346,15 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
             any_order=True,
         )
 
-        # Verify Parts construction (only TextPart and one FilePart created)
-        self.MockTextPart.assert_called_once_with(text=params["prompt"])
-        self.MockFileContent.assert_called_once()  # Only for the valid file
-        self.MockFilePart.assert_called_once()  # Only for the valid file
+        # Verify A2AClient was NOT called because file processing failed critically
+        self.mock_a2a_client.send_task.assert_not_called()
 
-        # Verify A2AMessage parts (only Text + 1 File)
-        self.MockA2AMessage.assert_called_once()
-        message_args, message_kwargs = self.MockA2AMessage.call_args
-        sent_parts = message_kwargs["parts"]
-        self.assertEqual(len(sent_parts), 2)
-        self.assertIsInstance(sent_parts[0], TextPart)
-        self.assertIsInstance(sent_parts[1], FilePart)
-        self.assertEqual(
-            sent_parts[1].file.name, "file1.txt"
-        )  # Check it's the valid one
+        # Verify error response
+        self.assertIsInstance(response, ActionResponse)
+        self.assertIsNotNone(response.error_info)
+        self.assertIn("Error resolving file URL", response.message)
+        self.assertIn("File Processing Error", response.error_info.error_message)
 
-        # Verify A2AClient call (should still proceed with valid parts)
-        self.mock_a2a_client.send_task.assert_called_once()
-        sent_payload = self.mock_a2a_client.send_task.call_args[0][0]
-        self.assertEqual(len(sent_payload["message"]["parts"]), 2)
 
     def test_invoke_mapping_file_not_found(self):
         """Test mapping skips file if FileService.resolve_url raises FileNotFoundError."""
@@ -368,27 +364,21 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
             "prompt": "Process with missing",
             "files": json.dumps([file_url_valid, file_url_not_found]),
         }
-        self.action.invoke(params, self.meta)
+        # Expect invoke to return an error ActionResponse because file processing failed
+        response = self.action.invoke(params, self.meta)
 
         # Verify FileService calls (both attempted)
         self.assertEqual(self.mock_file_service.resolve_url.call_count, 2)
 
-        # Verify Parts construction (only TextPart and one FilePart created)
-        self.MockTextPart.assert_called_once_with(text=params["prompt"])
-        self.MockFileContent.assert_called_once()  # Only for the valid file
-        self.MockFilePart.assert_called_once()  # Only for the valid file
+        # Verify A2AClient was NOT called
+        self.mock_a2a_client.send_task.assert_not_called()
 
-        # Verify A2AMessage parts (only Text + 1 File)
-        self.MockA2AMessage.assert_called_once()
-        message_args, message_kwargs = self.MockA2AMessage.call_args
-        sent_parts = message_kwargs["parts"]
-        self.assertEqual(len(sent_parts), 2)
-        self.assertEqual(sent_parts[1].file.name, "file1.txt")
+        # Verify error response
+        self.assertIsInstance(response, ActionResponse)
+        self.assertIsNotNone(response.error_info)
+        self.assertIn("Error resolving file URL", response.message)
+        self.assertIn("File Processing Error", response.error_info.error_message)
 
-        # Verify A2AClient call (should still proceed)
-        self.mock_a2a_client.send_task.assert_called_once()
-        sent_payload = self.mock_a2a_client.send_task.call_args[0][0]
-        self.assertEqual(len(sent_payload["message"]["parts"]), 2)
 
     def test_invoke_mapping_invalid_files_param_format(self):
         """Test mapping handles 'files' param not being a valid JSON list string."""
