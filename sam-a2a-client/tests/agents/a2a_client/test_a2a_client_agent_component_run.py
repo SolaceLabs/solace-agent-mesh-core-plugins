@@ -69,6 +69,9 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
             "a2a_server_url": "http://launched:1234",
             "a2a_server_startup_timeout": 20,
             "a2a_server_restart_on_crash": True,
+            # Explicitly set new configs to None for this test
+            "a2a_server_working_dir": None,
+            "a2a_server_env_file": None,
         }
         component = create_test_component(config, self.mock_cache)
 
@@ -76,8 +79,11 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
         component.run()
 
         # Assertions
+        # Updated assertion to include working_dir and env_file
         self.MockProcessManager.assert_called_once_with(
             command=config["a2a_server_command"],
+            working_dir=config["a2a_server_working_dir"], # Added
+            env_file=config["a2a_server_env_file"],       # Added
             restart_on_crash=config["a2a_server_restart_on_crash"],
             agent_name=component.agent_name,
             stop_event=component.stop_monitor,
@@ -132,7 +138,11 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
 
     def test_run_failure_launch_error(self):
         """Test run handles error during process launch."""
-        config = {"a2a_server_command": "bad_command"}
+        config = {
+            "a2a_server_command": "bad_command",
+            "a2a_server_working_dir": None,
+            "a2a_server_env_file": None,
+        }
         component = create_test_component(config, self.mock_cache)
         launch_error = FileNotFoundError("Command not found")
         self.mock_pm_instance.launch.side_effect = launch_error
@@ -141,7 +151,14 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
         component.run()
 
         # Assertions
-        self.MockProcessManager.assert_called_once()
+        self.MockProcessManager.assert_called_once_with(
+            command=config["a2a_server_command"],
+            working_dir=config["a2a_server_working_dir"],
+            env_file=config["a2a_server_env_file"],
+            restart_on_crash=True, # Default
+            agent_name=component.agent_name,
+            stop_event=component.stop_monitor,
+        )
         self.mock_pm_instance.launch.assert_called_once()
         self.MockConnectionHandler.assert_not_called()  # Should fail before CH init
         self.mock_ch_instance.wait_for_ready.assert_not_called()
