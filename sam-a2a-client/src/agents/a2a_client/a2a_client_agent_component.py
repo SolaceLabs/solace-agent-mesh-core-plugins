@@ -61,6 +61,18 @@ info.update(
                 "type": "string",
             },
             {
+                "name": "a2a_server_working_dir", # New parameter
+                "required": False,
+                "description": "Optional working directory to change into before running the command.",
+                "type": "string",
+            },
+            {
+                "name": "a2a_server_env_file", # New parameter
+                "required": False,
+                "description": "Optional path to a .env file to load environment variables from for the command.",
+                "type": "string",
+            },
+            {
                 "name": "a2a_server_startup_timeout",
                 "required": False,
                 "description": "Seconds to wait for a launched A2A agent to become ready.",
@@ -105,6 +117,8 @@ class A2AClientAgentComponent(BaseAgentComponent):
         agent_name (str): Unique name for this SAM agent instance.
         a2a_server_url (str): URL of the target A2A agent.
         a2a_server_command (Optional[str]): Command to launch the A2A agent process.
+        a2a_server_working_dir (Optional[str]): Working directory for the command.
+        a2a_server_env_file (Optional[str]): Path to .env file for the command.
         a2a_server_startup_timeout (int): Timeout for agent readiness check.
         a2a_server_restart_on_crash (bool): Whether to restart the managed process.
         a2a_bearer_token (Optional[str]): Bearer token for A2A requests.
@@ -142,6 +156,8 @@ class A2AClientAgentComponent(BaseAgentComponent):
         # Configuration
         self.a2a_server_url: str = self.get_config("a2a_server_url")
         self.a2a_server_command: Optional[str] = self.get_config("a2a_server_command")
+        self.a2a_server_working_dir: Optional[str] = self.get_config("a2a_server_working_dir") # New
+        self.a2a_server_env_file: Optional[str] = self.get_config("a2a_server_env_file") # New
         self.a2a_server_startup_timeout: int = self.get_config(
             "a2a_server_startup_timeout"
         )
@@ -202,6 +218,8 @@ class A2AClientAgentComponent(BaseAgentComponent):
                 log.debug("Initializing A2AProcessManager for '%s'.", self.agent_name)
                 self.process_manager = A2AProcessManager(
                     command=self.a2a_server_command,
+                    working_dir=self.a2a_server_working_dir, # Pass new config
+                    env_file=self.a2a_server_env_file,       # Pass new config
                     restart_on_crash=self.a2a_server_restart_on_crash,
                     agent_name=self.agent_name,
                     stop_event=self.stop_monitor,

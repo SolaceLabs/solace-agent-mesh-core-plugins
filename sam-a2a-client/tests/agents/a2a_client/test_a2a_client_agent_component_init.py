@@ -21,6 +21,8 @@ class TestA2AClientAgentComponentInit(unittest.TestCase):
         self.assertIn("agent_name", param_names)
         self.assertIn("a2a_server_url", param_names)
         self.assertIn("a2a_server_command", param_names)
+        self.assertIn("a2a_server_working_dir", param_names) # New
+        self.assertIn("a2a_server_env_file", param_names)    # New
         self.assertIn("a2a_server_startup_timeout", param_names)
         self.assertIn("a2a_server_restart_on_crash", param_names)
         self.assertIn("a2a_bearer_token", param_names)
@@ -37,6 +39,8 @@ class TestA2AClientAgentComponentInit(unittest.TestCase):
             "agent_name": "test_a2a_agent",
             "a2a_server_url": "http://localhost:10001",
             "a2a_server_command": "run_agent.sh",
+            "a2a_server_working_dir": "/path/to/agent", # New
+            "a2a_server_env_file": "/path/to/agent/.env", # New
             "a2a_server_startup_timeout": 45,
             "a2a_server_restart_on_crash": False,
             "a2a_bearer_token": "test_token_123",
@@ -60,6 +64,8 @@ class TestA2AClientAgentComponentInit(unittest.TestCase):
         self.assertEqual(component.agent_name, "test_a2a_agent")
         self.assertEqual(component.a2a_server_url, "http://localhost:10001")
         self.assertEqual(component.a2a_server_command, "run_agent.sh")
+        self.assertEqual(component.a2a_server_working_dir, "/path/to/agent") # New
+        self.assertEqual(component.a2a_server_env_file, "/path/to/agent/.env") # New
         self.assertEqual(component.a2a_server_startup_timeout, 45)
         self.assertEqual(component.a2a_server_restart_on_crash, False)
         self.assertEqual(component.a2a_bearer_token, "test_token_123")

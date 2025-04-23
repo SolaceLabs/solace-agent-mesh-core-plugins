@@ -30,6 +30,7 @@ dependencies = [
   "starlette>=0.30.0", # Needed by A2A common server (used in tests/samples)
   "sse-starlette>=1.0.0", # Needed by A2A common server for streaming
   "uvicorn>=0.20.0", # Needed by A2A common server (used in tests/samples)
+  "python-dotenv>=1.0.0", # Added for loading .env files
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

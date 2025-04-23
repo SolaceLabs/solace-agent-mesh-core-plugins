@@ -31,6 +31,8 @@ def create_test_component(config_overrides=None, cache_service_instance=None):
         "agent_name": "test_a2a_agent",
         "a2a_server_url": "http://localhost:10001",
         "a2a_server_command": None,  # Default to no command
+        "a2a_server_working_dir": None, # New default
+        "a2a_server_env_file": None,    # New default
         "a2a_server_startup_timeout": 10,  # Use a shorter timeout for tests unless overridden
         "a2a_server_restart_on_crash": True,
         "a2a_bearer_token": None,

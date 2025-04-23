@@ -8,7 +8,8 @@ import shlex
 import platform
 import threading
 import os
-from typing import Optional
+from typing import Optional, Dict
+from dotenv import dotenv_values
 
 from solace_ai_connector.common.log import log  # Use solace-ai-connector log
 
@@ -22,6 +23,8 @@ class A2AProcessManager:
 
     Attributes:
         command (Optional[str]): The command line string to launch the process.
+        working_dir (Optional[str]): The working directory for the command.
+        env_file (Optional[str]): Path to the .env file for the command environment.
         restart_on_crash (bool): Whether to attempt restarting the process on non-zero exit.
         agent_name (str): The name of the SAM agent instance for logging purposes.
         stop_event (threading.Event): Event used to signal termination to the monitor thread.
@@ -32,6 +35,8 @@ class A2AProcessManager:
     def __init__(
         self,
         command: Optional[str],
+        working_dir: Optional[str],
+        env_file: Optional[str],
         restart_on_crash: bool,
         agent_name: str,
         stop_event: threading.Event,
@@ -41,29 +46,74 @@ class A2AProcessManager:
 
         Args:
             command: The command line string to execute. If None, launch/monitor is disabled.
+            working_dir: Optional working directory for the command.
+            env_file: Optional path to a .env file to load environment variables from.
             restart_on_crash: If True, attempts to restart the process if it exits unexpectedly.
             agent_name: The name of the associated SAM agent for logging.
             stop_event: A threading.Event to signal termination.
         """
         self.command = command
+        self.working_dir = working_dir
+        self.env_file = env_file
         self.restart_on_crash = restart_on_crash
         self.agent_name = agent_name
         self.stop_event = stop_event
         self.process: Optional[subprocess.Popen] = None
         self.monitor_thread: Optional[threading.Thread] = None
         log.debug(
-            "A2AProcessManager initialized for '%s'. Command: '%s', Restart: %s",
+            "A2AProcessManager initialized for '%s'. Command: '%s', WD: '%s', EnvFile: '%s', Restart: %s",
             self.agent_name,
             self.command,
+            self.working_dir,
+            self.env_file,
             self.restart_on_crash,
         )
 
+    def _load_env_vars(self) -> Optional[Dict[str, str]]:
+        """Loads environment variables from the specified .env file."""
+        if not self.env_file:
+            return None
+
+        if not os.path.exists(self.env_file):
+            log.warning(
+                "Environment file '%s' specified for agent '%s' does not exist. Skipping.",
+                self.env_file,
+                self.agent_name,
+            )
+            return None
+
+        try:
+            log.debug(
+                "Loading environment variables from '%s' for agent '%s'.",
+                self.env_file,
+                self.agent_name,
+            )
+            # dotenv_values doesn't modify os.environ, it just returns a dict
+            loaded_vars = dotenv_values(self.env_file)
+            # Merge with current environment, giving precedence to loaded vars
+            merged_env = os.environ.copy()
+            merged_env.update(loaded_vars)
+            log.debug(
+                "Loaded %d variables from '%s'.", len(loaded_vars), self.env_file
+            )
+            return merged_env
+        except Exception as e:
+            log.error(
+                "Failed to load environment variables from '%s' for agent '%s': %s",
+                self.env_file,
+                self.agent_name,
+                e,
+                exc_info=True,
+            )
+            return None # Return None on error, Popen will use default env
+
     def launch(self):
         """
-        Launches the external A2A agent process using the configured command.
+        Launches the external A2A agent process using the configured command,
+        working directory, and environment file.
 
         Raises:
-            FileNotFoundError: If the command executable is not found.
+            FileNotFoundError: If the command executable is not found or working_dir is invalid.
             Exception: For other errors during process launch.
         """
         if not self.command:
@@ -86,11 +136,30 @@ class A2AProcessManager:
             self.agent_name,
             self.command,
         )
+        if self.working_dir:
+            log.info("  Working Directory: %s", self.working_dir)
+        if self.env_file:
+            log.info("  Environment File: %s", self.env_file)
+
         args = []  # Define args before try block
         try:
             # Use shlex.split for safer command parsing, especially with arguments
             args = shlex.split(self.command)
+
+            # Prepare Popen arguments
             popen_kwargs = {}
+            # Set working directory if specified
+            if self.working_dir:
+                if not os.path.isdir(self.working_dir):
+                     raise FileNotFoundError(f"Specified working directory does not exist or is not a directory: {self.working_dir}")
+                popen_kwargs["cwd"] = self.working_dir
+
+            # Load and set environment variables if specified
+            process_env = self._load_env_vars()
+            if process_env is not None:
+                popen_kwargs["env"] = process_env
+            # If _load_env_vars returned None due to error or no file, Popen uses default env
+
             # Ensure the child process runs independently, allowing SAM to exit cleanly
             if platform.system() == "Windows":
                 # Creates a new process group, detaching from the parent console
@@ -101,25 +170,28 @@ class A2AProcessManager:
 
             # Redirect stdout/stderr to devnull to prevent blocking and keep SAM logs clean
             with open(os.devnull, "w", encoding="utf-8") as devnull:
-                self.process = subprocess.Popen(
-                    args, stdout=devnull, stderr=devnull, **popen_kwargs
-                )
+                popen_kwargs["stdout"] = devnull
+                popen_kwargs["stderr"] = devnull
+                self.process = subprocess.Popen(args, **popen_kwargs)
+
             log.info(
                 "Launched A2A agent process for '%s' with PID: %d",
                 self.agent_name,
                 self.process.pid,
             )
 
-        except FileNotFoundError:
-            log.error(
-                "Command not found for '%s': %s. "
-                "Please ensure it's in the system PATH or provide the full path.",
-                self.agent_name,
-                args[0] if args else "<empty command>",
-                exc_info=True,
-            )
+        except FileNotFoundError as e:
+            # Check if error is due to command or working directory
+            if self.working_dir and not os.path.isdir(self.working_dir):
+                 log_msg = f"Invalid working directory for '%s': %s."
+                 log_args = (self.agent_name, self.working_dir)
+            else:
+                 log_msg = "Command not found for '%s': %s. Please ensure it's in the system PATH or provide the full path."
+                 log_args = (self.agent_name, args[0] if args else "<empty command>")
+
+            log.error(log_msg, *log_args, exc_info=True)
             self.process = None  # Ensure process is None on failure
-            raise  # Re-raise the specific error for the component to handle
+            raise FileNotFoundError(log_msg % log_args) from e # Re-raise with specific message
         except Exception as e:
             log.error(
                 "Failed to launch A2A agent process for '%s': %s",
