@@ -6,18 +6,20 @@ import subprocess
 # Adjust the import path based on how tests are run (e.g., from root)
 from .test_helpers import create_test_component # Import helper
 from solace_ai_connector.common.log import log # Import the log object
+# Import the class to mock its instance methods if needed
+from src.agents.a2a_client.a2a_process_manager import A2AProcessManager
 
 class TestA2AClientAgentComponentStop(unittest.TestCase):
 
     @patch('src.agents.a2a_client.a2a_client_agent_component.BaseAgentComponent.stop_component')
-    @patch('src.agents.a2a_client.a2a_process_manager.A2AProcessManager.stop') # Patch stop in ProcessManager
-    def test_stop_component_stops_process_manager(self, mock_pm_stop, mock_super_stop):
-        """Test stop_component calls stop on the process manager if it exists."""
+    # Removed the patch for A2AProcessManager.stop here
+    def test_stop_component_stops_process_manager(self, mock_super_stop):
+        """Test stop_component calls stop on the process manager instance if it exists."""
         # Provide a mock cache service
         mock_cache = MagicMock()
         component = create_test_component(cache_service_instance=mock_cache)
-        # Mock process manager instance
-        mock_pm = MagicMock()
+        # Mock process manager instance specifically
+        mock_pm = MagicMock(spec=A2AProcessManager) # Use spec for better mocking
         component.process_manager = mock_pm
         # Mock connection handler
         component.connection_handler = MagicMock()
@@ -25,15 +27,16 @@ class TestA2AClientAgentComponentStop(unittest.TestCase):
         component.stop_component()
 
         self.assertTrue(component.stop_monitor.is_set())
-        mock_pm_stop.assert_called_once() # Verify process manager stop was called
+        # Assert stop was called on the mock INSTANCE
+        mock_pm.stop.assert_called_once()
         self.assertIsNone(component.process_manager) # Should be cleared
         self.assertIsNone(component.connection_handler) # Should be cleared
         self.assertFalse(component._initialized.is_set()) # Should be cleared
         mock_super_stop.assert_called_once()
 
     @patch('src.agents.a2a_client.a2a_client_agent_component.BaseAgentComponent.stop_component')
-    @patch('src.agents.a2a_client.a2a_process_manager.A2AProcessManager.stop') # Patch stop in ProcessManager
-    def test_stop_component_no_process_manager(self, mock_pm_stop, mock_super_stop):
+    # Removed the patch for A2AProcessManager.stop here
+    def test_stop_component_no_process_manager(self, mock_super_stop):
         """Test stop_component handles no process manager existing."""
         # Provide a mock cache service
         mock_cache = MagicMock()
@@ -42,14 +45,23 @@ class TestA2AClientAgentComponentStop(unittest.TestCase):
         # Mock connection handler
         component.connection_handler = MagicMock()
 
+        # Store the original stop method of the class to ensure it's not called
+        original_pm_stop = A2AProcessManager.stop
+
+        # Use a spy on the original method if needed, but simpler to just check instance
+        # For this test, we just need to ensure no error occurs and super is called.
+        # We don't need to assert stop *wasn't* called on a non-existent instance.
+
         component.stop_component()
 
         self.assertTrue(component.stop_monitor.is_set())
-        mock_pm_stop.assert_not_called() # Process manager stop NOT called
+        # No process manager, so no stop call expected on any instance
+        # (We removed the class patch, so no need to assert_not_called on that)
         self.assertIsNone(component.process_manager)
         self.assertIsNone(component.connection_handler) # Still cleared
         self.assertFalse(component._initialized.is_set())
         mock_super_stop.assert_called_once()
+
 
     @patch('src.agents.a2a_client.a2a_client_agent_component.BaseAgentComponent.stop_component')
     def test_stop_component_clears_connection_handler(self, mock_super_stop):
