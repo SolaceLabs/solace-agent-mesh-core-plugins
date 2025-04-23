@@ -128,7 +128,8 @@ def handle_provide_required_input(
     cache_key = f"a2a_follow_up:{follow_up_id}"
     a2a_taskId: Optional[str] = None
     try:
-        a2a_taskId = cache_service.get(cache_key)
+        # Use get_data() instead of get()
+        a2a_taskId = cache_service.get_data(cache_key)
         if a2a_taskId is None:
             log.warning(
                 "Follow-up ID '%s' not found in cache or expired for agent '%s'. Please start the task again.",
@@ -141,7 +142,8 @@ def handle_provide_required_input(
                 error_info=ErrorInfo("Invalid Follow-up ID"),
             )
         # Delete the entry immediately after retrieval to prevent reuse
-        cache_service.delete(cache_key)
+        # Use remove_data() instead of delete()
+        cache_service.remove_data(cache_key)
         log.info(
             "Retrieved original A2A task ID '%s' for follow-up ID '%s' (agent '%s'). Cache entry deleted.",
             a2a_taskId,
@@ -473,8 +475,11 @@ def handle_provide_required_input(
             new_cache_key = f"a2a_follow_up:{new_sam_follow_up_id}"
             try:
                 # Store the *original* A2A task ID again, associated with the *new* follow-up ID
-                cache_service.set(
-                    new_cache_key, a2a_taskId, ttl=component.input_required_ttl
+                # Use add_data() instead of set()
+                cache_service.add_data(
+                    key=new_cache_key,
+                    value=a2a_taskId,
+                    expiry=component.input_required_ttl,
                 )
                 log.info(
                     "Stored *nested* INPUT_REQUIRED state for A2A task '%s' with new SAM follow-up ID '%s'.",
