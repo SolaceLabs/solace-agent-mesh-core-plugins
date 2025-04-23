@@ -45,10 +45,14 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
         self.patcher_log_warning.stop()
         self.patcher_log_error.stop()
         self.patcher_launch.stop()
-        self.patcher_event_wait.stop() # Stop the global patch
+        # Ensure the global patch is stopped if it was running
+        try:
+            self.patcher_event_wait.stop()
+        except RuntimeError: # Catch error if already stopped
+            pass
         self.stop_event.clear() # Reset event for next test
 
-    # --- Test that was running forever ---
+    # --- Test that previously ran forever ---
     # Remove the specific patch for threading.Event.wait for this test
     # It relies on the while loop condition checking stop_event.is_set()
     def test_monitor_loop_process_runs_exits_on_stop(self):
@@ -88,6 +92,8 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
         self.mock_event_wait_global = self.patcher_event_wait.start()
 
 
+    # --- Test that was running forever (again) ---
+    # Stop the global patch for this specific test to allow real waits
     def test_monitor_loop_process_crashes_restart_success(self):
         """Test monitor restarts process successfully on crash."""
         # Stop the global patch for this specific test
@@ -114,7 +120,22 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
                 self.stop_event.set() # Stop after successful restart check
                 return None
 
-        self.mock_process.poll.side_effect = poll_side_effect
+        # Determine which process's poll is being called
+        def dynamic_poll_side_effect(*args, **kwargs):
+            if process_manager.process == self.mock_process:
+                # Original process behavior
+                return poll_side_effect()
+            elif process_manager.process == new_mock_process:
+                # New process behavior
+                return poll_side_effect()
+            else:
+                # Should not happen in this test
+                return None
+
+        # Assign the dynamic side effect to both mocks initially
+        self.mock_process.poll.side_effect = dynamic_poll_side_effect
+        new_mock_process.poll.side_effect = dynamic_poll_side_effect
+
 
         # Mock launch to simulate successful restart
         def launch_side_effect(*args, **kwargs):
@@ -126,13 +147,13 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
         process_manager._monitor_loop()
 
         # Expected sequence without wait patch:
-        # 1. poll() -> 1 (crash)
+        # 1. poll() on mock_process -> 1 (crash)
         # 2. wait(timeout=2) -> False (times out)
         # 3. launch() -> assigns new_mock_process
         # 4. continue
-        # 5. poll() -> None (running)
+        # 5. poll() on new_mock_process -> None (running)
         # 6. wait(timeout=5) -> False (times out)
-        # 7. poll() -> None (running), sets stop_event
+        # 7. poll() on new_mock_process -> None (running), sets stop_event
         # 8. wait(timeout=5) -> True (event is set)
         # 9. break
 
