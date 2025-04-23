@@ -10,8 +10,6 @@ solace_agent_mesh_plugin:
   agent_types:
     - name: a2a_client # The identifier used when adding an agent of this type (e.g., `sam add agent my_a2a_agent --copy-from sam-a2a-client:a2a_client`)
       description: "A SAM agent that acts as a client bridge to an external A2A agent, exposing its skills as SAM actions."
-      # Path to the configuration template file, relative to the plugin's root directory
-      config_template: "src/agents/a2a_client/a2a_client_agent_config_template.yaml"
 
 # gateway_types: # No gateway types defined in this plugin
 #   - name: ...
