@@ -152,6 +152,8 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
         self.mock_super_run.assert_not_called()
         self.mock_log_critical.assert_called_once()
         self.assertIn("Initialization failed", self.mock_log_critical.call_args[0][0])
+        # Check the correct argument index for the exception
+        self.assertEqual(self.mock_log_critical.call_args[0][2], launch_error)
         self.mock_stop_component.assert_called_once()  # Cleanup should be called
 
     def test_run_failure_readiness_timeout(self):
@@ -173,7 +175,8 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
         self.mock_super_run.assert_not_called()
         self.mock_log_critical.assert_called_once()
         self.assertIn("Initialization failed", self.mock_log_critical.call_args[0][0])
-        self.assertIsInstance(self.mock_log_critical.call_args[0][1], TimeoutError)
+        # Check the correct argument index for the exception
+        self.assertIsInstance(self.mock_log_critical.call_args[0][2], TimeoutError)
         self.mock_stop_component.assert_called_once()
 
     def test_run_failure_client_init_error(self):
@@ -196,7 +199,8 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
         self.mock_super_run.assert_not_called()
         self.mock_log_critical.assert_called_once()
         self.assertIn("Initialization failed", self.mock_log_critical.call_args[0][0])
-        self.assertEqual(self.mock_log_critical.call_args[0][1], init_error)
+        # Check the correct argument index for the exception
+        self.assertEqual(self.mock_log_critical.call_args[0][2], init_error)
         self.mock_stop_component.assert_called_once()
 
     def test_run_failure_action_creation_error(self):
@@ -221,7 +225,8 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
         self.assertIn(
             "Unexpected error", self.mock_log_critical.call_args[0][0]
         )  # Check generic error log
-        self.assertEqual(self.mock_log_critical.call_args[0][1], action_error)
+        # Check the correct argument index for the exception
+        self.assertEqual(self.mock_log_critical.call_args[0][2], action_error)
         self.mock_stop_component.assert_called_once()
 
 
