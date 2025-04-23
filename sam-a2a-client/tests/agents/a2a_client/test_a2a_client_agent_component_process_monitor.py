@@ -60,7 +60,15 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
         # Stop the global patch for this specific test
         self.patcher_event_wait.stop()
 
-        process_manager = A2AProcessManager("cmd", True, self.agent_name, self.stop_event)
+        # Corrected A2AProcessManager instantiation
+        process_manager = A2AProcessManager(
+            command="cmd",
+            working_dir=None,
+            env_file=None,
+            restart_on_crash=True,
+            agent_name=self.agent_name,
+            stop_event=self.stop_event
+        )
         process_manager.process = self.mock_process
 
         # Simulate poll returning None twice, then stop_event being set during the third poll call
@@ -99,7 +107,15 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
         # Stop the global patch for this specific test
         self.patcher_event_wait.stop()
 
-        process_manager = A2AProcessManager("cmd", True, self.agent_name, self.stop_event)
+        # Corrected A2AProcessManager instantiation
+        process_manager = A2AProcessManager(
+            command="cmd",
+            working_dir=None,
+            env_file=None,
+            restart_on_crash=True,
+            agent_name=self.agent_name,
+            stop_event=self.stop_event
+        )
         process_manager.process = self.mock_process
 
         # Simulate crash on first poll, then running after restart
@@ -184,7 +200,15 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
 
     def test_monitor_loop_process_crashes_restart_fails(self):
         """Test monitor stops if restart attempt fails."""
-        process_manager = A2AProcessManager("cmd", True, self.agent_name, self.stop_event)
+        # Corrected A2AProcessManager instantiation
+        process_manager = A2AProcessManager(
+            command="cmd",
+            working_dir=None,
+            env_file=None,
+            restart_on_crash=True,
+            agent_name=self.agent_name,
+            stop_event=self.stop_event
+        )
         process_manager.process = self.mock_process
 
         # Simulate crash
@@ -217,7 +241,15 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
 
     def test_monitor_loop_process_crashes_restart_disabled(self):
         """Test monitor exits without restarting if restart_on_crash is False."""
-        process_manager = A2AProcessManager("cmd", False, self.agent_name, self.stop_event) # Restart disabled
+        # Corrected A2AProcessManager instantiation
+        process_manager = A2AProcessManager(
+            command="cmd",
+            working_dir=None,
+            env_file=None,
+            restart_on_crash=False, # Restart disabled
+            agent_name=self.agent_name,
+            stop_event=self.stop_event
+        )
         process_manager.process = self.mock_process
 
         # Simulate crash
@@ -240,7 +272,15 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
 
     def test_monitor_loop_process_exits_cleanly(self):
         """Test monitor exits without restarting if process exits with code 0."""
-        process_manager = A2AProcessManager("cmd", True, self.agent_name, self.stop_event) # Restart enabled
+        # Corrected A2AProcessManager instantiation
+        process_manager = A2AProcessManager(
+            command="cmd",
+            working_dir=None,
+            env_file=None,
+            restart_on_crash=True, # Restart enabled
+            agent_name=self.agent_name,
+            stop_event=self.stop_event
+        )
         process_manager.process = self.mock_process
 
         # Simulate clean exit
@@ -263,7 +303,15 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
 
     def test_monitor_loop_max_restarts_exceeded(self):
         """Test monitor stops after exceeding max restart attempts."""
-        process_manager = A2AProcessManager("cmd", True, self.agent_name, self.stop_event)
+        # Corrected A2AProcessManager instantiation
+        process_manager = A2AProcessManager(
+            command="cmd",
+            working_dir=None,
+            env_file=None,
+            restart_on_crash=True,
+            agent_name=self.agent_name,
+            stop_event=self.stop_event
+        )
         process_manager.process = self.mock_process
         max_restarts = 5 # Default in implementation
 
@@ -294,7 +342,15 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
             self.patcher_event_wait.stop()
         except RuntimeError: pass # Ignore if already stopped
 
-        process_manager = A2AProcessManager("cmd", True, self.agent_name, self.stop_event)
+        # Corrected A2AProcessManager instantiation
+        process_manager = A2AProcessManager(
+            command="cmd",
+            working_dir=None,
+            env_file=None,
+            restart_on_crash=True,
+            agent_name=self.agent_name,
+            stop_event=self.stop_event
+        )
         process_manager.process = self.mock_process
 
         # Simulate crash
@@ -331,7 +387,15 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
 
     def test_monitor_loop_poll_error(self):
         """Test monitor stops if process.poll() raises an exception."""
-        process_manager = A2AProcessManager("cmd", True, self.agent_name, self.stop_event)
+        # Corrected A2AProcessManager instantiation
+        process_manager = A2AProcessManager(
+            command="cmd",
+            working_dir=None,
+            env_file=None,
+            restart_on_crash=True,
+            agent_name=self.agent_name,
+            stop_event=self.stop_event
+        )
         process_manager.process = self.mock_process
 
         # Simulate poll raising error
