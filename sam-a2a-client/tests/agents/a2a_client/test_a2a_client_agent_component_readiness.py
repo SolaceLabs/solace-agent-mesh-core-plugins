@@ -119,10 +119,9 @@ class TestA2AClientAgentComponentReadiness(unittest.TestCase):
         result = handler.wait_for_ready(timeout)  # Pass timeout here
 
         self.assertFalse(result)
-        # The number of calls depends on when the timeout is precisely checked relative to the mock time increments
-        # Check that it was called multiple times, consistent with retries before timeout
-        self.assertGreaterEqual(mock_requests_get.call_count, 3)
-        self.assertGreaterEqual(mock_event_wait.call_count, 3)
+        # Assert exactly 3 calls based on the mocked time progression
+        self.assertEqual(mock_requests_get.call_count, 3)
+        self.assertEqual(mock_event_wait.call_count, 3)
 
     @patch(
         "src.agents.a2a_client.a2a_connection_handler.requests.get",
@@ -161,8 +160,9 @@ class TestA2AClientAgentComponentReadiness(unittest.TestCase):
 
         self.assertFalse(result)
         # Check that requests.get was called multiple times before timeout
-        self.assertGreaterEqual(mock_requests_get.call_count, 2)
-        self.assertGreaterEqual(
+        # Based on time: 1000.1 < 1002.0 (call 1), 1001.2 < 1002.0 (call 2), 1002.3 > 1002.0 (loop ends)
+        self.assertEqual(mock_requests_get.call_count, 2)
+        self.assertEqual(
             mock_event_wait.call_count, 2
         )  # Wait after each failed attempt
 
