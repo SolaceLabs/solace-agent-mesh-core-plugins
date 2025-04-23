@@ -110,7 +110,7 @@ class A2AProcessManager:
     def launch(self):
         """
         Launches the external A2A agent process using the configured command,
-        working directory, and environment file.
+        working directory, and environment file. Captures stderr.
 
         Raises:
             FileNotFoundError: If the command executable is not found or working_dir is invalid.
@@ -168,10 +168,15 @@ class A2AProcessManager:
                 # Starts the child in a new session with its own process group ID
                 popen_kwargs["start_new_session"] = True
 
-            # Redirect stdout/stderr to devnull to prevent blocking and keep SAM logs clean
+            # Redirect stdout to devnull, capture stderr
             with open(os.devnull, "w", encoding="utf-8") as devnull:
                 popen_kwargs["stdout"] = devnull
-                popen_kwargs["stderr"] = devnull
+                popen_kwargs["stderr"] = subprocess.PIPE # Capture stderr
+                # Set text mode for stderr for easier decoding
+                popen_kwargs["text"] = True
+                popen_kwargs["encoding"] = 'utf-8'
+                popen_kwargs["errors"] = 'replace' # Handle potential decoding errors
+
                 self.process = subprocess.Popen(args, **popen_kwargs)
 
             log.info(
@@ -243,8 +248,8 @@ class A2AProcessManager:
 
     def _monitor_loop(self):
         """
-        Internal loop run by the monitor thread. Checks the process status
-        and attempts restarts if configured and necessary.
+        Internal loop run by the monitor thread. Checks the process status,
+        captures stderr on error, and attempts restarts if configured and necessary.
         """
         log.info("Monitor thread running for '%s'.", self.agent_name)
         restart_delay = 2  # Seconds to wait before attempting restart
@@ -271,13 +276,33 @@ class A2AProcessManager:
                 break  # Exit monitor loop on poll error
 
             if return_code is not None:  # Process has terminated
+                stderr_output = ""
+                try:
+                    # Read stderr output now that the process has terminated
+                    # communicate() is safer as it waits for the process and reads all output
+                    # Use a timeout to prevent potential hangs
+                    stdout_data, stderr_data = self.process.communicate(timeout=5)
+                    if stderr_data:
+                        stderr_output = stderr_data.strip()
+                        # Limit captured output length for logging
+                        max_stderr_len = 1024
+                        if len(stderr_output) > max_stderr_len:
+                            stderr_output = stderr_output[:max_stderr_len] + "... (truncated)"
+                except subprocess.TimeoutExpired:
+                    log.warning("Timeout reading stderr from terminated process for '%s'.", self.agent_name)
+                    stderr_output = "[Timeout reading stderr]"
+                except Exception as comm_err:
+                    log.warning("Error reading stderr from terminated process for '%s': %s", self.agent_name, comm_err)
+                    stderr_output = "[Error reading stderr]"
+
                 log_func = log.info if return_code == 0 else log.error
-                log_func(
-                    "Managed A2A process (PID: %d) for '%s' terminated with code %d.",
-                    self.process.pid,
-                    self.agent_name,
-                    return_code,
-                )
+                log_msg = "Managed A2A process (PID: %d) for '%s' terminated with code %d."
+                log_args = [self.process.pid, self.agent_name, return_code]
+                if return_code != 0 and stderr_output:
+                    log_msg += " Stderr: %s"
+                    log_args.append(stderr_output)
+
+                log_func(log_msg, *log_args) # Log termination with optional stderr
 
                 if (
                     self.restart_on_crash
@@ -396,13 +421,15 @@ class A2AProcessManager:
                 # Attempt graceful termination first
                 self.process.terminate()
                 try:
-                    # Wait for a short period
-                    self.process.wait(timeout=5)
+                    # Wait for a short period, also capture any final output
+                    stdout_data, stderr_data = self.process.communicate(timeout=5)
                     log.info(
                         "Managed A2A process (PID: %d) for '%s' terminated gracefully.",
                         pid,
                         self.agent_name,
                     )
+                    if stderr_data:
+                        log.debug("Final stderr from PID %d: %s", pid, stderr_data.strip())
                 except subprocess.TimeoutExpired:
                     # Force kill if graceful termination fails
                     log.warning(
@@ -411,7 +438,13 @@ class A2AProcessManager:
                         self.agent_name,
                     )
                     self.process.kill()
-                    self.process.wait()  # Wait for kill to complete
+                    # Wait for kill to complete, capture output if possible (less likely)
+                    try:
+                        stdout_data, stderr_data = self.process.communicate(timeout=1)
+                        if stderr_data:
+                            log.debug("Final stderr after kill from PID %d: %s", pid, stderr_data.strip())
+                    except Exception:
+                        pass # Ignore errors trying to read after kill
                     log.info(
                         "Managed A2A process (PID: %d) for '%s' killed.",
                         pid,
@@ -427,6 +460,9 @@ class A2AProcessManager:
                     exc_info=True,
                 )
             finally:
+                # Ensure streams are closed if they exist
+                if self.process and self.process.stderr and not self.process.stderr.closed:
+                    self.process.stderr.close()
                 self.process = None  # Ensure process handle is cleared
 
         # 3. Join the monitor thread

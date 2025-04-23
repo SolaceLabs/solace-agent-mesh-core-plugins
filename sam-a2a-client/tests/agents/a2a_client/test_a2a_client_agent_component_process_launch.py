@@ -61,9 +61,12 @@ class TestA2AClientAgentComponentProcessLaunch(unittest.TestCase):
 
         popen_kwargs = {
             'stdout': ANY,
-            'stderr': ANY,
+            'stderr': subprocess.PIPE, # Check stderr is PIPE
             'cwd': working_dir, # Check cwd
-            'env': expected_env # Check env
+            'env': expected_env, # Check env
+            'text': True, # Check text mode
+            'encoding': 'utf-8', # Check encoding
+            'errors': 'replace' # Check error handling
         }
         if platform.system() == "Windows":
             popen_kwargs['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP

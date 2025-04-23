@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch, MagicMock, call
 import threading
 import time
+import subprocess # Import subprocess
 
 # Adjust the import path based on how tests are run (e.g., from root)
 from src.agents.a2a_client.a2a_process_manager import A2AProcessManager
@@ -12,9 +13,14 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
     def setUp(self):
         self.agent_name = "monitor_test_agent"
         self.stop_event = threading.Event()
-        self.mock_process = MagicMock()
+        self.mock_process = MagicMock(spec=subprocess.Popen) # Use spec for Popen
         self.mock_process.pid = 12345
         self.mock_process.poll.return_value = None # Default: process running
+        # Mock stderr attribute needed for communicate/read
+        self.mock_process.stderr = MagicMock()
+        self.mock_process.stderr.read.return_value = "" # Default: no stderr output
+        # Mock communicate method
+        self.mock_process.communicate.return_value = (None, "") # stdout, stderr
 
         # Patch time.sleep to avoid actual sleeping in tests
         # We still need sleep for the restart delay simulation, but not for the main wait
@@ -119,8 +125,14 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
         process_manager.process = self.mock_process
 
         # Simulate crash on first poll, then running after restart
-        new_mock_process = MagicMock(pid=54321)
+        new_mock_process = MagicMock(spec=subprocess.Popen, pid=54321)
         new_mock_process.poll.return_value = None # New process is running
+        new_mock_process.stderr = MagicMock() # Mock stderr for new process
+        new_mock_process.communicate.return_value = (None, "") # Mock communicate
+
+        # Mock stderr output for the *original* crashing process
+        crash_stderr = "Traceback:\nError: Something went wrong!\n"
+        self.mock_process.communicate.return_value = (None, crash_stderr)
 
         poll_count = 0
         def poll_side_effect(*args, **kwargs):
@@ -164,20 +176,24 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
 
         # Expected sequence without wait patch:
         # 1. poll() on mock_process -> 1 (crash)
-        # 2. wait(timeout=2) -> False (times out)
-        # 3. launch() -> assigns new_mock_process
-        # 4. continue
-        # 5. poll() on new_mock_process -> None (running)
-        # 6. wait(timeout=5) -> False (times out)
-        # 7. poll() on new_mock_process -> None (running), sets stop_event
-        # 8. wait(timeout=5) -> True (event is set)
-        # 9. break
+        # 2. communicate() on mock_process -> captures stderr
+        # 3. log error with stderr
+        # 4. wait(timeout=2) -> False (times out)
+        # 5. launch() -> assigns new_mock_process
+        # 6. continue
+        # 7. poll() on new_mock_process -> None (running)
+        # 8. wait(timeout=5) -> False (times out)
+        # 9. poll() on new_mock_process -> None (running), sets stop_event
+        # 10. wait(timeout=5) -> True (event is set)
+        # 11. break
 
         self.assertEqual(self.mock_process.poll.call_count, 1) # Original process polled once
+        self.mock_process.communicate.assert_called_once_with(timeout=5) # Check communicate call
         self.assertEqual(new_mock_process.poll.call_count, 2) # New process polled twice
+        # Check the error log includes stderr
         self.mock_log_error.assert_any_call(
-            "Managed A2A process (PID: %d) for '%s' terminated with code %d.",
-            12345, self.agent_name, 1
+            "Managed A2A process (PID: %d) for '%s' terminated with code %d. Stderr: %s",
+            12345, self.agent_name, 1, crash_stderr.strip()
         )
         self.mock_log_info.assert_any_call(
             "Attempting restart %d/%d for '%s' in %ds...",
@@ -213,6 +229,9 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
 
         # Simulate crash
         self.mock_process.poll.return_value = 1
+        # Mock stderr output for the crashing process
+        crash_stderr = "Fatal error during init"
+        self.mock_process.communicate.return_value = (None, crash_stderr)
 
         # Mock launch to simulate failure (sets process to None)
         def launch_side_effect_fail(*args, **kwargs):
@@ -224,9 +243,11 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
         process_manager._monitor_loop()
 
         self.mock_process.poll.assert_called_once()
+        self.mock_process.communicate.assert_called_once_with(timeout=5)
+        # Check error log includes stderr
         self.mock_log_error.assert_any_call(
-            "Managed A2A process (PID: %d) for '%s' terminated with code %d.",
-            12345, self.agent_name, 1
+            "Managed A2A process (PID: %d) for '%s' terminated with code %d. Stderr: %s",
+            12345, self.agent_name, 1, crash_stderr.strip()
         )
         self.mock_log_info.assert_any_call(
             "Attempting restart %d/%d for '%s' in %ds...",
@@ -254,14 +275,19 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
 
         # Simulate crash
         self.mock_process.poll.return_value = 1
+        # Mock stderr output for the crashing process
+        crash_stderr = "Some error output"
+        self.mock_process.communicate.return_value = (None, crash_stderr)
 
         # Run the loop
         process_manager._monitor_loop()
 
         self.mock_process.poll.assert_called_once()
+        self.mock_process.communicate.assert_called_once_with(timeout=5)
+        # Check error log includes stderr
         self.mock_log_error.assert_any_call(
-            "Managed A2A process (PID: %d) for '%s' terminated with code %d.",
-            12345, self.agent_name, 1
+            "Managed A2A process (PID: %d) for '%s' terminated with code %d. Stderr: %s",
+            12345, self.agent_name, 1, crash_stderr.strip()
         )
         self.mock_launch.assert_not_called() # Restart NOT attempted
         self.mock_log_info.assert_any_call(
@@ -285,11 +311,15 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
 
         # Simulate clean exit
         self.mock_process.poll.return_value = 0
+        # Mock communicate for clean exit (likely no stderr)
+        self.mock_process.communicate.return_value = (None, "")
 
         # Run the loop
         process_manager._monitor_loop()
 
         self.mock_process.poll.assert_called_once()
+        self.mock_process.communicate.assert_called_once_with(timeout=5)
+        # Check info log (no stderr expected)
         self.mock_log_info.assert_any_call(
             "Managed A2A process (PID: %d) for '%s' terminated with code %d.",
             12345, self.agent_name, 0 # Check code 0 logged as info
@@ -317,6 +347,9 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
 
         # Simulate repeated crashes
         self.mock_process.poll.return_value = 1
+        # Mock stderr output for the crashing process
+        crash_stderr = "Repeated failure"
+        self.mock_process.communicate.return_value = (None, crash_stderr)
 
         # Mock launch to simulate *persistent* failure (process remains None or keeps crashing)
         # For simplicity, let launch do nothing, so self.process stays as the crashed one
@@ -327,10 +360,17 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
 
         # Poll called once initially, then once per restart attempt
         self.assertEqual(self.mock_process.poll.call_count, max_restarts + 1)
+        self.assertEqual(self.mock_process.communicate.call_count, max_restarts + 1) # Called after each poll failure
         self.assertEqual(self.mock_launch.call_count, max_restarts) # Called 5 times
+        # Check the final error log for exceeding attempts
         self.mock_log_error.assert_any_call(
             "Exceeded maximum restart attempts (%d) for '%s'. Stopping monitor.",
             max_restarts, self.agent_name
+        )
+        # Check the error log for the last crash includes stderr
+        self.mock_log_error.assert_any_call(
+            "Managed A2A process (PID: %d) for '%s' terminated with code %d. Stderr: %s",
+            12345, self.agent_name, 1, crash_stderr.strip()
         )
         self.mock_log_info.assert_any_call("Stopping monitor thread for A2A process '%s'.", self.agent_name)
 
@@ -355,6 +395,9 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
 
         # Simulate crash
         self.mock_process.poll.return_value = 1
+        # Mock stderr output for the crashing process
+        crash_stderr = "Error before stop"
+        self.mock_process.communicate.return_value = (None, crash_stderr)
 
         # Patch the wait method ONLY on the specific event instance used by the manager
         # Make it return True to simulate the event being set during the wait
@@ -364,9 +407,11 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
 
             # Assertions
             self.mock_process.poll.assert_called_once() # Poll called once before crash detected
+            self.mock_process.communicate.assert_called_once_with(timeout=5) # Communicate called after poll
+            # Check error log includes stderr
             self.mock_log_error.assert_any_call(
-                "Managed A2A process (PID: %d) for '%s' terminated with code %d.",
-                12345, self.agent_name, 1
+                "Managed A2A process (PID: %d) for '%s' terminated with code %d. Stderr: %s",
+                12345, self.agent_name, 1, crash_stderr.strip()
             )
             self.mock_log_info.assert_any_call(
                 "Attempting restart %d/%d for '%s' in %ds...",
@@ -406,6 +451,7 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
         process_manager._monitor_loop()
 
         self.mock_process.poll.assert_called_once()
+        self.mock_process.communicate.assert_not_called() # Communicate not called if poll fails
         self.mock_log_error.assert_any_call(
             "Error polling A2A process for '%s': %s. Stopping monitor.",
             self.agent_name, poll_error, exc_info=True
