@@ -16,10 +16,11 @@ from src.agents.a2a_client.actions.a2a_client_action import (
     TaskState,
     SendTaskResponse,
 )
+
 # Import Message directly from common_a2a.types
 from src.common_a2a.types import (
     AgentSkill,
-    Message, # Changed from A2AMessage
+    Message,  # Changed from A2AMessage
     TaskStatus,
     Artifact,
     DataPart,
@@ -80,13 +81,6 @@ class MockA2AClientAgentComponent:
         )
         self.a2a_client = a2a_client or MagicMock()
         self.input_required_ttl = self.get_config("input_required_ttl", 300)
-
-
-# <inst>
-# Write tests for A2AClientAction invoke mapping
-# Please don't mock everything and make the tests very brittle. I want a higher level set of tests
-# that test the actual functionality of the invoke method, while still working with reasonable changes to the code.
-# </inst>
 
 
 class TestA2AClientActionInvokeMapping(unittest.TestCase):
@@ -355,7 +349,6 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
         self.assertIn("Error resolving file URL", response.message)
         self.assertIn("File Processing Error", response.error_info.error_message)
 
-
     def test_invoke_mapping_file_not_found(self):
         """Test mapping skips file if FileService.resolve_url raises FileNotFoundError."""
         file_url_valid = "fs://valid/file1.txt"
@@ -378,7 +371,6 @@ class TestA2AClientActionInvokeMapping(unittest.TestCase):
         self.assertIsNotNone(response.error_info)
         self.assertIn("Error resolving file URL", response.message)
         self.assertIn("File Processing Error", response.error_info.error_message)
-
 
     def test_invoke_mapping_invalid_files_param_format(self):
         """Test mapping handles 'files' param not being a valid JSON list string."""
