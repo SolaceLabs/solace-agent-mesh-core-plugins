@@ -235,23 +235,35 @@ class A2AProcessManager:
 
                     try:
                         self.launch()  # Attempt to relaunch
-                        if self.process:  # Check if launch was successful
+                        # *** FIX START ***
+                        # Check if launch succeeded AND the new process is running
+                        if self.process and self.process.poll() is None:
                             log.info(
                                 "A2A process for '%s' restarted successfully (New PID: %d).",
                                 self.agent_name,
                                 self.process.pid,
                             )
                             current_restart_attempts = (
-                                0  # Reset attempts on successful restart
+                                0  # Reset attempts ONLY on successful restart AND running process
                             )
                             continue  # Continue monitoring the new process
+                        elif self.process:
+                            # Launch succeeded but process terminated immediately
+                            log.error(
+                                "Restarted A2A process for '%s' (PID: %d) terminated immediately. Continuing restart attempts.",
+                                self.agent_name,
+                                self.process.pid,
+                            )
+                            # Do NOT reset current_restart_attempts
+                            # Do NOT continue; let the loop poll again
                         else:
-                            # Launch might have failed and set self.process to None
+                            # Launch failed and set self.process to None
                             log.error(
                                 "Failed to restart A2A process for '%s' (launch returned no process). Stopping monitor.",
                                 self.agent_name,
                             )
-                            break
+                            break # Stop monitoring if launch fails completely
+                        # *** FIX END ***
                     except Exception as e:
                         log.error(
                             "Exception during A2A process restart for '%s': %s. Stopping monitor.",
@@ -268,8 +280,12 @@ class A2AProcessManager:
                     )
                     break  # Exit monitor loop
             else:
-                # Process is still running, reset restart attempts
-                current_restart_attempts = 0
+                # Process is still running, reset restart attempts if they were > 0
+                # This handles the case where a process might have crashed, restarted,
+                # and is now running correctly.
+                if current_restart_attempts > 0:
+                    log.info("A2A process for '%s' is running after restart. Resetting attempt counter.", self.agent_name)
+                    current_restart_attempts = 0
 
             # Wait for a longer interval or until stop_event is set
             if self.stop_event.wait(timeout=5):  # Check every 5 seconds
@@ -289,6 +305,7 @@ class A2AProcessManager:
         self.stop_event.set()
 
         # 2. Terminate the process
+        pid = None # Initialize pid
         if self.process:
             pid = self.process.pid  # Store PID for logging before process becomes None
             log.info(
