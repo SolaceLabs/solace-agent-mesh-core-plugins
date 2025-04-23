@@ -118,7 +118,6 @@ class A2AClientAgentComponent(BaseAgentComponent):
         action_list (ActionList): List of actions exposed by this component.
     """
 
-    info = info
     actions = []  # Actions will be dynamically created based on the AgentCard
 
     def __init__(self, module_info: Optional[Dict[str, Any]] = None, **kwargs):
@@ -129,7 +128,8 @@ class A2AClientAgentComponent(BaseAgentComponent):
             module_info: Component configuration information.
             **kwargs: Additional keyword arguments, including core services like 'cache_service'.
         """
-        super().__init__(module_info or info, **kwargs)
+        self.info = copy.deepcopy(info)
+        super().__init__(module_info or self.info, **kwargs)
         self.agent_name: str = self.get_config("agent_name")
         if not self.agent_name:
             # This should ideally be caught by SAM core config validation, but added for safety
