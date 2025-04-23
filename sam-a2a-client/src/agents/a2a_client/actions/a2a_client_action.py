@@ -465,8 +465,11 @@ class A2AClientAction(Action):
                             file_url,
                             action_name,
                         )
-                        # Optionally, return an error ActionResponse here if file resolution failure is critical
-                        # return ActionResponse(message=f"Error: Could not resolve file URL: {file_url}", error_info=ErrorInfo("File Resolution Error"))
+                        # Return an error ActionResponse here if file resolution failure is critical
+                        return ActionResponse(
+                            message=f"Error: Could not resolve file URL: {file_url}",
+                            error_info=ErrorInfo("File Resolution Error")
+                        )
                 except Exception as e:
                     # Log errors during file resolution
                     log.error(
@@ -476,8 +479,11 @@ class A2AClientAction(Action):
                         e,
                         exc_info=True,
                     )
-                    # Optionally, return an error ActionResponse here
-                    # return ActionResponse(message=f"Error processing file: {file_url}", error_info=ErrorInfo(f"File Processing Error: {e}"))
+                    # Return an error ActionResponse immediately
+                    return ActionResponse(
+                        message=f"Error resolving file URL: {file_url}",
+                        error_info=ErrorInfo(f"File Processing Error: {e}")
+                    )
 
         # 3. Create TaskSendParams
         try:
