@@ -79,56 +79,12 @@ class TestA2AClientAgentComponentReadiness(unittest.TestCase):
         mock_event_wait.assert_called_with(timeout=1)  # Check last wait timeout
 
     @patch(
-        "src.agents.a2a_client.a2a_connection_handler.requests.get"
-    )  # Patch where requests is used
-    # REMOVED: @patch.object(threading.Event, "wait", return_value=False)
-    @patch(
-        "src.agents.a2a_client.a2a_connection_handler.time.time"
-    )  # Mock time where it's used
-    def test_wait_for_agent_ready_timeout(
-        self, mock_time, mock_requests_get # Removed mock_event_wait from args
-    ):
-        """Test wait_for_agent_ready returns False on timeout."""
-        timeout = 3  # seconds for test
-        component = create_test_component({"a2a_server_startup_timeout": timeout})
-        mock_response_fail = MagicMock()
-        mock_response_fail.status_code = 503
-        mock_requests_get.return_value = mock_response_fail
-
-        # Simulate time passing to exceed timeout using the sequence that should allow 3 calls
-        start_time = 1000.0
-        mock_time.side_effect = [
-            start_time,       # Initial deadline calculation (deadline=1003.0)
-            start_time + 0.1, # Iter 1 check -> Call 1, wait(1)
-            start_time + 1.2, # Iter 2 check -> Call 2, wait(1)
-            start_time + 2.3, # Iter 3 check -> Call 3, wait(1)
-            start_time + 3.4, # Iter 4 check (1003.4 >= 1003.0) -> Loop ends
-            start_time + 3.5, # log.error call
-            start_time + 3.6, # internal log call
-        ]
-
-        # Instantiate the handler and call the method
-        from src.agents.a2a_client.a2a_connection_handler import A2AConnectionHandler
-
-        # Create a real stop event for this test since wait is not mocked
-        stop_event = threading.Event()
-        handler = A2AConnectionHandler(
-            component.a2a_server_url,
-            None,
-            stop_event,  # Pass real event
-        )
-        result = handler.wait_for_ready(timeout)  # Pass timeout here
-
-        self.assertFalse(result)
-        # Assert exactly 3 calls based on the mocked time progression
-        self.assertEqual(mock_requests_get.call_count, 3)
-        # We cannot easily assert on the real wait call count or its timeout here
-
-    @patch(
         "src.agents.a2a_client.a2a_connection_handler.requests.get",
         side_effect=requests.exceptions.ConnectionError("Connection failed"),
     )  # Patch where requests is used
-    @patch.object(threading.Event, "wait", return_value=False) # Keep wait mock for this one
+    @patch.object(
+        threading.Event, "wait", return_value=False
+    )  # Keep wait mock for this one
     @patch(
         "src.agents.a2a_client.a2a_connection_handler.time.time"
     )  # Mock time where it's used

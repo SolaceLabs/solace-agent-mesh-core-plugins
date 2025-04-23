@@ -78,10 +78,6 @@ Once configured and SAM is running, the orchestrator can invoke actions on the `
 
 If an action results in the A2A agent requiring more input, the `ActionResponse` will contain `status: 'INPUT_REQUIRED'`, a message with the agent's question, and a `follow_up_id` in the `data` field. To provide the required input, invoke the special action `<your_agent_name>/provide_required_input` with parameters `follow_up_id` and `user_response`.
 
-## Development
-
-*(Placeholder for development setup instructions)*
-
 ## License
 
 Apache License 2.0

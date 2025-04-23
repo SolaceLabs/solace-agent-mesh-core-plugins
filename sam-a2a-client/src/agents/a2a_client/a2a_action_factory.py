@@ -47,8 +47,8 @@ def infer_params_from_skill(skill: AgentSkill) -> List[Dict[str, Any]]:
         },
         {
             "name": "files",
-            "desc": "Optional list of file URLs (e.g., from FileService) to include with the prompt.",
-            "type": "list",  # SAM expects 'list' for array-like inputs
+            "desc": "Optional list of file URLs (e.g., from FileService) to include with the prompt. This list must be in json format.",
+            "type": "string",  # SAM expects 'list' for array-like inputs
             "required": False,
         },
     ]
@@ -189,7 +189,7 @@ def create_provide_input_action(component: "A2AClientAgentComponent") -> Action:
             },
             {
                 "name": "files",
-                "desc": "Optional list of file URLs (e.g., from FileService) to include with the response.",
+                "desc": "Optional list of file URLs (e.g., from FileService) to include with the response. This list must be in json format.",
                 "type": "list",
                 "required": False,
             },
