@@ -4,9 +4,7 @@
 # 1. Periodic registration with the orchestrator.
 # 2. Processing action requests received from the orchestrator for this agent.
 #
-# Environment variables are used for configuration. Replace <SNAKE_UPPER_CASE_NAME>
-# with the uppercase version of the agent name chosen during `solace-agent-mesh add agent`.
-# Example: If agent name is 'crewai_image', use 'CREWAI_IMAGE_A2A_SERVER_URL'.
+# Environment variables are used for configuration. 
 #
 # Required Environment Variables:
 # - SOLACE_BROKER_URL:              URL of the Solace broker.
@@ -14,15 +12,15 @@
 # - SOLACE_BROKER_PASSWORD:         Password for the Solace broker.
 # - SOLACE_BROKER_VPN:              Message VPN on the Solace broker.
 # - SOLACE_AGENT_MESH_NAMESPACE:    Namespace prefix for SAM topics.
-# - <SNAKE_UPPER_CASE_NAME>_A2A_SERVER_URL: URL of the target A2A agent (e.g., http://localhost:10001).
+# - {{SNAKE_UPPER_CASE_NAME}}_A2A_SERVER_URL: URL of the target A2A agent (e.g., http://localhost:10001).
 #
 # Optional Environment Variables:
-# - <SNAKE_UPPER_CASE_NAME>_A2A_SERVER_COMMAND: Command to launch the A2A agent process (if managed by SAM).
+# - {{SNAKE_UPPER_CASE_NAME}}_A2A_SERVER_COMMAND: Command to launch the A2A agent process (if managed by SAM).
 #                                         Example: "python -m my_a2a_agent --port 10001"
-# - <SNAKE_UPPER_CASE_NAME>_A2A_SERVER_STARTUP_TIMEOUT: Timeout (seconds) for launched agent readiness (default: 30).
-# - <SNAKE_UPPER_CASE_NAME>_A2A_SERVER_RESTART_ON_CRASH: Restart crashed managed process (default: true).
-# - <SNAKE_UPPER_CASE_NAME>_A2A_BEARER_TOKEN: Bearer token for A2A requests if required by the target agent.
-# - <SNAKE_UPPER_CASE_NAME>_INPUT_REQUIRED_TTL: TTL (seconds) for storing INPUT_REQUIRED state in cache (default: 300).
+# - {{SNAKE_UPPER_CASE_NAME}}_A2A_SERVER_STARTUP_TIMEOUT: Timeout (seconds) for launched agent readiness (default: 30).
+# - {{SNAKE_UPPER_CASE_NAME}}_A2A_SERVER_RESTART_ON_CRASH: Restart crashed managed process (default: true).
+# - {{SNAKE_UPPER_CASE_NAME}}_A2A_BEARER_TOKEN: Bearer token for A2A requests if required by the target agent.
+# - {{SNAKE_UPPER_CASE_NAME}}_INPUT_REQUIRED_TTL: TTL (seconds) for storing INPUT_REQUIRED state in cache (default: 300).
 # - USE_TEMPORARY_QUEUES:           Use temporary queues instead of durable ones (default: false).
 # - SOLACE_DEV_MODE:                Use local queues instead of broker for development (default: false).
 
