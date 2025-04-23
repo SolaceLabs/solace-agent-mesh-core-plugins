@@ -150,7 +150,7 @@ class A2AProcessManager:
             popen_kwargs = {}
             # Set working directory if specified
             if self.working_dir:
-                if not os.path.isdir(self.working_dir):
+                if not os.path.isdir(self.working_dir): # First call to isdir
                      raise FileNotFoundError(f"Specified working directory does not exist or is not a directory: {self.working_dir}")
                 popen_kwargs["cwd"] = self.working_dir
 
@@ -181,17 +181,20 @@ class A2AProcessManager:
             )
 
         except FileNotFoundError as e:
-            # Check if error is due to command or working directory
-            if self.working_dir and not os.path.isdir(self.working_dir):
+            # Check if the error message indicates the working directory was the cause
+            # This relies on the specific error message raised above.
+            if self.working_dir and str(e).startswith("Specified working directory"):
                  log_msg = f"Invalid working directory for '%s': %s."
                  log_args = (self.agent_name, self.working_dir)
+            # Otherwise, assume the command was not found
             else:
                  log_msg = "Command not found for '%s': %s. Please ensure it's in the system PATH or provide the full path."
                  log_args = (self.agent_name, args[0] if args else "<empty command>")
 
             log.error(log_msg, *log_args, exc_info=True)
             self.process = None  # Ensure process is None on failure
-            raise FileNotFoundError(log_msg % log_args) from e # Re-raise with specific message
+            # Re-raise with the specific message determined above
+            raise FileNotFoundError(log_msg % log_args) from e
         except Exception as e:
             log.error(
                 "Failed to launch A2A agent process for '%s': %s",
