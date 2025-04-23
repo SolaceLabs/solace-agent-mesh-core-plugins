@@ -70,7 +70,7 @@ def handle_provide_required_input(
 
     follow_up_id = params.get("follow_up_id")
     user_response_text = params.get("user_response")
-    file_urls = params.get("files", [])  # Default to empty list
+    file_urls_json = params.get("files") # Expecting JSON string list or None
 
     # 1. Validate Input Parameters
     if not follow_up_id:
@@ -85,6 +85,19 @@ def handle_provide_required_input(
             message="Missing required parameter: 'user_response'.",
             error_info=ErrorInfo("Missing Parameter"),
         )
+
+    # Parse file URLs if provided
+    file_urls = []
+    if file_urls_json:
+        try:
+            parsed_files = json.loads(file_urls_json)
+            if isinstance(parsed_files, list):
+                file_urls = [str(url) for url in parsed_files if isinstance(url, str)]
+            else:
+                log.warning("Ignoring 'files' parameter as it's not a valid JSON list string.")
+        except json.JSONDecodeError:
+            log.warning("Ignoring 'files' parameter due to JSON decoding error.")
+
 
     # 2. Check Availability of Services
     cache_service = component.cache_service
@@ -193,22 +206,13 @@ def handle_provide_required_input(
         )
 
     # Add FileParts if file URLs are provided
-    if file_urls and isinstance(file_urls, str):  # Handle single URL case
-        file_urls = [file_urls]
-
-    if file_urls and isinstance(file_urls, list):
+    if file_urls: # Already ensured it's a list of strings
         log.debug(
             "Processing %d file URLs for follow-up (task '%s').",
             len(file_urls),
             a2a_taskId,
         )
         for file_url in file_urls:
-            if not isinstance(file_url, str):
-                log.warning(
-                    "Skipping non-string item in 'files' list for follow-up: %s",
-                    file_url,
-                )
-                continue
             try:
                 # Corrected logic: Use return_extra=True to get original bytes and metadata
                 log.debug("Resolving follow-up file URL: %s", file_url)
@@ -256,6 +260,11 @@ def handle_provide_required_input(
                         "Failed to resolve follow-up file URL '%s' or resolve_url did not return expected data.",
                         file_url,
                     )
+                    # Return error if file resolution fails
+                    return ActionResponse(
+                        message=f"Error: Could not resolve file URL: {file_url}",
+                        error_info=ErrorInfo("File Resolution Error")
+                    )
             except Exception as e:
                 log.error(
                     "Error resolving follow-up file URL '%s' (task '%s'): %s",
@@ -264,7 +273,11 @@ def handle_provide_required_input(
                     e,
                     exc_info=True,
                 )
-                # Decide if this should be a fatal error
+                # Return error if file resolution fails
+                return ActionResponse(
+                    message=f"Error resolving file URL: {file_url}",
+                    error_info=ErrorInfo(f"File Processing Error: {e}")
+                )
 
     # 5. Create TaskSendParams (using retrieved a2a_taskId)
     try:
@@ -302,10 +315,12 @@ def handle_provide_required_input(
         )
 
     # 6. Call A2A Agent and Process Response
+    send_task_response: Optional[SendTaskResponse] = None # Initialize before try block
     try:
         log.info("Sending follow-up input for A2A task '%s'...", a2a_taskId)
         # Send the follow-up request using asyncio.run()
-        send_task_response: SendTaskResponse = asyncio.run(
+        # The result of asyncio.run is the return value of the coroutine
+        send_task_response = asyncio.run(
             a2a_client.send_task(task_params.model_dump())
         )
 
@@ -403,6 +418,7 @@ def handle_provide_required_input(
                     final_files.extend(art_files)
 
             # Construct final message, including data if present
+            # Use extracted text if available, otherwise use default
             response_msg = final_message.strip() or "Task completed after follow-up."
             if final_data:
                 try:
@@ -430,10 +446,13 @@ def handle_provide_required_input(
                 msg_parts = getattr(status_message, "parts", [])
                 if msg_parts:
                     try:
-                        first_part_text = getattr(msg_parts[0], "text", "")
-                        if first_part_text:
-                            error_details = str(first_part_text)
-                            error_message += f": {error_details}"
+                        # Extract text from *all* text parts in the message
+                        extracted_texts = [
+                            str(p.text) for p in msg_parts if hasattr(p, 'text') and p.text
+                        ]
+                        if extracted_texts:
+                            error_details = "\n".join(extracted_texts)
+                            error_message += f": {error_details}" # Append extracted details
                     except Exception as e:
                         log.warning(
                             "Could not extract error details from FAILED follow-up task '%s': %s",
@@ -460,9 +479,12 @@ def handle_provide_required_input(
                 msg_parts = getattr(status_message, "parts", [])
                 if msg_parts:
                     try:
-                        question_details = getattr(msg_parts[0], "text", "")
-                        if question_details:
-                            agent_question = str(question_details)
+                        # Extract text from *all* text parts in the message
+                        extracted_texts = [
+                            str(p.text) for p in msg_parts if hasattr(p, 'text') and p.text
+                        ]
+                        if extracted_texts:
+                            agent_question = "\n".join(extracted_texts) # Use extracted question
                     except Exception as e:
                         log.warning(
                             "Could not extract nested question details from task '%s': %s",
@@ -523,6 +545,7 @@ def handle_provide_required_input(
             e,
             exc_info=True,
         )
+        # Include the original exception message in the ErrorInfo
         return ActionResponse(
             message=f"Failed to execute follow-up for action '{action_name}' due to communication or processing error.",
             error_info=ErrorInfo(f"A2A Communication/Processing Error: {e}"),

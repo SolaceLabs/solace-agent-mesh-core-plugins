@@ -143,6 +143,11 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
         def run_side_effect(awaitable):
             # In tests, the awaitable is the result of calling mock_a2a_client.send_task()
             # We've already set the return_value for that mock in each test.
+            # If the awaitable itself raises an exception (like in the communication error test),
+            # this side_effect function should let that exception propagate.
+            if isinstance(self.mock_a2a_client.send_task.side_effect, Exception):
+                 raise self.mock_a2a_client.send_task.side_effect
+            # Otherwise, return the configured return_value
             return self.mock_a2a_client.send_task.return_value
 
         self.mock_async_run.side_effect = run_side_effect
@@ -153,6 +158,9 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
 
     def tearDown(self):
         self.async_run_patcher.stop()
+        # Reset side effect for mock_a2a_client.send_task if it was changed
+        self.mock_a2a_client.send_task.side_effect = None
+
 
     def test_provide_input_success_completed(self):
         """Test successful follow-up leading to COMPLETED state."""
@@ -186,7 +194,7 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
 
         self.assertIsInstance(response, ActionResponse)
         self.assertIsNone(response.error_info)
-        self.assertEqual(response.message, response_text)
+        self.assertEqual(response.message, response_text) # Should now use extracted text
         self.assertIsNone(response.files)
 
     def test_provide_input_success_failed(self):
@@ -214,8 +222,8 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
         self.assertIsInstance(response, ActionResponse)
         self.assertIsNotNone(response.error_info)
         self.assertIn("Failed (after follow-up)", response.message)
-        self.assertIn(error_text, response.message)
-        self.assertEqual(response.error_info.error_message, error_text)
+        self.assertIn(error_text, response.message) # Should now include extracted text
+        self.assertEqual(response.error_info.error_message, error_text) # ErrorInfo should have extracted text
 
     def test_provide_input_success_nested_input_required(self):
         """Test successful follow-up leading to another INPUT_REQUIRED state."""
@@ -259,7 +267,7 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
 
         self.assertIsInstance(response, ActionResponse)
         self.assertIsNone(response.error_info)
-        self.assertIn(nested_question, response.message)
+        self.assertIn(nested_question, response.message) # Should now include extracted question
         self.assertIn("provide_required_input", response.message)
         self.assertIn(f"`{new_generated_uuid}`", response.message)
 
@@ -325,18 +333,8 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
         """Test handling of communication errors during the follow-up A2A call."""
         # Arrange: Mock A2A client to raise an error when send_task is awaited
         error_message = "Network unreachable"
-        # Configure the mock client's async method to raise an error
-        async def mock_send_task_raises(*args, **kwargs):
-            raise ConnectionError(error_message)
-        self.mock_a2a_client.send_task = mock_send_task_raises # Assign the async def
-
-        # Adjust asyncio.run mock to actually run the (error-raising) awaitable
-        async def run_awaitable_raises(awaitable):
-            try:
-                return await awaitable
-            except Exception as e:
-                raise e # Re-raise the exception caught from the awaitable
-        self.mock_async_run.side_effect = run_awaitable_raises
+        # Configure the mock client's async method OR its side_effect to raise
+        self.mock_a2a_client.send_task.side_effect = ConnectionError(error_message)
 
         # Act
         response = self.component._handle_provide_required_input(self.params, self.meta)
@@ -346,7 +344,7 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
         # Cache entry should still be removed even if the subsequent call fails
         self.mock_cache_service.remove_data.assert_called_once()
         # send_task was called (and raised an error)
-        # self.mock_a2a_client.send_task.assert_called_once() # Cannot assert call count on async def directly
+        self.mock_a2a_client.send_task.assert_called_once()
 
         self.assertIsInstance(response, ActionResponse)
         self.assertIsNotNone(response.error_info)
@@ -354,12 +352,7 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
         self.assertIn(
             "A2A Communication/Processing Error", response.error_info.error_message
         )
-        self.assertIn(error_message, response.error_info.error_message)
-
-        # Restore default asyncio.run mock for other tests
-        def run_side_effect(awaitable):
-            return self.mock_a2a_client.send_task.return_value
-        self.mock_async_run.side_effect = run_side_effect
+        self.assertIn(error_message, response.error_info.error_message) # Should now contain the original error
 
 
     def test_provide_input_with_file(self):
@@ -370,9 +363,10 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
         params_with_file["files"] = json.dumps([file_url]) # Files param is JSON string list
 
         # Mock A2A client to return COMPLETED
+        # Fix: Add part_type="text"
         mock_a2a_response = _create_mock_task_response(
             state=TaskState.COMPLETED,
-            message_parts=[_create_mock_part(text="File processed.")],
+            message_parts=[_create_mock_part(part_type="text", text="File processed.")],
             task_id=self.original_a2a_task_id,
         )
         self.mock_a2a_client.send_task.return_value = mock_a2a_response
@@ -404,7 +398,7 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
         # Assert successful response
         self.assertIsInstance(response, ActionResponse)
         self.assertIsNone(response.error_info)
-        self.assertEqual(response.message, "File processed.")
+        self.assertEqual(response.message, "File processed.") # Should use extracted text
 
     def test_provide_input_a2a_returns_rpc_error(self):
         """Test handling when A2A server returns a JSON-RPC level error."""
