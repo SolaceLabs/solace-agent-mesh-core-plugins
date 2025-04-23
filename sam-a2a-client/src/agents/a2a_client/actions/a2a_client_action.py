@@ -722,7 +722,7 @@ class A2AClientAction(Action):
                         self.component.input_required_ttl,
                     )
                     # Construct the message for the SAM user, including the follow-up ID
-                    response_msg = f"{agent_question}\n\nPlease provide the required input using the 'provide_required_input' action with follow-up ID: `{sam_follow_up_id}`"
+                    response_msg = f"{agent_question}\n\nPlease provide the required input using the 'provide_required_input' action with follow-up ID: `{sam_follow_up_id}`\n\nNOTE - when requesting this information from the user, include the follow-up ID in the request so that it is stored in the session history and be available for future use."
                     # Return an ActionResponse indicating input is needed
                     # Note: SAM ActionResponse doesn't have a standard 'status' field.
                     # We convey the need for input via the message and potentially error_info.
