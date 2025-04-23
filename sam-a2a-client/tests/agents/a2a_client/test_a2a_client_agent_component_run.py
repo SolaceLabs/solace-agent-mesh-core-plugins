@@ -7,17 +7,11 @@ from src.agents.a2a_client.a2a_client_agent_component import A2AClientAgentCompo
 from src.agents.a2a_client.a2a_process_manager import A2AProcessManager
 from src.agents.a2a_client.a2a_connection_handler import A2AConnectionHandler
 from solace_agent_mesh.agents.base_agent_component import BaseAgentComponent
-from solace_ai_connector.common.log import log # Import the log object
+from solace_ai_connector.common.log import log  # Import the log object
 
 # Import helper to create component instance
 from .test_helpers import create_test_component
 
-# <inst>
-# Write tests here for the A2AClientAgentComponent run method.
-#
-# Make the tests not brittle. Don't test every single line of code by mocking everything, but
-# rather test the main functionality and the expected outcomes.
-# </inst>
 
 class TestA2AClientAgentComponentRun(unittest.TestCase):
 
@@ -26,12 +20,22 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
         self.mock_cache = MagicMock()
 
         # Patch dependencies used within the run method's scope
-        self.patcher_pm = patch('src.agents.a2a_client.a2a_client_agent_component.A2AProcessManager', spec=A2AProcessManager)
-        self.patcher_ch = patch('src.agents.a2a_client.a2a_client_agent_component.A2AConnectionHandler', spec=A2AConnectionHandler)
-        self.patcher_create_actions = patch.object(A2AClientAgentComponent, '_create_actions')
-        self.patcher_super_run = patch.object(BaseAgentComponent, 'run')
-        self.patcher_log_critical = patch.object(log, 'critical')
-        self.patcher_stop_component = patch.object(A2AClientAgentComponent, 'stop_component')
+        self.patcher_pm = patch(
+            "src.agents.a2a_client.a2a_client_agent_component.A2AProcessManager",
+            spec=A2AProcessManager,
+        )
+        self.patcher_ch = patch(
+            "src.agents.a2a_client.a2a_client_agent_component.A2AConnectionHandler",
+            spec=A2AConnectionHandler,
+        )
+        self.patcher_create_actions = patch.object(
+            A2AClientAgentComponent, "_create_actions"
+        )
+        self.patcher_super_run = patch.object(BaseAgentComponent, "run")
+        self.patcher_log_critical = patch.object(log, "critical")
+        self.patcher_stop_component = patch.object(
+            A2AClientAgentComponent, "stop_component"
+        )
 
         self.MockProcessManager = self.patcher_pm.start()
         self.MockConnectionHandler = self.patcher_ch.start()
@@ -46,7 +50,9 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
 
         # Default successful return values for handler methods
         self.mock_ch_instance.wait_for_ready.return_value = True
-        self.mock_ch_instance.initialize_client.return_value = None # Method doesn't return anything
+        self.mock_ch_instance.initialize_client.return_value = (
+            None  # Method doesn't return anything
+        )
 
     def tearDown(self):
         self.patcher_pm.stop()
@@ -79,24 +85,26 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
         self.mock_pm_instance.launch.assert_called_once()
         self.MockConnectionHandler.assert_called_once_with(
             server_url=config["a2a_server_url"],
-            bearer_token=None, # Assuming default config
+            bearer_token=None,  # Assuming default config
             stop_event=component.stop_monitor,
         )
-        self.mock_ch_instance.wait_for_ready.assert_called_once_with(config["a2a_server_startup_timeout"])
+        self.mock_ch_instance.wait_for_ready.assert_called_once_with(
+            config["a2a_server_startup_timeout"]
+        )
         self.mock_ch_instance.initialize_client.assert_called_once()
         self.mock_create_actions.assert_called_once()
         self.mock_pm_instance.start_monitor.assert_called_once()
         self.assertTrue(component._initialized.is_set())
         self.mock_super_run.assert_called_once()
         self.mock_log_critical.assert_not_called()
-        self.mock_stop_component.assert_not_called() # Should not be called on success
+        self.mock_stop_component.assert_not_called()  # Should not be called on success
 
     def test_run_success_connect_mode(self):
         """Test successful run sequence in connect mode (no command)."""
         config = {
-            "a2a_server_command": None, # Explicitly no command
+            "a2a_server_command": None,  # Explicitly no command
             "a2a_server_url": "http://existing:5678",
-            "a2a_server_startup_timeout": 5, # Shorter timeout for connect check
+            "a2a_server_startup_timeout": 5,  # Shorter timeout for connect check
         }
         component = create_test_component(config, self.mock_cache)
 
@@ -104,17 +112,19 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
         component.run()
 
         # Assertions
-        self.MockProcessManager.assert_not_called() # PM not created
+        self.MockProcessManager.assert_not_called()  # PM not created
         self.mock_pm_instance.launch.assert_not_called()
         self.MockConnectionHandler.assert_called_once_with(
             server_url=config["a2a_server_url"],
             bearer_token=None,
             stop_event=component.stop_monitor,
         )
-        self.mock_ch_instance.wait_for_ready.assert_called_once_with(config["a2a_server_startup_timeout"])
+        self.mock_ch_instance.wait_for_ready.assert_called_once_with(
+            config["a2a_server_startup_timeout"]
+        )
         self.mock_ch_instance.initialize_client.assert_called_once()
         self.mock_create_actions.assert_called_once()
-        self.mock_pm_instance.start_monitor.assert_not_called() # Monitor not started
+        self.mock_pm_instance.start_monitor.assert_not_called()  # Monitor not started
         self.assertTrue(component._initialized.is_set())
         self.mock_super_run.assert_called_once()
         self.mock_log_critical.assert_not_called()
@@ -133,7 +143,7 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
         # Assertions
         self.MockProcessManager.assert_called_once()
         self.mock_pm_instance.launch.assert_called_once()
-        self.MockConnectionHandler.assert_not_called() # Should fail before CH init
+        self.MockConnectionHandler.assert_not_called()  # Should fail before CH init
         self.mock_ch_instance.wait_for_ready.assert_not_called()
         self.mock_ch_instance.initialize_client.assert_not_called()
         self.mock_create_actions.assert_not_called()
@@ -142,13 +152,13 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
         self.mock_super_run.assert_not_called()
         self.mock_log_critical.assert_called_once()
         self.assertIn("Initialization failed", self.mock_log_critical.call_args[0][0])
-        self.mock_stop_component.assert_called_once() # Cleanup should be called
+        self.mock_stop_component.assert_called_once()  # Cleanup should be called
 
     def test_run_failure_readiness_timeout(self):
         """Test run handles timeout during readiness check."""
         config = {"a2a_server_url": "http://timeout:1234"}
         component = create_test_component(config, self.mock_cache)
-        self.mock_ch_instance.wait_for_ready.return_value = False # Simulate timeout
+        self.mock_ch_instance.wait_for_ready.return_value = False  # Simulate timeout
 
         # Call run
         component.run()
@@ -156,7 +166,7 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
         # Assertions
         self.MockConnectionHandler.assert_called_once()
         self.mock_ch_instance.wait_for_ready.assert_called_once()
-        self.mock_ch_instance.initialize_client.assert_not_called() # Should fail before client init
+        self.mock_ch_instance.initialize_client.assert_not_called()  # Should fail before client init
         self.mock_create_actions.assert_not_called()
         self.mock_pm_instance.start_monitor.assert_not_called()
         self.assertFalse(component._initialized.is_set())
@@ -180,7 +190,7 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
         self.MockConnectionHandler.assert_called_once()
         self.mock_ch_instance.wait_for_ready.assert_called_once()
         self.mock_ch_instance.initialize_client.assert_called_once()
-        self.mock_create_actions.assert_not_called() # Should fail before action creation
+        self.mock_create_actions.assert_not_called()  # Should fail before action creation
         self.mock_pm_instance.start_monitor.assert_not_called()
         self.assertFalse(component._initialized.is_set())
         self.mock_super_run.assert_not_called()
@@ -204,13 +214,16 @@ class TestA2AClientAgentComponentRun(unittest.TestCase):
         self.mock_ch_instance.wait_for_ready.assert_called_once()
         self.mock_ch_instance.initialize_client.assert_called_once()
         self.mock_create_actions.assert_called_once()
-        self.mock_pm_instance.start_monitor.assert_not_called() # Should fail before monitor start
-        self.assertFalse(component._initialized.is_set()) # Should not be set on error
+        self.mock_pm_instance.start_monitor.assert_not_called()  # Should fail before monitor start
+        self.assertFalse(component._initialized.is_set())  # Should not be set on error
         self.mock_super_run.assert_not_called()
         self.mock_log_critical.assert_called_once()
-        self.assertIn("Unexpected error", self.mock_log_critical.call_args[0][0]) # Check generic error log
+        self.assertIn(
+            "Unexpected error", self.mock_log_critical.call_args[0][0]
+        )  # Check generic error log
         self.assertEqual(self.mock_log_critical.call_args[0][1], action_error)
         self.mock_stop_component.assert_called_once()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()
