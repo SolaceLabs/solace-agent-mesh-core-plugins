@@ -234,36 +234,40 @@ class A2AProcessManager:
                         break
 
                     try:
-                        self.launch()  # Attempt to relaunch
-                        # *** FIX START ***
-                        # Check if launch succeeded AND the new process is running
-                        if self.process and self.process.poll() is None:
+                        original_process = self.process # Store ref before launch
+                        self.launch() # Attempt restart
+
+                        # Check if launch actually assigned a *new* process object
+                        # and if that new process is running
+                        if self.process and self.process is not original_process and self.process.poll() is None:
                             log.info(
                                 "A2A process for '%s' restarted successfully (New PID: %d).",
                                 self.agent_name,
                                 self.process.pid,
                             )
-                            current_restart_attempts = (
-                                0  # Reset attempts ONLY on successful restart AND running process
-                            )
-                            continue  # Continue monitoring the new process
-                        elif self.process:
-                            # Launch succeeded but process terminated immediately
+                            current_restart_attempts = 0
+                            continue # Continue monitoring the new process
+                        elif self.process and self.process is not original_process:
+                            # Launch assigned a new process, but it terminated immediately
                             log.error(
                                 "Restarted A2A process for '%s' (PID: %d) terminated immediately. Continuing restart attempts.",
                                 self.agent_name,
                                 self.process.pid,
                             )
-                            # Do NOT reset current_restart_attempts
-                            # Do NOT continue; let the loop poll again
-                        else:
-                            # Launch failed and set self.process to None
+                            # Do NOT reset attempts, let loop poll again
+                        elif self.process is original_process:
+                            # Launch was mocked or failed internally without changing self.process
                             log.error(
-                                "Failed to restart A2A process for '%s' (launch returned no process). Stopping monitor.",
+                                "A2A process launch for '%s' did not assign a new process. Assuming persistent failure. Continuing restart attempts.",
+                                self.agent_name
+                            )
+                            # Do NOT reset attempts, let loop poll again
+                        else: # self.process became None after launch
+                            log.error(
+                                "Failed to restart A2A process for '%s' (launch resulted in no process). Stopping monitor.",
                                 self.agent_name,
                             )
                             break # Stop monitoring if launch fails completely
-                        # *** FIX END ***
                     except Exception as e:
                         log.error(
                             "Exception during A2A process restart for '%s': %s. Stopping monitor.",
