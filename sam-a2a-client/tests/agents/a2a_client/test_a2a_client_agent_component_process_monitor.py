@@ -210,7 +210,7 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
         )
         self.mock_launch.assert_called_once()
         self.mock_log_error.assert_any_call(
-            "Failed to restart A2A process for '%s' (launch returned no process). Stopping monitor.",
+            "Failed to restart A2A process for '%s' (launch resulted in no process). Stopping monitor.",
             self.agent_name
         )
         self.mock_log_info.assert_any_call("Stopping monitor thread for A2A process '%s'.", self.agent_name)
@@ -286,14 +286,13 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
         )
         self.mock_log_info.assert_any_call("Stopping monitor thread for A2A process '%s'.", self.agent_name)
 
-    # Keep the patch for Event.wait for this test, as it specifically tests
-    # the behavior *during* the wait period.
-    @patch.object(threading.Event, 'wait')
-    def test_monitor_loop_stop_during_restart_delay(self, mock_event_wait_local):
+    # --- Test that was running forever (FIXED) ---
+    def test_monitor_loop_stop_during_restart_delay(self):
         """Test monitor aborts restart if stop_event is set during delay."""
-        # Stop the global patch and use the local one for this test
-        self.patcher_event_wait.stop()
-        mock_event_wait_local.return_value = True # Simulate stop_event.wait returning True
+        # Stop the global patch for this test
+        try:
+            self.patcher_event_wait.stop()
+        except RuntimeError: pass # Ignore if already stopped
 
         process_manager = A2AProcessManager("cmd", True, self.agent_name, self.stop_event)
         process_manager.process = self.mock_process
@@ -301,27 +300,32 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
         # Simulate crash
         self.mock_process.poll.return_value = 1
 
-        # Run the loop
-        process_manager._monitor_loop()
+        # Patch the wait method ONLY on the specific event instance used by the manager
+        # Make it return True to simulate the event being set during the wait
+        with patch.object(process_manager.stop_event, 'wait', return_value=True) as mock_instance_wait:
+            # Run the loop
+            process_manager._monitor_loop()
 
-        self.mock_process.poll.assert_called_once()
-        self.mock_log_error.assert_any_call(
-            "Managed A2A process (PID: %d) for '%s' terminated with code %d.",
-            12345, self.agent_name, 1
-        )
-        self.mock_log_info.assert_any_call(
-            "Attempting restart %d/%d for '%s' in %ds...",
-            1, 5, self.agent_name, 2
-        )
-        mock_event_wait_local.assert_called_once_with(timeout=2) # Check wait was called
-        self.mock_log_info.assert_any_call(
-            "Stop signal received during restart delay for '%s'. Aborting restart.",
-            self.agent_name
-        )
-        self.mock_launch.assert_not_called() # Restart aborted
-        self.mock_log_info.assert_any_call("Stopping monitor thread for A2A process '%s'.", self.agent_name)
+            # Assertions
+            self.mock_process.poll.assert_called_once() # Poll called once before crash detected
+            self.mock_log_error.assert_any_call(
+                "Managed A2A process (PID: %d) for '%s' terminated with code %d.",
+                12345, self.agent_name, 1
+            )
+            self.mock_log_info.assert_any_call(
+                "Attempting restart %d/%d for '%s' in %ds...",
+                1, 5, self.agent_name, 2 # Check restart attempt log
+            )
+            # Check that the wait method on our specific event instance was called with the restart delay
+            mock_instance_wait.assert_called_once_with(timeout=2)
+            self.mock_log_info.assert_any_call(
+                "Stop signal received during restart delay for '%s'. Aborting restart.",
+                self.agent_name # Check log message for aborted restart
+            )
+            self.mock_launch.assert_not_called() # Restart should NOT have been attempted
+            self.mock_log_info.assert_any_call("Stopping monitor thread for A2A process '%s'.", self.agent_name) # Check loop exit log
 
-        # Restart the global patch
+        # Restart the global patch if needed for other tests
         self.mock_event_wait_global = self.patcher_event_wait.start()
 
 
