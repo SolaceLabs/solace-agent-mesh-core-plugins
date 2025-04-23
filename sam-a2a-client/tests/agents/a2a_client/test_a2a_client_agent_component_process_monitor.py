@@ -17,6 +17,7 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
         self.mock_process.poll.return_value = None # Default: process running
 
         # Patch time.sleep to avoid actual sleeping in tests
+        # We still need sleep for the restart delay simulation, but not for the main wait
         self.patcher_sleep = patch('time.sleep', return_value=None)
         self.mock_sleep = self.patcher_sleep.start()
 
@@ -32,26 +33,39 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
         self.patcher_launch = patch.object(A2AProcessManager, 'launch')
         self.mock_launch = self.patcher_launch.start()
 
+        # Patch threading.Event.wait globally for most tests to speed them up,
+        # but individual tests can override or remove this patch.
+        self.patcher_event_wait = patch.object(threading.Event, 'wait', return_value=False)
+        self.mock_event_wait_global = self.patcher_event_wait.start()
+
+
     def tearDown(self):
         self.patcher_sleep.stop()
         self.patcher_log_info.stop()
         self.patcher_log_warning.stop()
         self.patcher_log_error.stop()
         self.patcher_launch.stop()
+        self.patcher_event_wait.stop() # Stop the global patch
         self.stop_event.clear() # Reset event for next test
 
+    # --- Test that was running forever ---
+    # Remove the specific patch for threading.Event.wait for this test
+    # It relies on the while loop condition checking stop_event.is_set()
     def test_monitor_loop_process_runs_exits_on_stop(self):
         """Test monitor loop runs while process is alive and exits on stop_event."""
+        # Stop the global patch for this specific test
+        self.patcher_event_wait.stop()
+
         process_manager = A2AProcessManager("cmd", True, self.agent_name, self.stop_event)
         process_manager.process = self.mock_process
 
-        # Simulate poll returning None twice, then stop_event being set
+        # Simulate poll returning None twice, then stop_event being set during the third poll call
         poll_count = 0
         def poll_side_effect(*args, **kwargs):
             nonlocal poll_count
             poll_count += 1
             if poll_count >= 3:
-                self.stop_event.set() # Signal stop after 2 checks
+                self.stop_event.set() # Signal stop during the 3rd poll check
             return None # Process running
 
         self.mock_process.poll.side_effect = poll_side_effect
@@ -59,10 +73,20 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
         # Run the loop directly
         process_manager._monitor_loop()
 
+        # The loop condition `while not self.stop_event.is_set()` is checked *before* poll()
+        # Iteration 1: is_set()=False, poll() -> None, wait() (not mocked here, will timeout quickly)
+        # Iteration 2: is_set()=False, poll() -> None, wait()
+        # Iteration 3: is_set()=False, poll() sets event to True, returns None, wait()
+        # Iteration 4: is_set()=True -> loop terminates
         self.assertEqual(self.mock_process.poll.call_count, 3)
         self.mock_log_info.assert_any_call("Monitor thread running for '%s'.", self.agent_name)
+        # The "Stop signal received..." log might not happen if the loop exits purely on the while condition
         self.mock_log_info.assert_any_call("Stopping monitor thread for A2A process '%s'.", self.agent_name)
         self.mock_launch.assert_not_called() # No restarts
+
+        # Restart the global patch if other tests need it
+        self.mock_event_wait_global = self.patcher_event_wait.start()
+
 
     def test_monitor_loop_process_crashes_restart_success(self):
         """Test monitor restarts process successfully on crash."""
@@ -219,16 +243,20 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
         )
         self.mock_log_info.assert_any_call("Stopping monitor thread for A2A process '%s'.", self.agent_name)
 
+    # Keep the patch for Event.wait for this test, as it specifically tests
+    # the behavior *during* the wait period.
     @patch.object(threading.Event, 'wait')
-    def test_monitor_loop_stop_during_restart_delay(self, mock_event_wait):
+    def test_monitor_loop_stop_during_restart_delay(self, mock_event_wait_local):
         """Test monitor aborts restart if stop_event is set during delay."""
+        # Stop the global patch and use the local one for this test
+        self.patcher_event_wait.stop()
+        mock_event_wait_local.return_value = True # Simulate stop_event.wait returning True
+
         process_manager = A2AProcessManager("cmd", True, self.agent_name, self.stop_event)
         process_manager.process = self.mock_process
 
         # Simulate crash
         self.mock_process.poll.return_value = 1
-        # Simulate stop_event.wait returning True (event was set)
-        mock_event_wait.return_value = True
 
         # Run the loop
         process_manager._monitor_loop()
@@ -242,13 +270,17 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
             "Attempting restart %d/%d for '%s' in %ds...",
             1, 5, self.agent_name, 2
         )
-        mock_event_wait.assert_called_once_with(timeout=2) # Check wait was called
+        mock_event_wait_local.assert_called_once_with(timeout=2) # Check wait was called
         self.mock_log_info.assert_any_call(
             "Stop signal received during restart delay for '%s'. Aborting restart.",
             self.agent_name
         )
         self.mock_launch.assert_not_called() # Restart aborted
         self.mock_log_info.assert_any_call("Stopping monitor thread for A2A process '%s'.", self.agent_name)
+
+        # Restart the global patch
+        self.mock_event_wait_global = self.patcher_event_wait.start()
+
 
     def test_monitor_loop_poll_error(self):
         """Test monitor stops if process.poll() raises an exception."""
