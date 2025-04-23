@@ -94,8 +94,14 @@ class TestA2AClientAgentComponentProvideInput(unittest.TestCase):
         self.component = create_test_component(
             cache_service_instance=self.mock_cache_service
         )
-        # Manually assign mocked a2a_client and file_service after creation
-        self.component.a2a_client = self.mock_a2a_client
+
+        # --- Fix: Mock connection_handler and assign mocks to it ---
+        self.mock_connection_handler = MagicMock()
+        self.mock_connection_handler.a2a_client = self.mock_a2a_client # Assign mock client here
+        self.component.connection_handler = self.mock_connection_handler # Assign mock handler to component
+        # -----------------------------------------------------------
+
+        # Manually assign mocked file_service after creation
         self.component.file_service = self.mock_file_service
 
         # Mock an action instance needed for _process_parts
