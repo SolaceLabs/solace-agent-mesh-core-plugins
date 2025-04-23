@@ -7,7 +7,7 @@ when it previously returned an INPUT_REQUIRED state.
 import uuid
 import json
 import base64
-import asyncio # Import asyncio
+import asyncio  # Import asyncio
 from typing import Dict, Any, List, TYPE_CHECKING, Optional
 
 from solace_agent_mesh.common.action_response import ActionResponse, ErrorInfo
@@ -191,8 +191,9 @@ def handle_provide_required_input(
         )
 
     # Add FileParts if file URLs are provided
-    if isinstance(file_urls, str):  # Handle single URL case
+    if file_urls and isinstance(file_urls, str):  # Handle single URL case
         file_urls = [file_urls]
+
     if file_urls and isinstance(file_urls, list):
         log.debug(
             "Processing %d file URLs for follow-up (task '%s').",
