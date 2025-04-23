@@ -90,6 +90,9 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
 
     def test_monitor_loop_process_crashes_restart_success(self):
         """Test monitor restarts process successfully on crash."""
+        # Stop the global patch for this specific test
+        self.patcher_event_wait.stop()
+
         process_manager = A2AProcessManager("cmd", True, self.agent_name, self.stop_event)
         process_manager.process = self.mock_process
 
@@ -107,7 +110,7 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
                 # After restart, check the new process
                 self.assertEqual(process_manager.process, new_mock_process)
                 return None # Running
-            else:
+            else: # poll_count >= 3
                 self.stop_event.set() # Stop after successful restart check
                 return None
 
@@ -121,6 +124,17 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
 
         # Run the loop
         process_manager._monitor_loop()
+
+        # Expected sequence without wait patch:
+        # 1. poll() -> 1 (crash)
+        # 2. wait(timeout=2) -> False (times out)
+        # 3. launch() -> assigns new_mock_process
+        # 4. continue
+        # 5. poll() -> None (running)
+        # 6. wait(timeout=5) -> False (times out)
+        # 7. poll() -> None (running), sets stop_event
+        # 8. wait(timeout=5) -> True (event is set)
+        # 9. break
 
         self.assertEqual(self.mock_process.poll.call_count, 1) # Original process polled once
         self.assertEqual(new_mock_process.poll.call_count, 2) # New process polled twice
@@ -137,7 +151,15 @@ class TestA2AClientAgentComponentProcessMonitor(unittest.TestCase):
             "A2A process for '%s' restarted successfully (New PID: %d).",
             self.agent_name, 54321 # Check successful restart log
         )
+        # Check the log message when wait(5) returns True
+        self.mock_log_info.assert_any_call(
+            "Stop signal received by monitor thread for '%s'.", self.agent_name
+        )
         self.mock_log_info.assert_any_call("Stopping monitor thread for A2A process '%s'.", self.agent_name)
+
+        # Restart the global patch if other tests need it
+        self.mock_event_wait_global = self.patcher_event_wait.start()
+
 
     def test_monitor_loop_process_crashes_restart_fails(self):
         """Test monitor stops if restart attempt fails."""
