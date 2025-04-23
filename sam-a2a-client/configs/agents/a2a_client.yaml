@@ -4,7 +4,9 @@
 # 1. Periodic registration with the orchestrator.
 # 2. Processing action requests received from the orchestrator for this agent.
 #
-# Environment variables are used for configuration. 
+# Environment variables are used for configuration.
+# Replace {{SNAKE_CASE_NAME}} with the agent instance name (e.g., crewai_image)
+# Replace {{SNAKE_UPPER_CASE_NAME}} with the uppercase agent instance name (e.g., CREWAI_IMAGE)
 #
 # Required Environment Variables:
 # - SOLACE_BROKER_URL:              URL of the Solace broker.
@@ -17,6 +19,8 @@
 # Optional Environment Variables:
 # - {{SNAKE_UPPER_CASE_NAME}}_A2A_SERVER_COMMAND: Command to launch the A2A agent process (if managed by SAM).
 #                                         Example: "python -m my_a2a_agent --port 10001"
+# - {{SNAKE_UPPER_CASE_NAME}}_A2A_SERVER_WORKING_DIR: Working directory to change into before running the command.
+# - {{SNAKE_UPPER_CASE_NAME}}_A2A_SERVER_ENV_FILE: Path to a .env file to load environment variables from for the command.
 # - {{SNAKE_UPPER_CASE_NAME}}_A2A_SERVER_STARTUP_TIMEOUT: Timeout (seconds) for launched agent readiness (default: 30).
 # - {{SNAKE_UPPER_CASE_NAME}}_A2A_SERVER_RESTART_ON_CRASH: Restart crashed managed process (default: true).
 # - {{SNAKE_UPPER_CASE_NAME}}_A2A_BEARER_TOKEN: Bearer token for A2A requests if required by the target agent.
@@ -79,6 +83,10 @@ flows:
           a2a_server_url: ${{{SNAKE_UPPER_CASE_NAME}}_A2A_SERVER_URL}
           # Command to launch the A2A agent process (Optional)
           a2a_server_command: ${{{SNAKE_UPPER_CASE_NAME}}_A2A_SERVER_COMMAND, null}
+          # Working directory for the command (Optional)
+          a2a_server_working_dir: ${{{SNAKE_UPPER_CASE_NAME}}_A2A_SERVER_WORKING_DIR, null}
+          # Path to .env file for the command (Optional)
+          a2a_server_env_file: ${{{SNAKE_UPPER_CASE_NAME}}_A2A_SERVER_ENV_FILE, null}
           # Timeout for launched agent readiness check (Optional, default 30s)
           a2a_server_startup_timeout: ${{{SNAKE_UPPER_CASE_NAME}}_A2A_SERVER_STARTUP_TIMEOUT, 30}
           # Whether to restart the managed process if it crashes (Optional, default true)
