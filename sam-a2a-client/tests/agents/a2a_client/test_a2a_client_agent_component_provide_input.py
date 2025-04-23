@@ -34,9 +34,9 @@ def _create_mock_task_response(
     mock_task.id = task_id
     mock_task.status = MagicMock(spec=TaskStatus)
     mock_task.status.state = state
-    # Use getattr to safely access parts, default to empty list
+    # Fix: Directly assign the message_parts list to the parts attribute
     mock_task.status.message = (
-        MagicMock(spec=Message, parts=getattr(message_parts, "parts", [])) # Changed spec
+        MagicMock(spec=Message, parts=message_parts) # Corrected assignment
         if message_parts
         else None
     )
