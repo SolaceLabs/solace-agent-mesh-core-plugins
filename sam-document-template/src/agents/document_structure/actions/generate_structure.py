@@ -58,14 +58,24 @@ class GenerateStructure(Action):
             
             document_rules = agent.document_rules
             document_sections = agent.document_sections
+            # Check if document_headers is empty
+            document_headers = agent.document_headers
+            if document_headers == {}:
+                document_headers = ["Empty headers"]
+            # Check if document_footers is empty
+            document_footers = agent.document_footers
+            if document_footers == {}:
+                document_footers = ["Empty footers"]
 
             # Generate the structure specification
             structure_spec = {
-                "title": document_title,
-                "description": document_description,
-                "format": document_format,
+                "document_title": document_title,
+                "document_description": document_description,
+                "document_format": document_format,
                 "document_rules": document_rules,
-                "sections": []
+                "document_headers": document_headers,
+                "document_footers": document_footers,
+                "document_sections": []
             }
             for section in document_sections:
                 section_title = section.get("title")
@@ -75,16 +85,17 @@ class GenerateStructure(Action):
                 if not section_title or not section_description:
                     raise ValueError("Each section must have a title and description.")
                 
-                structure_spec["sections"].append({
-                    "title": section_title,
-                    "description": section_description,
-                    "rules": section_rules
+                structure_spec["document_sections"].append({
+                    "section_title": section_title,
+                    "section_description": section_description,
+                    "section_rules": section_rules
                 })
 
             # Format the output
             content = yaml.dump(structure_spec, default_flow_style=False)
 
             return ActionResponse(
+                message="The orchestrator must create the document exclusively based on the structure specification.",
                 inline_files=[InlineFile(content, "document_structure_spec.yaml")]
             )
         except Exception as e:

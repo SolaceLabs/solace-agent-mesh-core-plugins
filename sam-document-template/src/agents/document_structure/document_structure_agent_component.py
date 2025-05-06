@@ -48,6 +48,18 @@ info.update(
                 "type": "dict"
             },
             {
+                "name": "document_headers",
+                "required": False,
+                "description": "Description of the headers for the document to be generated",
+                "type": "dict"
+            },
+            {
+                "name": "document_footers",
+                "required": False,
+                "description": "Description of the footers for the document to be generated",
+                "type": "dict"
+            },
+            {
                 "name": "document_sections",
                 "required": False,
                 "description": "Sections of the document to be generated",
@@ -71,8 +83,9 @@ class DocumentStructureAgentComponent(BaseAgentComponent):
         self.document_description = self.get_config("document_description")
         self.document_format = self.get_config("document_format")
         self.document_rules = self.get_config("document_rules", {})
+        self.document_headers = self.get_config("document_headers", {})
+        self.document_footers = self.get_config("document_footers", {})
         self.document_sections = self.get_config("document_sections", {})
-        print(f"Document sections: {self.document_sections}")
 
         self.action_list.fix_scopes("<agent_name>", self.agent_name)
         module_info["agent_name"] = self.agent_name
