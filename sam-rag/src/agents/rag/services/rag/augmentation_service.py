@@ -23,7 +23,11 @@ class AugmentationService:
     Augmention service for RAG systems that enhances retrieved content.
     """
 
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(
+        self,
+        config: Dict[str, Any] = None,
+        hybrid_search_config: Optional[Dict[str, Any]] = None,
+    ):
         """
         Initialize the augmentation service.
 
@@ -32,13 +36,17 @@ class AugmentationService:
                 - embedding: Configuration for the embedding service.
                 - vector_db: Configuration for the vector database.
                 - llm: Configuration for the LLM service.
+            hybrid_search_config: Optional dictionary containing hybrid search configuration.
         """
         self.config = config or {}
+        self._hybrid_search_config = hybrid_search_config or {}
         # Initialize file service
         self.file_service = FileService()
 
         # Initialize retriever
-        self.retriever = Retriever(self.config)
+        self.retriever = Retriever(
+            config=self.config, hybrid_search_config=self._hybrid_search_config
+        )
         logger.info("Augmention service initialized with retriever")
 
         # Initialize LiteLLM if provided in config

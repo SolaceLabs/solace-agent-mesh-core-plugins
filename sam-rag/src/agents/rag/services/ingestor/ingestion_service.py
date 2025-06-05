@@ -18,18 +18,27 @@ class IngestionService(IngestionBase):
     Ingest documents into a vector database.
     """
 
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(
+        self,
+        config: Dict[str, Any] = None,
+        hybrid_search_config: Optional[Dict[str, Any]] = None,
+    ):
         """
         Initialize the document ingestion service.
 
         Args:
             config: A dictionary containing configuration parameters.
                 - vector_db: Configuration for the vector database.
+            hybrid_search_config: Optional dictionary containing hybrid search configuration.
         """
         super().__init__(config)
+        _hybrid_search_config = hybrid_search_config or {}
 
         # Initialize only the vector database component
-        self.vector_db = VectorDBService(self.config.get("vector_db", {}))
+        self.vector_db = VectorDBService(
+            config=self.config.get("vector_db", {}),
+            hybrid_search_config=_hybrid_search_config,
+        )
         logger.info("Document ingestion service initialized with vector database")
 
     def ingest_documents(
@@ -82,7 +91,7 @@ class IngestionService(IngestionBase):
     def ingest_embeddings(
         self,
         texts: List[str],
-        embeddings: List[List[float]],
+        embeddings: List[Dict[str, Any]],  # Updated type hint
         metadata: Optional[List[Dict[str, Any]]] = None,
         ids: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
@@ -91,7 +100,8 @@ class IngestionService(IngestionBase):
 
         Args:
             texts: List of pre-processed text chunks.
-            embeddings: List of embeddings corresponding to the text chunks.
+            embeddings: List of dictionaries, each containing "dense_vector"
+                        and optionally "sparse_vector".
             metadata: Optional metadata for each text chunk.
             ids: Optional IDs for each text chunk.
 
@@ -106,7 +116,7 @@ class IngestionService(IngestionBase):
 
         # Verify that texts and embeddings have the same length
         if len(texts) != len(embeddings):
-            error_msg = f"Number of texts ({len(texts)}) does not match number of embeddings ({len(embeddings)})"
+            error_msg = f"Number of texts ({len(texts)}) does not match number of embedding structures ({len(embeddings)})"
             logger.error(error_msg)
             return {
                 "success": False,
@@ -114,15 +124,30 @@ class IngestionService(IngestionBase):
                 "document_ids": [],
             }
 
+        dense_vectors: List[List[float]] = []
+        sparse_vectors: List[Optional[Dict[int, float]]] = []
+
+        for emb_data in embeddings:
+            dense_vectors.append(emb_data["dense_vector"])
+            sparse_vectors.append(emb_data.get("sparse_vector"))
+
         # Store embeddings in vector database
         try:
+            logger.debug(
+                f"[HYBRID_SEARCH_DEBUG] Storing {len(texts)} documents with dense_vectors: {len(dense_vectors)}, sparse_vectors: {len([sv for sv in sparse_vectors if sv])}"
+            )
+
             document_ids = self.vector_db.add_documents(
                 documents=texts,
-                embeddings=embeddings,
+                embeddings=dense_vectors,  # Pass extracted dense vectors
                 metadatas=metadata,
                 ids=ids,
+                sparse_vectors=sparse_vectors,  # Pass extracted sparse vectors
             )
             logger.info(f"Added {len(document_ids)} documents to vector database")
+            logger.debug(
+                f"[HYBRID_SEARCH_DEBUG] Successfully stored document IDs: {document_ids[:5]}{'...' if len(document_ids) > 5 else ''}"
+            )
 
             return {
                 "success": True,

@@ -43,6 +43,11 @@ flows:
           llm_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/llm-service/request/general-good/
           embedding_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/embedding-service/request/text/
           agent_name: rag
+
+          # Hybrid Search Configuration
+          hybrid_search:
+            enabled: ${HYBRID_SEARCH_ENABLED} # Global toggle for hybrid search
+
           # Scanner configuration
           scanner:
             batch: true
@@ -276,6 +281,10 @@ flows:
               batch_size: 32
               additional_kwargs: {}
             normalize_embeddings: True
+            hybrid_search: # Configuration specific to hybrid search embedding
+              sparse_model_config: # Configuration for sparse vector model (e.g., BM25, SPLADE)
+                type: "tfidf" # Changed from "bm25" to "tfidf" to match implementation
+                params: {} # Model-specific parameters
           
           # Vector database configuration
           vector_db:
@@ -286,6 +295,10 @@ flows:
               api_key: ${QDRANT_API_KEY}
               collection_name: ${QDRANT_COLLECTION}
               embedding_dimension: ${QDRANT_EMBEDDING_DIMENSION}
+              hybrid_search_params: # Qdrant specific params, active if global hybrid_search.enabled is true
+                sparse_vector_name: "sparse_db" # Example name for the sparse vector in Qdrant
+                # fusion_method: "rrf" # Example, if using direct Query API and need to specify
+                # Other Qdrant specific hybrid query params can go here
 
             # Chroma DB configuration
             # db_type: "chroma"
@@ -307,7 +320,21 @@ flows:
             #   metric: ${PINECONE_METRIC}
             #   cloud: ${PINECONE_CLOUD}
             #   region: ${PINECONE_REGION}
-
+            #   hybrid_search_params: # Pinecone specific params, active if global hybrid_search.enabled is true
+            #     alpha: 0.5 # Example: 0.0 for pure sparse, 1.0 for pure dense. Default often 0.5
+            
+            # Redis configuration (placeholder)
+            # db_type: "redis"
+            # db_params:
+            #   url: ${REDIS_URL} # e.g., redis://localhost:6379
+            #   index_name: ${REDIS_INDEX_NAME} # e.g., "rag_idx"
+            #   embedding_dimension: ${REDIS_EMBEDDING_DIMENSION}
+            #   text_field_name: "content" # Name of the text field in Redis for FT search
+            #   vector_field_name: "embedding" # Name of the vector field in Redis
+            #   hybrid_search_params: # Redis specific params, active if global hybrid_search.enabled is true
+            #     text_score_weight: 0.3 # Example weight for full-text search score
+            #     vector_score_weight: 0.7 # Example weight for vector similarity score
+            #     # Other params like HYBRID_POLICY (e.g., "WEIGHTED") if applicable via client
 
             # # PostgreSQL with pgvector
             # db_type: "pgvector"

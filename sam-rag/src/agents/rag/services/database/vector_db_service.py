@@ -19,18 +19,28 @@ class VectorDBService:
     Service for vector database operations.
     """
 
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(
+        self,
+        config: Dict[str, Any] = None,
+        hybrid_search_config: Optional[Dict[str, Any]] = None,
+    ):
         """
         Initialize the vector database service.
 
         Args:
-            config: A dictionary containing configuration parameters.
+            config: A dictionary containing configuration parameters for the vector database.
                 - db_type: The type of vector database to use (default: "chroma").
                 - db_params: The parameters to pass to the vector database.
+            hybrid_search_config: Optional dictionary containing hybrid search configuration.
+                - enabled: Boolean flag to enable/disable hybrid search.
         """
         self.config = config or {}
         self.db_type = self.config.get("db_type", "chroma")
         self.db_params = self.config.get("db_params", {})
+
+        self.hybrid_search_config = hybrid_search_config or {}
+        self.hybrid_search_enabled = self.hybrid_search_config.get("enabled", False)
+
         self.db = self._create_db()
 
     def _create_db(self) -> VectorDBBase:
@@ -40,27 +50,40 @@ class VectorDBService:
         Returns:
             The vector database instance.
         """
-        # Create the vector database based on the type
+        # Pass hybrid_search_config to individual DB implementations
         if self.db_type == "chroma":
-            return ChromaDB(self.db_params)
+            return ChromaDB(
+                config=self.db_params, hybrid_search_config=self.hybrid_search_config
+            )
         elif self.db_type == "pinecone":
-            return PineconeDB(self.db_params)
+            return PineconeDB(
+                config=self.db_params, hybrid_search_config=self.hybrid_search_config
+            )
         elif self.db_type == "qdrant":
-            return QdrantDB(self.db_params)
+            return QdrantDB(
+                config=self.db_params, hybrid_search_config=self.hybrid_search_config
+            )
         elif self.db_type == "redis":
-            return RedisDB(self.db_params)
+            return RedisDB(
+                config=self.db_params, hybrid_search_config=self.hybrid_search_config
+            )
         elif self.db_type == "pgvector":
-            return PgVectorDB(self.db_params)
+            return PgVectorDB(
+                config=self.db_params, hybrid_search_config=self.hybrid_search_config
+            )
         else:
             # Default to ChromaDB
-            return ChromaDB(self.db_params)
+            return ChromaDB(
+                config=self.db_params, hybrid_search_config=self.hybrid_search_config
+            )
 
     def add_documents(
         self,
         documents: List[str],
-        embeddings: List[List[float]],
+        embeddings: List[List[float]],  # These are dense embeddings
         metadatas: Optional[List[Dict[str, Any]]] = None,
         ids: Optional[List[str]] = None,
+        sparse_vectors: Optional[List[Optional[Dict[int, float]]]] = None,
     ) -> List[str]:
         """
         Add documents to the vector database.
@@ -74,13 +97,21 @@ class VectorDBService:
         Returns:
             The IDs of the added documents.
         """
-        return self.db.add_documents(documents, embeddings, metadatas, ids)
+        return self.db.add_documents(
+            documents=documents,
+            embeddings=embeddings,
+            metadatas=metadatas,
+            ids=ids,
+            sparse_vectors=sparse_vectors,
+        )
 
     def search(
         self,
-        query_embedding: List[float],
+        query_embedding: List[float],  # This is the dense query vector
         top_k: int = 5,
         filter: Optional[Dict[str, Any]] = None,
+        query_sparse_vector: Optional[Dict[int, float]] = None,
+        request_hybrid: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         Search for documents similar to the query embedding.
@@ -93,7 +124,24 @@ class VectorDBService:
         Returns:
             A list of dictionaries containing the search results.
         """
-        return self.db.search(query_embedding, top_k, filter)
+        from solace_ai_connector.common.log import log as logger
+
+        logger.debug(
+            f"[HYBRID_SEARCH_DEBUG] VectorDBService.search called with db_type: {self.db_type}, request_hybrid: {request_hybrid}, has_sparse_vector: {query_sparse_vector is not None and len(query_sparse_vector) > 0 if query_sparse_vector else False}"
+        )
+
+        results = self.db.search(
+            query_embedding=query_embedding,
+            top_k=top_k,
+            filter=filter,
+            query_sparse_vector=query_sparse_vector,
+            request_hybrid=request_hybrid,
+        )
+
+        logger.debug(
+            f"[HYBRID_SEARCH_DEBUG] VectorDBService.search returned {len(results)} results"
+        )
+        return results
 
     def delete(self, ids: List[str]) -> None:
         """

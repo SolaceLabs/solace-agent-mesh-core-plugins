@@ -26,7 +26,7 @@ class Pipeline:
         """Initialize the rag agent component.
 
         Args:
-            module_info: Optional module configuration.
+            config: The component configuration.
             **kwargs: Additional keyword arguments.
 
         Raises:
@@ -34,6 +34,7 @@ class Pipeline:
         """
 
         self.component_config = config
+        self._hybrid_search_config = self.component_config.get("hybrid_search", {})
 
         # Initialize handlers
         self.ingestion_handler = None
@@ -128,6 +129,29 @@ class Pipeline:
                 "message": "No documents were successfully preprocessed",
                 "document_ids": [],
             }
+
+        # Refit the sparse model if hybrid search is enabled, using all preprocessed document texts
+        if (
+            self.embedding_handler
+            and hasattr(self.embedding_handler, "hybrid_search_enabled")
+            and self.embedding_handler.hybrid_search_enabled
+        ):
+            log.info(
+                "Pipeline: Hybrid search is enabled. Refitting sparse model with actual corpus documents."
+            )
+            log.debug(
+                f"[HYBRID_SEARCH_DEBUG] Refitting sparse model with {len(preprocessed_docs)} actual corpus documents"
+            )
+            # Use the new refit method that combines sample corpus with actual documents
+            if hasattr(self.embedding_handler, "refit_sparse_model_with_corpus"):
+                self.embedding_handler.refit_sparse_model_with_corpus(preprocessed_docs)
+            else:
+                # Fallback to original method for backward compatibility
+                self.embedding_handler.fit_sparse_model(preprocessed_docs)
+        else:
+            log.info(
+                "Pipeline: Hybrid search is disabled or embedding_handler is not configured for it. Skipping sparse model fitting."
+            )
 
         # Step 2: Split documents into chunks
         chunks = []
@@ -248,7 +272,10 @@ class Pipeline:
     def _create_handlers(self):
         """Create handlers for the agent."""
         # Initialize the ingestion handler
-        self.ingestion_handler = IngestionService(self.component_config)
+        self.ingestion_handler = IngestionService(
+            config=self.component_config,
+            hybrid_search_config=self._hybrid_search_config,
+        )
 
         # Initialize the file tracker
         scanner_config = self.component_config.get("scanner", {})
@@ -300,10 +327,15 @@ class Pipeline:
 
         # Initialize the embedding handler
         embedder_config = self.component_config.get("embedding", {})
-        self.embedding_handler = EmbedderService(embedder_config)
+        self.embedding_handler = EmbedderService(
+            config=embedder_config, hybrid_search_config=self._hybrid_search_config
+        )
 
         # Initialize the augmentation handler
-        self.augmentation_handler = AugmentationService(self.component_config)
+        self.augmentation_handler = AugmentationService(
+            config=self.component_config,
+            hybrid_search_config=self._hybrid_search_config,
+        )
 
     def get_agent_summary(self):
         """Get a summary of the agent's capabilities."""

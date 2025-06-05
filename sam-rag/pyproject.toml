@@ -28,6 +28,7 @@ dependencies = [
     "watchdog==6.0.0",  # Fixed syntax for watchdog dependency
     "ujson==5.10.0",  # For faster JSON processing
     "odfpy==1.4.1",
+    "scikit-learn>=1.0",  # For TF-IDF and other machine learning utilities
 ]
 
 [project.optional-dependencies]
