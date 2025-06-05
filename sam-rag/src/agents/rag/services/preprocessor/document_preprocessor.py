@@ -128,19 +128,22 @@ class TextFilePreprocessor(PreprocessorBase):
 
 class PDFPreprocessor(PreprocessorBase):
     """
-    Preprocessor for PDF files.
+    High-quality PDF preprocessor using pdfplumber (primary) and pypdf (fallback).
+
+    This implementation provides superior text extraction with proper spacing,
+    layout preservation, and table handling compared to basic PyPDF2.
     """
 
     def __init__(self, config: Dict[str, Any] = None):
         """
-        Initialize the PDF preprocessor.
+        Initialize the enhanced PDF preprocessor.
 
         Args:
-            config: Configuration dictionary.
+            config: Configuration dictionary with PDF-specific settings.
         """
         super().__init__(config)
-        # We'll import PyPDF2 only when needed to avoid unnecessary dependencies
-        self.pdf_reader = None
+        self.extraction_method = None
+        self.quality_threshold = 0.7  # Minimum quality score to accept extraction
 
     def can_process(self, file_path: str) -> bool:
         """
@@ -156,109 +159,415 @@ class PDFPreprocessor(PreprocessorBase):
 
     def preprocess(self, file_path: str) -> PreprocessedOutput:
         """
-        Preprocess a PDF file and extract metadata.
+        Preprocess a PDF file using intelligent multi-method extraction.
 
         Args:
             file_path: Path to the PDF file.
 
         Returns:
-            A dictionary containing preprocessed text content and metadata.
+            A dictionary containing high-quality preprocessed text content and metadata.
         """
+        logger.info(f"Starting PDF preprocessing for: {file_path}")
+
         metadata: Dict[str, Any] = {
             "file_path": file_path,
             "file_type": "pdf",
             "custom_tags": [],
-            "keywords": [],  # PyPDF2 doesn't easily expose /Keywords
+            "keywords": [],
+            "extraction_method": None,
+            "extraction_quality": 0.0,
+            "has_tables": False,
+            "page_count": 0,
         }
-        text_content = ""
 
+        # Try extraction methods in order of quality
+        extraction_result = self._extract_with_intelligence(file_path, metadata)
+
+        if not extraction_result["text_content"]:
+            logger.warning(f"No text could be extracted from PDF: {file_path}")
+            return {"text_content": "", "metadata": metadata}
+
+        # Apply text preprocessing
         try:
-            # Import PyPDF2 only when needed
-            import PyPDF2
-            from datetime import datetime
-
             pdf_config = filter_config(self.config, "pdf")
-            self.text_preprocessor = TextPreprocessor(pdf_config)
+            text_preprocessor = TextPreprocessor(pdf_config)
+            processed_text = text_preprocessor.preprocess(
+                extraction_result["text_content"]
+            )
 
-            with open(file_path, "rb") as file:
-                print(f"Processing PDF file: {file_path}")
-                pdf_reader = PyPDF2.PdfReader(file)
-                print(f"PDF reader initialized for: {file_path}")
+            logger.info(
+                f"Successfully processed PDF {file_path} using {metadata['extraction_method']} "
+                f"(quality: {metadata['extraction_quality']:.2f})"
+            )
 
-                # Extract metadata from PDF properties (dictionary-style)
-                try:
-                    doc_info = pdf_reader.metadata
-                    if doc_info:
-                        title = doc_info.get("/Title")
-                        if title:
-                            metadata["title"] = str(title)
-                        author = doc_info.get("/Author")
-                        if author:
-                            metadata["author"] = str(author)
-                        # Creation date handling
-                        creation_date = doc_info.get("/CreationDate")
-                        if (
-                            creation_date
-                            and isinstance(creation_date, str)
-                            and creation_date.startswith("D:")
-                        ):
-                            import re
-
-                            try:
-                                # Extract up to 14 digits after 'D:' (YYYYMMDDHHMMSS)
-                                match = re.match(r"D:(\d{8,14})", creation_date)
-                                if match:
-                                    date_digits = match.group(1)
-                                    if len(date_digits) >= 14:
-                                        parsed_date = datetime.strptime(
-                                            date_digits[:14], "%Y%m%d%H%M%S"
-                                        )
-                                    else:
-                                        parsed_date = datetime.strptime(
-                                            date_digits[:8], "%Y%m%d"
-                                        )
-                                    metadata["creation_date"] = parsed_date.strftime(
-                                        "%Y-%m-%d"
-                                    )
-                                else:
-                                    raise ValueError(
-                                        "No valid date digits found in creation date string"
-                                    )
-                            except Exception as e:
-                                logger.warning(
-                                    f"Could not parse creation date string '{creation_date}' for {file_path}: {e}"
-                                )
-                                metadata["creation_date"] = ""
-                        else:
-                            metadata["creation_date"] = ""
-                except Exception as meta_ex:
-                    logger.warning(
-                        f"Failed to extract PDF metadata for {file_path}: {meta_ex}"
-                    )
-                    metadata["title"] = metadata.get("title", "")
-                    metadata["author"] = metadata.get("author", "")
-                    metadata["creation_date"] = metadata.get("creation_date", "")
-
-                metadata["page_count"] = len(pdf_reader.pages)
-
-                print("Extracting text from PDF pages")
-                for page_num in range(len(pdf_reader.pages)):
-                    page = pdf_reader.pages[page_num]
-                    extracted_page_text = page.extract_text()
-                    if extracted_page_text:
-                        text_content += extracted_page_text + "\n"
-
-            processed_text = self.text_preprocessor.preprocess(text_content)
             return {"text_content": processed_text, "metadata": metadata}
 
-        except ImportError:
-            logger.error(
-                "PyPDF2 is not installed. Please install it using: pip install PyPDF2"
-            )
-            return {"text_content": "", "metadata": metadata}  # Return minimal metadata
         except Exception as e:
-            logger.error(f"Error preprocessing PDF file {file_path}: {e}")
-            return {"text_content": "", "metadata": metadata}  # Return minimal metadata
+            logger.error(f"Error in text preprocessing for {file_path}: {str(e)}")
+            return {
+                "text_content": extraction_result["text_content"],
+                "metadata": metadata,
+            }
+
+    def _extract_with_intelligence(
+        self, file_path: str, metadata: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Intelligently extract text using the best available method.
+
+        Args:
+            file_path: Path to the PDF file.
+            metadata: Metadata dictionary to update.
+
+        Returns:
+            Dictionary with extracted text content and quality metrics.
+        """
+        # Method 1: Try pdfplumber (best quality)
+        result = self._extract_with_pdfplumber(file_path, metadata)
+        if result["quality"] >= self.quality_threshold:
+            metadata["extraction_method"] = "pdfplumber"
+            metadata["extraction_quality"] = result["quality"]
+            return result
+
+        logger.info(
+            f"pdfplumber quality too low ({result['quality']:.2f}), trying pypdf fallback"
+        )
+
+        # Method 2: Try pypdf (fallback)
+        result = self._extract_with_pypdf(file_path, metadata)
+        metadata["extraction_method"] = "pypdf"
+        metadata["extraction_quality"] = result["quality"]
+
+        return result
+
+    def _extract_with_pdfplumber(
+        self, file_path: str, metadata: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Extract text using pdfplumber with advanced layout analysis.
+
+        Args:
+            file_path: Path to the PDF file.
+            metadata: Metadata dictionary to update.
+
+        Returns:
+            Dictionary with extracted text and quality score.
+        """
+        try:
+            import pdfplumber
+            from datetime import datetime
+
+            logger.debug(f"Attempting pdfplumber extraction for: {file_path}")
+
+            text_content = ""
+            tables_found = 0
+
+            with pdfplumber.open(file_path) as pdf:
+                metadata["page_count"] = len(pdf.pages)
+
+                # Extract metadata from PDF info
+                self._extract_metadata_pdfplumber(pdf, metadata)
+
+                # Process each page with advanced extraction
+                for page_num, page in enumerate(pdf.pages):
+                    logger.debug(f"Processing page {page_num + 1}/{len(pdf.pages)}")
+
+                    # Extract tables first (they often have better structure)
+                    tables = page.extract_tables()
+                    if tables:
+                        tables_found += len(tables)
+                        for table in tables:
+                            table_text = self._format_table(table)
+                            if table_text:
+                                text_content += f"\n[TABLE]\n{table_text}\n[/TABLE]\n"
+
+                    # Extract regular text with layout preservation
+                    page_text = page.extract_text(
+                        x_tolerance=2,  # Horizontal tolerance for character grouping
+                        y_tolerance=2,  # Vertical tolerance for line grouping
+                        layout=True,  # Preserve layout structure
+                        x_density=7.25,  # Character density for word separation
+                        y_density=13,  # Line density for paragraph separation
+                    )
+
+                    if page_text:
+                        # Clean and enhance the extracted text
+                        cleaned_text = self._enhance_text_spacing(page_text)
+                        text_content += cleaned_text + "\n\n"
+
+            metadata["has_tables"] = tables_found > 0
+            if tables_found > 0:
+                logger.info(f"Extracted {tables_found} tables from PDF")
+
+            # Calculate quality score
+            quality = self._calculate_text_quality(text_content)
+
+            logger.debug(f"pdfplumber extraction completed. Quality: {quality:.2f}")
+            return {"text_content": text_content.strip(), "quality": quality}
+
+        except ImportError:
+            logger.warning(
+                "pdfplumber not available. Install with: pip install pdfplumber"
+            )
+            return {"text_content": "", "quality": 0.0}
+        except Exception as e:
+            logger.warning(f"pdfplumber extraction failed for {file_path}: {str(e)}")
+            return {"text_content": "", "quality": 0.0}
+
+    def _extract_with_pypdf(
+        self, file_path: str, metadata: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Extract text using pypdf as fallback method.
+
+        Args:
+            file_path: Path to the PDF file.
+            metadata: Metadata dictionary to update.
+
+        Returns:
+            Dictionary with extracted text and quality score.
+        """
+        try:
+            import pypdf
+            from datetime import datetime
+
+            logger.debug(f"Attempting pypdf extraction for: {file_path}")
+
+            text_content = ""
+
+            with open(file_path, "rb") as file:
+                pdf_reader = pypdf.PdfReader(file)
+                metadata["page_count"] = len(pdf_reader.pages)
+
+                # Extract metadata
+                self._extract_metadata_pypdf(pdf_reader, metadata)
+
+                # Extract text from all pages
+                for page_num, page in enumerate(pdf_reader.pages):
+                    logger.debug(
+                        f"Processing page {page_num + 1}/{len(pdf_reader.pages)}"
+                    )
+
+                    page_text = page.extract_text()
+                    if page_text:
+                        # Enhance spacing for pypdf extraction
+                        enhanced_text = self._enhance_text_spacing(page_text)
+                        text_content += enhanced_text + "\n\n"
+
+            # Calculate quality score
+            quality = self._calculate_text_quality(text_content)
+
+            logger.debug(f"pypdf extraction completed. Quality: {quality:.2f}")
+            return {"text_content": text_content.strip(), "quality": quality}
+
+        except ImportError:
+            logger.error("pypdf not available. Install with: pip install pypdf")
+            return {"text_content": "", "quality": 0.0}
+        except Exception as e:
+            logger.error(f"pypdf extraction failed for {file_path}: {str(e)}")
+            return {"text_content": "", "quality": 0.0}
+
+    def _extract_metadata_pdfplumber(self, pdf, metadata: Dict[str, Any]) -> None:
+        """Extract metadata using pdfplumber."""
+        try:
+            if hasattr(pdf, "metadata") and pdf.metadata:
+                info = pdf.metadata
+                if info.get("Title"):
+                    metadata["title"] = str(info["Title"])
+                if info.get("Author"):
+                    metadata["author"] = str(info["Author"])
+                if info.get("Subject"):
+                    metadata["subject"] = str(info["Subject"])
+                if info.get("Keywords"):
+                    keywords_str = str(info["Keywords"])
+                    metadata["keywords"] = [
+                        k.strip() for k in keywords_str.split(",") if k.strip()
+                    ]
+                if info.get("CreationDate"):
+                    try:
+                        metadata["creation_date"] = info["CreationDate"].strftime(
+                            "%Y-%m-%d"
+                        )
+                    except (AttributeError, ValueError):
+                        metadata["creation_date"] = str(info["CreationDate"])
+        except Exception as e:
+            logger.debug(f"Could not extract metadata with pdfplumber: {str(e)}")
+
+    def _extract_metadata_pypdf(self, pdf_reader, metadata: Dict[str, Any]) -> None:
+        """Extract metadata using pypdf."""
+        try:
+            if pdf_reader.metadata:
+                info = pdf_reader.metadata
+                if info.get("/Title"):
+                    metadata["title"] = str(info["/Title"])
+                if info.get("/Author"):
+                    metadata["author"] = str(info["/Author"])
+                if info.get("/Subject"):
+                    metadata["subject"] = str(info["/Subject"])
+                if info.get("/Keywords"):
+                    keywords_str = str(info["/Keywords"])
+                    metadata["keywords"] = [
+                        k.strip() for k in keywords_str.split(",") if k.strip()
+                    ]
+                if info.get("/CreationDate"):
+                    creation_date = str(info["/CreationDate"])
+                    if creation_date.startswith("D:"):
+                        import re
+
+                        match = re.match(r"D:(\d{8,14})", creation_date)
+                        if match:
+                            date_digits = match.group(1)
+                            try:
+                                from datetime import datetime
+
+                                if len(date_digits) >= 14:
+                                    parsed_date = datetime.strptime(
+                                        date_digits[:14], "%Y%m%d%H%M%S"
+                                    )
+                                else:
+                                    parsed_date = datetime.strptime(
+                                        date_digits[:8], "%Y%m%d"
+                                    )
+                                metadata["creation_date"] = parsed_date.strftime(
+                                    "%Y-%m-%d"
+                                )
+                            except ValueError:
+                                metadata["creation_date"] = creation_date
+                    else:
+                        metadata["creation_date"] = creation_date
+        except Exception as e:
+            logger.debug(f"Could not extract metadata with pypdf: {str(e)}")
+
+    def _format_table(self, table: List[List[str]]) -> str:
+        """
+        Format extracted table data into readable text.
+
+        Args:
+            table: List of rows, each row is a list of cell values.
+
+        Returns:
+            Formatted table as string.
+        """
+        if not table:
+            return ""
+
+        try:
+            # Filter out None values and convert to strings
+            clean_table = []
+            for row in table:
+                clean_row = [str(cell) if cell is not None else "" for cell in row]
+                clean_table.append(clean_row)
+
+            # Calculate column widths
+            if not clean_table:
+                return ""
+
+            col_widths = [0] * len(clean_table[0])
+            for row in clean_table:
+                for i, cell in enumerate(row):
+                    if i < len(col_widths):
+                        col_widths[i] = max(col_widths[i], len(cell))
+
+            # Format table
+            formatted_rows = []
+            for row in clean_table:
+                formatted_cells = []
+                for i, cell in enumerate(row):
+                    if i < len(col_widths):
+                        formatted_cells.append(cell.ljust(col_widths[i]))
+                formatted_rows.append(" | ".join(formatted_cells))
+
+            return "\n".join(formatted_rows)
+
+        except Exception as e:
+            logger.debug(f"Error formatting table: {str(e)}")
+            return str(table)
+
+    def _enhance_text_spacing(self, text: str) -> str:
+        """
+        Enhance text spacing and formatting.
+
+        Args:
+            text: Raw extracted text.
+
+        Returns:
+            Text with improved spacing and formatting.
+        """
+        if not text:
+            return ""
+
+        import re
+
+        # Fix common spacing issues
+        # Add space between letters that are stuck together (common in PDF extraction)
+        text = re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
+
+        # Fix missing spaces after punctuation
+        text = re.sub(r"([.!?])([A-Z])", r"\1 \2", text)
+
+        # Fix missing spaces after numbers
+        text = re.sub(r"(\d)([A-Za-z])", r"\1 \2", text)
+
+        # Normalize multiple spaces to single space
+        text = re.sub(r" +", " ", text)
+
+        # Normalize line breaks - preserve paragraph structure
+        text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)  # Multiple line breaks to double
+        text = re.sub(r"\n +", "\n", text)  # Remove spaces at start of lines
+
+        # Clean up common PDF artifacts
+        text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x84\x86-\x9f]", "", text)
+
+        return text.strip()
+
+    def _calculate_text_quality(self, text: str) -> float:
+        """
+        Calculate quality score for extracted text.
+
+        Args:
+            text: Extracted text content.
+
+        Returns:
+            Quality score between 0.0 and 1.0.
+        """
+        if not text or len(text) < 10:
+            return 0.0
+
+        import re
+
+        # Calculate various quality metrics
+        total_chars = len(text)
+
+        # Count letters, numbers, and spaces
+        letters = len(re.findall(r"[a-zA-Z]", text))
+        numbers = len(re.findall(r"\d", text))
+        spaces = len(re.findall(r"\s", text))
+
+        # Count words (sequences of letters/numbers)
+        words = len(re.findall(r"\b\w+\b", text))
+
+        # Quality indicators
+        letter_ratio = letters / total_chars if total_chars > 0 else 0
+        space_ratio = spaces / total_chars if total_chars > 0 else 0
+        word_density = words / (total_chars / 100) if total_chars > 0 else 0
+
+        # Penalize for too many special characters (indicates poor extraction)
+        special_chars = total_chars - letters - numbers - spaces
+        special_ratio = special_chars / total_chars if total_chars > 0 else 0
+
+        # Calculate composite quality score
+        quality = (
+            letter_ratio * 0.4  # Good letter content
+            + min(space_ratio * 5, 0.3)  # Reasonable spacing (cap at 0.3)
+            + min(word_density * 0.1, 0.2)  # Good word density
+            + max(0, 0.1 - special_ratio)  # Penalize excessive special chars
+        )
+
+        # Bonus for reasonable text length
+        if 100 <= total_chars <= 10000:
+            quality += 0.1
+
+        return min(quality, 1.0)
 
 
 class DocxPreprocessor(PreprocessorBase):

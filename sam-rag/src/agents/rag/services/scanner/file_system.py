@@ -39,14 +39,15 @@ class LocalFileSystemDataSource(DataSource):
         super().__init__(source)
         self.pipeline = pipeline
         self.directories = []
-        self.formats = []
-        self.max_file_size = None
         self.file_changes = []
         self.interval = 10
-        self.use_memory_storage = False
-        self.batch = False
         self.ingested_documents = ingested_documents
         self.file_service = FileService()
+
+        # Set inherited properties from base class
+        self.use_memory_storage = source.get("use_memory_storage", False)
+        self.batch = source.get("batch", False)
+
         self.process_config(source)
 
     def process_config(self, source: Dict = {}) -> None:
@@ -69,12 +70,6 @@ class LocalFileSystemDataSource(DataSource):
         schedule = source.get("schedule", {})
         if schedule:
             self.interval = schedule.get("interval", 10)
-
-        # Check if memory storage is enabled
-        self.use_memory_storage = source.get("use_memory_storage", False)
-
-        # Extract batch processing configuration
-        self.batch = source.get("batch", False)
 
     def upload_files(self, documents) -> str:
         """
@@ -142,27 +137,13 @@ class LocalFileSystemDataSource(DataSource):
                             )
                             continue
 
-                        if self.use_memory_storage:
-                            memory_storage.insert_document(
-                                path=file_path,
-                                file=os.path.basename(file_path),
-                                status="new",
-                            )
-                            logger.info("Batch: Document inserted in memory.")
-                        elif DATABASE_AVAILABLE:
-                            insert_document(
-                                get_db(),
-                                status="new",
-                                path=file_path,
-                                file=os.path.basename(file_path),
-                            )
-                            logger.info(
-                                f"Batch: Document inserted in database: {file_path}"
-                            )
-                        else:
-                            logger.warning(
-                                "Neither memory storage nor database is available"
-                            )
+                        # Use inherited tracking method
+                        metadata = self.extract_file_metadata(
+                            file_path, source="filesystem"
+                        )
+                        self._track_file(
+                            file_path, os.path.basename(file_path), "new", metadata
+                        )
                         self.pipeline.process_files([file_path])
 
     def scan(self) -> None:
@@ -170,10 +151,20 @@ class LocalFileSystemDataSource(DataSource):
         Monitor the configured directories for file system changes.
         If batch mode is enabled, first scan all existing files.
         """
+        logger.info("=== FILESYSTEM: Starting scan ===")
+        logger.info(f"Filesystem batch mode: {self.batch}")
+        logger.info(f"Filesystem directories: {self.directories}")
+
         # If batch mode is enabled, first scan existing files
         if self.batch:
+            logger.info("Filesystem: Starting batch scan")
             self.batch_scan()
+            logger.info("Filesystem: Batch scan completed")
+        else:
+            logger.info("Filesystem: Batch mode disabled, skipping batch scan")
 
+        # Set up file system monitoring (non-blocking)
+        logger.info("Filesystem: Setting up file system monitoring")
         event_handler = FileSystemEventHandler()
         event_handler.on_created = self.on_created
         event_handler.on_deleted = self.on_deleted
@@ -181,9 +172,16 @@ class LocalFileSystemDataSource(DataSource):
 
         observer = Observer()
         for directory in self.directories:
-            observer.schedule(event_handler, directory, recursive=True)
-        observer.start()
+            if os.path.exists(directory):
+                observer.schedule(event_handler, directory, recursive=True)
+                logger.info(f"Filesystem: Monitoring directory: {directory}")
+            else:
+                logger.warning(f"Filesystem: Directory does not exist: {directory}")
 
+        observer.start()
+        logger.info("Filesystem: File system observer started")
+
+        # Start periodic monitoring in background (non-blocking)
         def run_periodically():
             while True:
                 time.sleep(self.interval)
@@ -191,12 +189,12 @@ class LocalFileSystemDataSource(DataSource):
         thread = threading.Thread(target=run_periodically)
         thread.daemon = True  # Make thread a daemon so it exits when main thread exits
         thread.start()
+        logger.info(
+            f"Filesystem: Started periodic monitoring with {self.interval}s interval"
+        )
 
-        try:
-            thread.join()
-        except KeyboardInterrupt:
-            observer.stop()
-        observer.join()
+        # Don't block here - let the scan method return so other data sources can be processed
+        logger.info("=== FILESYSTEM: Scan method completed (non-blocking) ===")
 
     def on_created(self, event):
         """
@@ -215,25 +213,13 @@ class LocalFileSystemDataSource(DataSource):
                 f"Document already exists in vector database. Re-ingest {event.src_path}"
             )
 
-        if self.use_memory_storage:
-            memory_storage.insert_document(
-                path=event.src_path, file=os.path.basename(event.src_path), status="new"
-            )
-            logger.info(f"Document inserted in memory: {event.src_path}")
-            # Add the new document to the existing sources list
-            self.ingested_documents.append(event.src_path)
-        elif DATABASE_AVAILABLE:
-            insert_document(
-                get_db(),
-                status="new",
-                path=event.src_path,
-                file=os.path.basename(event.src_path),
-            )
-            logger.info(f"Document inserted in database: {event.src_path}")
-            # Add the new document to the existing sources list
-            self.ingested_documents.append(event.src_path)
-        else:
-            logger.warning("Neither memory storage nor database is available")
+        # Use inherited tracking method
+        metadata = self.extract_file_metadata(event.src_path, source="filesystem")
+        self._track_file(
+            event.src_path, os.path.basename(event.src_path), "new", metadata
+        )
+        # Add the new document to the existing sources list
+        self.ingested_documents.append(event.src_path)
         # Process the file with the pipeline
         self.pipeline.process_files([event.src_path])
 
@@ -245,14 +231,18 @@ class LocalFileSystemDataSource(DataSource):
             event: The file system event.
         """
 
-        if self.use_memory_storage:
-            memory_storage.delete_document(path=event.src_path)
-            logger.info(f"Document deleted from memory: {event.src_path}")
-        elif DATABASE_AVAILABLE:
-            delete_document(get_db(), path=event.src_path)
-            logger.info(f"Document deleted from database: {event.src_path}")
-        else:
-            logger.warning("Neither memory storage nor database is available")
+        # Handle file deletion
+        try:
+            if self.use_memory_storage:
+                memory_storage.delete_document(path=event.src_path)
+                logger.info(f"Document deleted from memory: {event.src_path}")
+            elif DATABASE_AVAILABLE:
+                delete_document(get_db(), path=event.src_path)
+                logger.info(f"Document deleted from database: {event.src_path}")
+            else:
+                logger.warning("Neither memory storage nor database is available")
+        except Exception as e:
+            logger.error(f"Error deleting document {event.src_path}: {str(e)}")
 
     def on_modified(self, event):
         """
@@ -272,14 +262,18 @@ class LocalFileSystemDataSource(DataSource):
                 f"Modified document exists in vector database: {event.src_path}"
             )
 
-        if self.use_memory_storage:
-            memory_storage.update_document(path=event.src_path, status="modified")
-            logger.info(f"Document updated in memory: {event.src_path}")
-        elif DATABASE_AVAILABLE:
-            update_document(get_db(), path=event.src_path, status="modified")
-            logger.info(f"Document updated in database: {event.src_path}")
-        else:
-            logger.warning("Neither memory storage nor database is available")
+        # Handle file modification
+        try:
+            if self.use_memory_storage:
+                memory_storage.update_document(path=event.src_path, status="modified")
+                logger.info(f"Document updated in memory: {event.src_path}")
+            elif DATABASE_AVAILABLE:
+                update_document(get_db(), path=event.src_path, status="modified")
+                logger.info(f"Document updated in database: {event.src_path}")
+            else:
+                logger.warning("Neither memory storage nor database is available")
+        except Exception as e:
+            logger.error(f"Error updating document {event.src_path}: {str(e)}")
 
     def is_valid_file(self, path: str) -> bool:
         """
