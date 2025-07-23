@@ -17,12 +17,15 @@ on:
         required: true
         type: choice
         options:
-          - solace-event-mesh
-          - sam-geo-information
-          - sam-mcp-server
-          - sam-mermaid
+          - sam-event-mesh-gateway
           - sam-mongodb
           - sam-sql-database
+          - sam-geo-information
+          - sam-rest-gateway
+          - sam-webhook-gateway
+          - sam-bedrock-agent
+          - sam-mermaid
+          - sam-slack
 
 permissions:
   contents: write
