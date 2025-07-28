@@ -5,26 +5,28 @@ build-backend = "hatchling.build"
 [tool.hatch.metadata]
 allow-direct-references = true
 
+[tool.sam_bedrock_agent.metadata]
+type = "agent"
+
 [project]
-name = "sam-bedrock-agent"
-dynamic = ["version"]
+name = "sam_bedrock_agent"
+version = "0.1.0"
 authors = [
-  { name="Cyrus Mobini", email="" },
+  { name="SolaceLabs", email="solacelabs@solace.com" },
 ]
-description = "Plugin to connect to Amazon bedrock agents"
+description = "This plugin allows you to import one or multiple Amazon bedrock agents or flows as action to be used in your SAM project."
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
-
-[tool.hatch.build.targets.wheel.force-include]
-"src" = "sam_bedrock_agent/src"
-"interfaces" = "sam_bedrock_agent/interfaces"
-"configs" = "sam_bedrock_agent/configs"
-"solace-agent-mesh-plugin.yaml" = "sam_bedrock_agent/solace-agent-mesh-plugin.yaml"
+dependencies = [
+    "boto3~=1.34.122",
+]
 
 [tool.hatch.build.targets.wheel]
-packages = ["sam_bedrock_agent"]
+packages = ["src/sam_bedrock_agent"]
+src-path = "src"
 
-[tool.hatch.version]
-path = "src/__init__.py"
-
+[tool.hatch.build.targets.wheel.force-include]
+"src/sam_bedrock_agent" = "sam_bedrock_agent/"
+"config.yaml" = "sam_bedrock_agent/config.yaml"
+"README.md" = "sam_bedrock_agent/README.md"
+"pyproject.toml" = "sam_bedrock_agent/pyproject.toml"

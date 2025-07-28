@@ -5,29 +5,30 @@ build-backend = "hatchling.build"
 [tool.hatch.metadata]
 allow-direct-references = true
 
+[tool.sam_mongodb.metadata]
+type = "agent"
+
 [project]
 name = "sam_mongodb"
-dynamic = ["version"]
-authors = [
-  { name="Cyrus Mobini", email="cyrus.mobini@solace.com" },
-]
-description = "A plugin that provides a MongoDB agent to perform complex queries based on natural language"
+version = "0.1.0"
+description = "A Solace Agent Mesh plugin for natural language querying of MongoDB databases."
 readme = "README.md"
+authors = [
+    { name="SolaceLabs", email="solacelabs@solace.com" }
+]
 requires-python = ">=3.10"
 dependencies = [
-    "pymongo>=4.0", # Added pymongo dependency
-    "python-dateutil>=2.8" # Added dateutil for date parsing in queries
+    "pymongo>=4.0.0",
+    "pydantic>=2.0.0",
+    "PyYAML>=6.0"
 ]
 
-[tool.hatch.build.targets.wheel.force-include]
-"src" = "sam_mongodb/src"
-"interfaces" = "sam_mongodb/interfaces"
-"configs" = "sam_mongodb/configs"
-"solace-agent-mesh-plugin.yaml" = "sam_mongodb/solace-agent-mesh-plugin.yaml"
-
 [tool.hatch.build.targets.wheel]
-packages = ["sam_mongodb"]
+packages = ["src/sam_mongodb"]
+src-path = "src"
 
-[tool.hatch.version]
-path = "src/__init__.py"
-
+[tool.hatch.build.targets.wheel.force-include]
+"src/sam_mongodb" = "sam_mongodb/"
+"config.yaml" = "sam_mongodb/config.yaml"
+"README.md" = "sam_mongodb/README.md"
+"pyproject.toml" = "sam_mongodb/pyproject.toml"

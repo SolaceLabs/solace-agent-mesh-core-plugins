@@ -1,18 +1,27 @@
-sam-geo-information:
+sam-event-mesh-gateway:
   - changed-files:
-      - any-glob-to-any-file: sam-geo-information/**
-sam-mcp-server:
-  - changed-files:
-      - any-glob-to-any-file: sam-mcp-server/**
-sam-mermaid:
-  - changed-files:
-      - any-glob-to-any-file: sam-mermaid/**
+      - any-glob-to-any-file: sam-event-mesh-gateway/**
 sam-mongodb:
   - changed-files:
       - any-glob-to-any-file: sam-mongodb/**
 sam-sql-database:
   - changed-files:
       - any-glob-to-any-file: sam-sql-database/**
-solace-event-mesh:
+sam-geo-information:
   - changed-files:
-      - any-glob-to-any-file: solace-event-mesh/**
+      - any-glob-to-any-file: sam-geo-information/**
+sam-rest-gateway:
+  - changed-files:
+      - any-glob-to-any-file: sam-rest-gateway/**
+sam-webhook-gateway:
+  - changed-files:
+      - any-glob-to-any-file: sam-webhook-gateway/**
+sam-bedrock-agent:
+  - changed-files:
+      - any-glob-to-any-file: sam-bedrock-agent/**
+sam-mermaid:
+  - changed-files:
+      - any-glob-to-any-file: sam-mermaid/**
+sam-slack:
+  - changed-files:
+      - any-glob-to-any-file: sam-slack/**

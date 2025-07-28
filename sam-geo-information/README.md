@@ -1,117 +1,71 @@
-# Solace Agent Mesh Geographic Information
+# Solace Agent Mesh - Geographic Information Plugin
 
-A plugin that provides comprehensive geographic information services including location lookup, timezone data, and weather information.
-
----
+A plugin for the Solace Agent Mesh (SAM) that provides comprehensive geographic information services including location lookup, timezone data, and weather information.
 
 ## Features
 
-- Convert city names to geographic coordinates
-- Look up timezone information for cities
-- Get current weather conditions and forecasts for locations
+This plugin provides the following tools to be used by a Solace Agent:
 
----
-
-## Prerequisites
-
-Before starting, make sure you have:
-
-- [Installed Solace Agent Mesh and the SAM CLI](https://solacelabs.github.io/solace-agent-mesh/docs/documentation/getting-started/installation/)
-- [Created a new Solace Agent Mesh project](https://solacelabs.github.io/solace-agent-mesh/docs/documentation/getting-started/quick-start)
-
----
-
-## 🚀 Quick Start
-
-### ✅ Recommended: Add and create the agent via CLI
-
-#### 1. Add the plugin
+-   **`city_to_coordinates`**: Converts a city name to its geographic coordinates (latitude and longitude).
+-   **`city_to_timezone`**: Looks up timezone information for a given city, including UTC offset and Daylight Saving Time (DST) status.
+-   **`get_weather`**: Retrieves the current weather conditions and an optional multi-day forecast for a specific location.
+  
+## Installation
+To install the SAM Geographic Information plugin, run the following command in your SAM project directory:
 
 ```bash
-sam plugin add sam_geo_information --pip -u git+https://github.com/SolaceLabs/solace-agent-mesh-core-plugins#subdirectory=sam-geo-information
+solace-agent-mesh plugin add <your-new-component-name> --plugin sam-geo-information
 ```
+This will create a new component configuration at `configs/plugins/<your-new-component-name-kebab-case>.yaml`.
 
-#### 2. Create the agent
 
-This creates a new agent named `geo_information`:
+## Configuration
 
+To use this plugin, you need to configure an agent to use its tools. In your agent's `config.yaml` file, add the following sections:
+
+**Tool Definitions:** In the `tools` list, add entries for each of the geographic information tools you want the agent to use.
+
+    ```yaml
+    tools:
+      - tool_type: python
+        component_module: sam_geo_information
+        function_name: city_to_coordinates
+        tool_config:
+          geocoding_api_key: ${GEOCODING_API_KEY}
+
+      - tool_type: python
+        component_module: sam_geo_information
+        function_name: city_to_timezone
+        tool_config:
+          geocoding_api_key: ${GEOCODING_API_KEY}
+
+      - tool_type: python
+        component_module: sam_geo_information
+        function_name: get_weather
+        tool_config:
+          geocoding_api_key: ${GEOCODING_API_KEY}
+          weather_api_key: ${WEATHER_API_KEY}
+    ```
+
+Provide the necessary API keys as environment variables:
 ```bash
-sam add agent geo_information --copy-from sam_geo_information
+export GEOCODING_API_KEY="your_geocoding_api_key"
+export WEATHER_API_KEY="your_weather_api_key"
 ```
 
-You can now run Solace Agent Mesh and try it out! 🎉
+## Usage Example
 
-```bash
-sam run -b
-```
+Once configured, you can interact with an agent using natural language prompts. The agent's LLM will automatically select the appropriate tool based on your request.
 
-Here are two example prompts you can try with your agent:
+**Example Prompts:**
 
-- *What are the coordinates of Ottawa?*
-- *What’s the current weather and forecast in Tokyo?*
-
-> **Note**: If the agent doesn’t seem to return results as expected, you may need to supply an API key for the Geocode API.
- See the [APIs Used](#apis-used) and [Want to go further?](#want-to-go-further) sections below for details on where to configure your API keys.
-
----
-
-### Alternative: Edit your `solace-agent-mesh.yaml` config manually
-
-You can add the following to your `solace-agent-mesh.yaml` file:
-
-```yaml
-plugins:
-  - name: sam_geo_information
-    load_unspecified_files: false
-    includes_gateway_interface: false
-    load:
-      agents: 
-        - geo_information  # Add this line
-      gateways: []
-      overwrites: []
-    from_url: 
-      git+https://github.com/SolaceLabs/solace-agent-mesh-core-plugins#subdirectory=sam-geo-information
-```
-
----
-
-## Available Actions
-
-### `city_to_coordinates`
-Converts a city name to its geographic coordinates. If multiple matches are found, all possibilities will be returned.
-
-### `city_to_timezone`
-Converts a city name to its timezone information, including current UTC offset and DST status.
-
-### `get_weather`
-Gets current weather conditions and optional forecast for a location. Supports both metric and imperial units.
-
----
+-   *"What are the coordinates of Ottawa?"*
+-   *"What is the current time and timezone in Tokyo?"*
+-   *"Give me the weather forecast for the next 3 days in London, UK."*
 
 ## APIs Used
 
-### GeoCode API
-Uses [geocode.maps.co](https://geocode.maps.co/)  
-Sign up for an API key for higher request volume.
+This plugin utilizes the following external services:
 
-### Weather API
-Uses [Open Meteo](https://open-meteo.com/)  
-Free for non-commercial use. For commercial use, get an API key.
-
----
-
-## Want to go further?
-
-To unlock more functionality or customize your agent, go to the generated config file in your agent configs directory (typically: `configs/agents/geo_information.yaml`) and update:
-
-```yaml
-agent_name: geo_information
-geocoding_api_key: ${GEOCODING_API_KEY}
-weather_api_key: ${WEATHER_API_KEY}
-```
-
-You can:
-- Rename the agent by changing `agent_name`
-- Add your API keys here, or supply them as environment variables
-
----
+-   **Geocoding:** [geocode.maps.co](https://geocode.maps.co/) - A free geocoding service. Sign up for an API key for higher request volumes.
+-   **Weather:** [Open-Meteo](https://open-meteo.com/) - A free weather forecast API for non-commercial use. A commercial license is available.

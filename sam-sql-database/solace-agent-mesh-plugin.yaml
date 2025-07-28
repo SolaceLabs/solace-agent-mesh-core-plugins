@@ -1,7 +1,0 @@
-# Solace Agent Mesh configuration
-solace_agent_mesh_plugin:
-  # Plugin name
-  name: sam_sql_database
-
-  # Set to true if providing gateway interface under `./interfaces` directory
-  includes_gateway_interface: false

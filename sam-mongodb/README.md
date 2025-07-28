@@ -1,107 +1,88 @@
-# Solace Agent Mesh MongoDB Plugin
+# sam-mongodb SAM Plugin
 
-A plugin that provides a MongoDB agent capable of performing complex queries based on natural language.
+A plugin that provides a MongoDB agent to perform complex queries based on natural language.
+
+This plugin enables Solace Agent Mesh (SAM) agents to interact with MongoDB databases through natural language queries. The agent translates user questions into MongoDB aggregation pipelines and executes them, returning results in various formats.
 
 ## Features
 
-- Natural language to MongoDB aggregation pipeline conversion using an LLM.
-- Query execution against MongoDB databases.
-- Automatic schema detection (optional) with sample data for better LLM context.
-- Configurable response formats (YAML, JSON, CSV, Markdown).
-- Handles query retries on LLM or database errors.
+- **Natural Language to MongoDB**: Converts user queries into MongoDB aggregation pipelines
+- **Lifecycle Management**: Efficient database connection management with initialization and cleanup
+- **Schema Auto-Detection**: Automatically detects and summarizes database schema for better LLM context
+- **Multiple Output Formats**: Supports JSON, YAML, CSV, and Markdown output formats
+- **Artifact Management**: Large results are saved as artifacts for efficient handling
+- **Configurable Collection Targeting**: Can target specific collections or query across all collections
 
-## Add a MongoDB Agent to SAM
+## Architecture
 
-1.  **Add the Plugin:**
-    If you haven't already, add the plugin to your SAM instance:
-    ```sh
-    solace-agent-mesh plugin add sam_mongodb --pip -u git+https://github.com/SolaceLabs/solace-agent-mesh-core-plugins#subdirectory=sam-mongodb
-    ```
+The plugin follows a modern, tool-based architecture with clear separation of concerns:
 
-2.  **Instantiate the Agent:**
-    You have two options:
+- **`lifecycle.py`**: Manages agent initialization and cleanup, including database connections and schema detection
+- **`search_query.py`**: Contains the main `mongo_query` tool that executes aggregation pipelines
+- **`services/database_service.py`**: Encapsulates all MongoDB operations and connection management
 
-    *   **Option A: Editing `solace-agent-mesh.yaml` (For a single instance):**
-        If you only need one MongoDB agent, you can directly load it in your main `solace-agent-mesh.yaml`:
-        ```yaml
-        # solace-agent-mesh.yaml
-        ...
-        plugins:
-          ...
-          - name: sam_mongodb
-            load_unspecified_files: false
-            includes_gateway_interface: false
-            load:
-              agents:
-                - mongodb # Loads configs/agents/mongodb.yaml by default
-              gateways: []
-              overwrites: []
-          ...
-        ```
-        **Note:** If using this method, the environment variable prefix will be `MONGODB` (see below). You might need to manually edit `configs/agents/mongodb.yaml` for settings not controlled by environment variables (like `database_purpose`, `data_description`).
+## Installation
 
-    *   **Option B: Using `add agent` (Recommended for multiple instances):**
-        Use the `solace-agent-mesh add agent` command. Replace `<new_agent_name>` with a descriptive name (e.g., `customer_db`, `product_catalog`).
-        ```sh
-        solace-agent-mesh add agent <new_agent_name> --copy-from sam_mongodb:mongodb
-        ```
-        This creates `<new_agent_name>.yaml` in `configs/agents/` with template variables automatically replaced. You will need to set environment variables specific to this agent instance.
-
-## Environment Variables
-
-The following environment variables are required for **Solace connection** (used by all agents):
-- **SOLACE_BROKER_URL**
-- **SOLACE_BROKER_USERNAME**
-- **SOLACE_BROKER_PASSWORD**
-- **SOLACE_BROKER_VPN**
-- **SOLACE_AGENT_MESH_NAMESPACE**
-
-For **each MongoDB agent instance**, you need to set the following environment variables. Replace `<AGENT_NAME>` with the uppercase version of the agent's name:
-  - If you used **Option A** (editing `solace-agent-mesh.yaml`), the default agent name is `mongodb`, so use `MONGODB`.
-  - If you used **Option B** (`add agent`), use the uppercase version of the `<new_agent_name>` you provided (e.g., `CUSTOMER_DB`, `PRODUCT_CATALOG`).
-
-- **`<AGENT_NAME>_MONGO_HOST`** (Required): MongoDB host address.
-- **`<AGENT_NAME>_MONGO_PORT`** (Required): MongoDB port number.
-- **`<AGENT_NAME>_MONGO_DB`** (Required): The name of the MongoDB database to connect to.
-- **`<AGENT_NAME>_DB_PURPOSE`** (Required): A clear description of the purpose of this database. Used to help the LLM understand context.
-- **`<AGENT_NAME>_DB_DESCRIPTION`** (Required): A detailed description of the data stored in the database/collections, including document structures, field meanings, and relationships. Crucial for accurate query generation.
-- **`<AGENT_NAME>_MONGO_USER`** (Optional): MongoDB username for authentication.
-- **`<AGENT_NAME>_MONGO_PASSWORD`** (Optional): MongoDB password for authentication.
-- **`<AGENT_NAME>_MONGO_COLLECTION`** (Optional): Specific collection to target. If omitted, the agent can query across all collections (schema detection will scan all).
-- **`<AGENT_NAME>_AUTO_DETECT_SCHEMA`** (Optional): Set to `true` (default) or `false`. If true, the agent attempts to detect collection schemas on startup.
-- **`<AGENT_NAME>_MAX_INLINE_RESULTS`** (Optional): Maximum number of results to include directly in the response message before switching to an attached file. Defaults to `10`.
-
-**Example Environment Variables:**
-
-For the default agent loaded via `solace-agent-mesh.yaml` (Option A):
 ```bash
-export MONGODB_MONGO_HOST="localhost"
-export MONGODB_MONGO_PORT="27017"
-export MONGODB_MONGO_DB="mydatabase"
-export MONGODB_DB_PURPOSE="Stores user profiles and activity data."
-export MONGODB_DB_DESCRIPTION="Contains 'users' collection (fields: _id, name, email, age, signup_date) and 'activity' collection (fields: _id, user_id, action, timestamp)."
-# Optional auth:
-# export MONGODB_MONGO_USER="myuser"
-# export MONGODB_MONGO_PASSWORD="mypassword"
+sam plugin add <your-component-name> --plugin sam-mongodb
 ```
 
-For an agent named `product_catalog` created via `add agent` (Option B):
+This creates a new component configuration at `configs/plugins/<your-component-name-kebab-case>.yaml`.
+
+## Configuration
+
+### Environment Variables
+
+Set the following environment variables for your MongoDB connection:
+
 ```bash
-export PRODUCT_CATALOG_MONGO_HOST="mongo.example.com"
-export PRODUCT_CATALOG_MONGO_PORT="27017"
-export PRODUCT_CATALOG_MONGO_DB="catalog"
-export PRODUCT_CATALOG_MONGO_COLLECTION="products" # Target specific collection
-export PRODUCT_CATALOG_DB_PURPOSE="Contains detailed information about products offered."
-export PRODUCT_CATALOG_DB_DESCRIPTION="The 'products' collection has fields like: product_id, name, description, price, category, stock_level, attributes (nested object)."
-export PRODUCT_CATALOG_AUTO_DETECT_SCHEMA="true"
+export MONGO_HOST="localhost"
+export MONGO_PORT=27017
+export MONGO_USER="your_username"
+export MONGO_PASSWORD="your_password"
+export MONGO_DB="your_database"
+export MONGO_COLLECTION="your_collection"
+export DB_PURPOSE="Description of your database purpose"
+export DB_DESCRIPTION="Detailed description of your data"
 ```
 
-## Actions
+### Agent Configuration
 
-### search_query
-Executes a natural language query against the configured MongoDB database. The agent uses an LLM to convert the natural language into a MongoDB aggregation pipeline, executes it, and returns the results.
+The plugin uses agent lifecycle functions for efficient resource management. Key configuration sections:
 
-Parameters:
-- **query** (required): Natural language description of the search query.
-- **response_format** (optional): Format for the results (yaml, markdown, json, csv). Defaults to `yaml`.
-- **inline_result** (optional): If `true` (default) and results are small enough (`max_inline_results`), return results directly in the response. Otherwise, results are returned as an attached file.
+#### Agent Initialization
+```yaml
+agent_init_function:
+  module: "sam_mongodb.lifecycle"
+  name: "initialize_mongo_agent"
+  config:
+    db_host: "${MONGO_HOST}"
+    db_port: ${MONGO_PORT}
+    db_user: "${MONGO_USER}"
+    db_password: "${MONGO_PASSWORD}"
+    db_name: "${MONGO_DB}"
+    database_collection: "${MONGO_COLLECTION}"
+    database_purpose: "${DB_PURPOSE}"
+    data_description: "${DB_DESCRIPTION}"
+    auto_detect_schema: true
+    max_inline_results: 10
+```
+
+#### Tool Configuration
+```yaml
+tools:
+  - tool_type: python
+    component_module: "sam_mongodb.search_query"
+    function_name: "mongo_query"
+    tool_config:
+      collection: "${MONGO_COLLECTION}"
+```
+
+## Example Queries
+
+The agent can handle various types of MongoDB queries:
+
+- **Aggregation queries**: "Show me the top 5 products by sales"
+- **Filtering**: "Find all users registered in the last 30 days"
+- **Grouping**: "Group orders by status and count them"
+- **Complex pipelines**: "Calculate average order value by customer segment"
