@@ -1,0 +1,370 @@
+# This is the configuration file for the rag agent with Google Drive integration
+#
+# This flow ingests documents from both filesystem and Google Drive, then retrieves similar content and documents
+
+---
+log:
+  stdout_log_level: INFO
+  log_file_level: INFO
+  log_file: solace_ai_connector.log
+
+shared_config:
+  - broker_config: &broker_connection
+      dev_mode: ${SOLACE_DEV_MODE}
+      broker_url: ${SOLACE_BROKER_URL}
+      broker_username: ${SOLACE_BROKER_USERNAME}
+      broker_password: ${SOLACE_BROKER_PASSWORD}
+      broker_vpn: ${SOLACE_BROKER_VPN}
+      temporary_queue: ${USE_TEMPORARY_QUEUES}
+
+flows:
+  # Flow to handle action requests
+  - name: rag_action_request_processor
+    components:
+      # Input from a Solace broker
+      - component_name: broker_input
+        component_module: broker_input
+        component_config:
+          <<: *broker_connection
+          payload_encoding: utf-8
+          payload_format: json
+          broker_queue_name: ${SOLACE_AGENT_MESH_NAMESPACE}agent_rag_action_request
+          broker_subscriptions:
+            # Subscribe to all rag actions
+            - topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/actionRequest/*/*/rag/>
+              qos: 1
+
+      # Custom component to process the action request
+      - component_name: action_request_processor
+        component_base_path: .
+        # path is completed at build time
+        component_module: "{{MODULE_DIRECTORY}}.agents.rag.rag_agent_component"
+        component_config:
+          llm_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/llm-service/request/general-good/
+          embedding_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/embedding-service/request/text/
+          agent_name: rag
+          
+          # Enhanced Scanner configuration with multiple sources
+          scanner:
+            batch: true
+            use_memory_storage: true
+            
+            # Multiple sources configuration (NEW FORMAT)
+            sources:
+              # File system source
+              - type: filesystem
+                directories:
+                  - "${LOCAL_DOCUMENTS_PATH}" # e.g. "/path/to/local/documents"
+                filters:
+                  file_formats:
+                    - ".txt"
+                    - ".pdf"
+                    - ".docx"
+                    - ".doc"
+                    - ".md"
+                    - ".html"
+                    - ".csv"
+                    - ".json"
+                    - ".odt"
+                    - ".xlsx"
+                    - ".xls"
+                  max_file_size: 10240  # in KB (10MB)
+                schedule:
+                  interval: 60 # seconds
+              
+              # Google Drive source with Service Account Authentication
+              - type: google_drive
+                provider: google_drive
+                auth_type: "service_account"  # Use Service Account instead of OAuth2
+                service_account_key_path: "${GOOGLE_SERVICE_ACCOUNT_KEY_PATH}" # e.g. "/path/to/service-account-key.json"
+                folders:
+                  - folder_id: "${GOOGLE_DRIVE_FOLDER_ID_1}" # e.g. "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                    name: "Documents"
+                    recursive: true
+                    type: "personal"
+                  - folder_id: "${GOOGLE_DRIVE_FOLDER_ID_2}" # e.g. "0AEd3EhGff_FmUk9PVA"
+                    name: "Shared Drive"
+                    recursive: true
+                    type: "shared_drive"
+                filters:
+                  file_formats:
+                    - ".txt"
+                    - ".pdf"
+                    - ".docx"
+                    - ".doc"
+                    - ".md"
+                    - ".html"
+                    - ".csv"
+                    - ".json"
+                    - ".odt"
+                    - ".xlsx"
+                    - ".xls"
+                  max_file_size: 10240  # in KB (10MB)
+                  include_google_formats: true  # Include Google Docs, Sheets, Slides
+                real_time:
+                  enabled: true
+                  webhook_url: "${GOOGLE_DRIVE_WEBHOOK_URL}" # e.g. "https://your-domain.com/webhook/google-drive"
+                  polling_interval: 300  # Fallback polling in seconds (5 minutes)
+            
+            # Legacy database configuration (optional for persistent metadata storage)
+            database: # optional for persistent metadata storage
+            #TODO: Deprecated and will be removed in the next version, enable use_memory_storage instead
+              type: postgresql
+              dbname: ${DB_NAME}
+              host: ${DB_HOST}
+              port: ${DB_PORT}
+              user: ${DB_USER}
+              password: ${DB_PASSWORD}
+          
+          # Preprocessor configuration
+          preprocessor:
+            default_preprocessor:
+              type: enhanced
+              params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: false
+                  remove_numbers: false
+                  remove_non_ascii: false
+                  remove_urls: true
+                  remove_emails: false
+                  remove_html_tags: false
+            
+            preprocessors:
+              # Text file configurations
+              text:
+                type: text
+                params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: true
+                  remove_numbers: false
+                  remove_non_ascii: false
+                  remove_urls: true
+                  remove_emails: false
+                  remove_html_tags: false
+              
+              # Document file configurations
+              pdf:
+                type: document
+                params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: true
+                  remove_numbers: false
+                  remove_non_ascii: true
+                  remove_urls: true
+                  remove_emails: true
+                  remove_html_tags: false
+              
+              doc:
+                type: document
+                params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: true
+                  remove_numbers: false
+                  remove_non_ascii: true
+                  remove_urls: true
+                  remove_emails: true
+                  remove_html_tags: false
+
+              odt:
+                type: document
+                params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: true
+                  remove_numbers: false
+                  remove_non_ascii: true
+                  remove_urls: true
+                  remove_emails: true
+                  remove_html_tags: false
+              
+              # Structured data configurations
+              json:
+                type: structured
+                params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: false
+                  remove_numbers: false
+                  remove_non_ascii: false
+                  remove_urls: true
+                  remove_emails: true
+                  remove_html_tags: false
+              
+              html:
+                type: html
+                params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: false
+                  remove_numbers: false
+                  remove_non_ascii: false
+                  remove_urls: true
+                  remove_emails: true
+                  remove_html_tags: false
+              
+              markdown:
+                type: markdown
+                params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: false
+                  remove_numbers: false
+                  remove_non_ascii: false
+                  remove_urls: true
+                  remove_emails: true
+                  remove_html_tags: false
+
+              csv:
+                type: csv
+                params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: true
+                  remove_numbers: false
+                  remove_non_ascii: false
+                  remove_urls: true
+                  remove_emails: true
+                  remove_html_tags: false
+
+              xls:
+                type: xls
+                params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: true
+                  remove_numbers: false
+                  remove_non_ascii: false
+                  remove_urls: true
+                  remove_emails: true
+                  remove_html_tags: false
+
+           
+          # Text splitter configuration
+          splitter:
+            default_splitter:
+              type: character
+              params:
+                chunk_size: 2048 # minimum chunk size
+                chunk_overlap: 800
+                separator: " "
+            splitters:
+              # Text file configurations
+              text:
+                type: character
+                params:
+                  chunk_size: 2048 # minimum chunk size
+                  chunk_overlap: 800
+                  separator: " "
+                  is_separator_regex: false
+                  keep_separator: true
+                  strip_whitespace: true
+              txt:
+                type: character
+                params:
+                  chunk_size: 2048 # minimum chunk size
+                  chunk_overlap: 800
+                  separator: "\n"
+                  is_separator_regex: false
+                  keep_separator: true
+                  strip_whitespace: true
+              # Structured data configurations
+              json:
+                type: recursive_json
+                params:
+                  chunk_size: 200
+                  chunk_overlap: 50
+              html:
+                type: html
+                params:
+                  chunk_size: 2048
+                  chunk_overlap: 800
+                  tags_to_extract: ["p", "h1", "h2", "h3", "li"]
+              markdown:
+                type: markdown
+                params:
+                  chunk_size: 2048
+                  chunk_overlap: 800
+                  headers_to_split_on: ["#", "##", "###", "####", "#####", "######"]
+                  strip_headers: false
+              csv:
+                type: csv
+                params:
+                  chunk_size: 2048 # chunk size in number of rows
+                  include_header: false
+              # Add Xml, Odt, Xlsx, and other formats as needed
+          
+          # Embedding configuration
+          embedding: # LiteLLM embedding
+            embedder_type: "openai"
+            embedder_params:
+              # OpenAI embeddings
+              model: ${OPENAI_EMBEDDING_MODEL}
+              api_key: ${OPENAI_API_KEY}
+              api_base: ${OPENAI_API_ENDPOINT}
+              batch_size: 32
+              additional_kwargs: {}
+            normalize_embeddings: True
+          
+          # Vector database configuration
+          vector_db:
+            # Qdrant
+            db_type: "qdrant"
+            db_params:
+              url: ${QDRANT_URL}
+              api_key: ${QDRANT_API_KEY}
+              collection_name: ${QDRANT_COLLECTION}
+              embedding_dimension: ${QDRANT_EMBEDDING_DIMENSION}
+
+          llm:
+            load_balancer:
+              - model_name: "gpt-4o" # model alias
+                litellm_params:
+                      model: openai/${OPENAI_MODEL_NAME}
+                      api_key: ${OPENAI_API_KEY}
+                      api_base: ${OPENAI_API_ENDPOINT}
+                      temperature: 0.01
+                      # add any other parameters here
+              - model_name: "claude-3-5-sonnet" # model alias
+                litellm_params:
+                      model: anthropic/${ANTHROPIC_MODEL_NAME}
+                      api_key: ${ANTHROPIC_API_KEY}
+                      api_base: ${ANTHROPIC_API_ENDPOINT}
+                      # add any other parameters here
+              # add more models here
+
+          retrieval:
+            top_k: 7
+
+        broker_request_response:
+          enabled: true
+          broker_config: *broker_connection
+          request_expiry_ms: 120000
+          payload_encoding: utf-8
+          payload_format: json
+          response_topic_prefix: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1
+          response_queue_prefix: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1
+        component_input:
+          source_expression: input.payload
+
+      # Output to a Solace broker
+      - component_name: broker_output
+        component_module: broker_output
+        component_config:
+          <<: *broker_connection
+          payload_encoding: utf-8
+          payload_format: json
+          copy_user_properties: true

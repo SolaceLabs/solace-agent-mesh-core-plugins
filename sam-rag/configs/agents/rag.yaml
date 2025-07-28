@@ -1,0 +1,388 @@
+# This is the configuration file for the rag agent
+#
+# This flow ingests documents from a filesystem and retrieves similar content and documents
+
+---
+log:
+  stdout_log_level: INFO
+  log_file_level: INFO
+  log_file: solace_ai_connector.log
+
+shared_config:
+  - broker_config: &broker_connection
+      dev_mode: ${SOLACE_DEV_MODE}
+      broker_url: ${SOLACE_BROKER_URL}
+      broker_username: ${SOLACE_BROKER_USERNAME}
+      broker_password: ${SOLACE_BROKER_PASSWORD}
+      broker_vpn: ${SOLACE_BROKER_VPN}
+      temporary_queue: ${USE_TEMPORARY_QUEUES}
+
+flows:
+  # Flow to handle action requests
+  - name: rag_action_request_processor
+    components:
+      # Input from a Solace broker
+      - component_name: broker_input
+        component_module: broker_input
+        component_config:
+          <<: *broker_connection
+          payload_encoding: utf-8
+          payload_format: json
+          broker_queue_name: ${SOLACE_AGENT_MESH_NAMESPACE}agent_rag_action_request
+          broker_subscriptions:
+            # Subscribe to all rag actions
+            - topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/actionRequest/*/*/rag/>
+              qos: 1
+
+      # Custom component to process the action request
+      - component_name: action_request_processor
+        component_base_path: .
+        # path is completed at build time
+        component_module: {{MODULE_DIRECTORY}}.agents.rag.rag_agent_component
+        component_config:
+          llm_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/llm-service/request/general-good/
+          embedding_service_topic: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1/embedding-service/request/text/
+          agent_name: rag
+
+          # Hybrid Search Configuration
+          hybrid_search:
+            enabled: ${HYBRID_SEARCH_ENABLED} # Global toggle for hybrid search
+
+          # Scanner configuration
+          scanner:
+            batch: true
+            use_memory_storage: true
+            source:
+              type: filesystem
+              directories:
+                - "DIRECTORY PATH" # e.g. "/path/to/documents"
+              filters:
+                file_formats:
+                  - ".txt"
+                  - ".pdf"
+                  - ".docx"
+                  - ".doc"
+                  - ".md"
+                  - ".html"
+                  - ".csv"
+                  - ".json"
+                  - ".odt"
+                  - ".xlsx"
+                  - ".xls"
+                max_file_size: 10240  # in KB (10MB)
+            database: # optional for persistent metadata storage
+            #TODO: Deprecated and will be removed in the next version, enable use_memory_storage instead
+              type: postgresql
+              dbname: ${DB_NAME}
+              host: ${DB_HOST}
+              port: ${DB_PORT}
+              user: ${DB_USER}
+              password: ${DB_PASSWORD}
+            schedule:
+              interval: 60 # seconds
+          
+          # Preprocessor configuration
+          preprocessor:
+            default_preprocessor:
+              type: enhanced
+              params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: false
+                  remove_numbers: false
+                  remove_non_ascii: false
+                  remove_urls: true
+                  remove_emails: false
+                  remove_html_tags: false
+            
+            preprocessors:
+              # Text file configurations
+              text:
+                type: text
+                params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: true
+                  remove_numbers: false
+                  remove_non_ascii: false
+                  remove_urls: true
+                  remove_emails: false
+                  remove_html_tags: false
+              
+              # Document file configurations
+              pdf:
+                type: document
+                params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: true
+                  remove_numbers: false
+                  remove_non_ascii: true
+                  remove_urls: true
+                  remove_emails: true
+                  remove_html_tags: false
+              
+              doc:
+                type: document
+                params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: true
+                  remove_numbers: false
+                  remove_non_ascii: true
+                  remove_urls: true
+                  remove_emails: true
+                  remove_html_tags: false
+
+              odt:
+                type: document
+                params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: true
+                  remove_numbers: false
+                  remove_non_ascii: true
+                  remove_urls: true
+                  remove_emails: true
+                  remove_html_tags: false
+              
+              # Structured data configurations
+              json:
+                type: structured
+                params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: false
+                  remove_numbers: false
+                  remove_non_ascii: false
+                  remove_urls: true
+                  remove_emails: true
+                  remove_html_tags: false
+              
+              html:
+                type: html
+                params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: false
+                  remove_numbers: false
+                  remove_non_ascii: false
+                  remove_urls: true
+                  remove_emails: true
+                  remove_html_tags: false
+              
+              markdown:
+                type: markdown
+                params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: false
+                  remove_numbers: false
+                  remove_non_ascii: false
+                  remove_urls: true
+                  remove_emails: true
+                  remove_html_tags: false
+
+              csv:
+                type: csv
+                params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: true
+                  remove_numbers: false
+                  remove_non_ascii: false
+                  remove_urls: true
+                  remove_emails: true
+                  remove_html_tags: false
+
+              xls:
+                type: xls
+                params:
+                  lowercase: true
+                  normalize_whitespace: true
+                  remove_stopwords: false
+                  remove_punctuation: true
+                  remove_numbers: false
+                  remove_non_ascii: false
+                  remove_urls: true
+                  remove_emails: true
+                  remove_html_tags: false
+          
+          # Text splitter configuration
+          splitter:
+            default_splitter:
+              type: character
+              params:
+                chunk_size: 4096 # minimum chunk size
+                chunk_overlap: 800
+                separator: " "
+            splitters:
+              # Text file configurations
+              text:
+                type: character
+                params:
+                  chunk_size: 4096 # minimum chunk size
+                  chunk_overlap: 800
+                  separator: " "
+                  is_separator_regex: false
+                  keep_separator: true
+                  strip_whitespace: true
+              txt:
+                type: character
+                params:
+                  chunk_size: 200 # minimum chunk size
+                  chunk_overlap: 40
+                  separator: "\n"
+                  is_separator_regex: false
+                  keep_separator: true
+                  strip_whitespace: true
+              # Structured data configurations
+              json:
+                type: recursive_json
+                params:
+                  chunk_size: 100
+                  chunk_overlap: 10
+              html:
+                type: html
+                params:
+                  chunk_size: 4096
+                  chunk_overlap: 800
+                  tags_to_extract: ["p", "h1", "h2", "h3", "li"]
+              markdown:
+                type: markdown
+                params:
+                  chunk_size: 4096
+                  chunk_overlap: 800
+                  headers_to_split_on: ["#", "##", "###", "####", "#####", "######"]
+                  strip_headers: false
+              csv:
+                type: csv
+                params:
+                  chunk_size: 4096 # chunk size in number of rows
+                  include_header: false
+              # Add Xml, Odt, Xlsx, and other formats as needed
+          # Embedding configuration
+          embedding: # LiteLLM embedding
+            embedder_type: "openai"
+            embedder_params:
+              # OpenAI embeddings
+              model: ${OPENAI_EMBEDDING_MODEL}
+              api_key: ${OPENAI_API_KEY}
+              api_base: ${OPENAI_API_ENDPOINT}
+              batch_size: 32
+              additional_kwargs: {}
+            normalize_embeddings: True
+            hybrid_search: # Configuration specific to hybrid search embedding
+              sparse_model_config: # Configuration for sparse vector model (e.g., BM25, SPLADE)
+                type: "tfidf" # Changed from "bm25" to "tfidf" to match implementation
+                params: {} # Model-specific parameters
+          
+          # Vector database configuration
+          vector_db:
+            # Qdrant
+            db_type: "qdrant"
+            db_params:
+              url: ${QDRANT_URL}
+              api_key: ${QDRANT_API_KEY}
+              collection_name: ${QDRANT_COLLECTION}
+              embedding_dimension: ${QDRANT_EMBEDDING_DIMENSION}
+              hybrid_search_params: # Qdrant specific params, active if global hybrid_search.enabled is true
+                sparse_vector_name: "sparse_db" # Example name for the sparse vector in Qdrant
+                # fusion_method: "rrf" # Example, if using direct Query API and need to specify
+                # Other Qdrant specific hybrid query params can go here
+
+            # Chroma DB configuration
+            # db_type: "chroma"
+            # db_params:
+            #   host: ${CHROMA_HOST}
+            #   port: ${CHROMA_PORT}
+            #   collection_name: ${CHROMA_COLLECTION}
+            #   persist_directory: ${CHROMA_PERSIST_DIR, "./chroma_db"}
+            #   embedding_function: ${CHROMA_EMBEDDING_FUNCTION}
+            #   embedding_dimension: ${QDRANT_EMBEDDING_DIMENSION}  # Added embedding dimension
+            
+            # Pinecone configuration
+            # db_type: "pinecone"
+            # db_params:
+            #   api_key: ${PINECONE_API_KEY}
+            #   index_name: ${PINECONE_INDEX}
+            #   namespace: ${PINECONE_NAMESPACE}
+            #   embedding_dimension: ${PINECONE_DIMENSIONS}
+            #   metric: ${PINECONE_METRIC}
+            #   cloud: ${PINECONE_CLOUD}
+            #   region: ${PINECONE_REGION}
+            #   hybrid_search_params: # Pinecone specific params, active if global hybrid_search.enabled is true
+            #     alpha: 0.5 # Example: 0.0 for pure sparse, 1.0 for pure dense. Default often 0.5
+            
+            # Redis configuration (placeholder)
+            # db_type: "redis"
+            # db_params:
+            #   url: ${REDIS_URL} # e.g., redis://localhost:6379
+            #   index_name: ${REDIS_INDEX_NAME} # e.g., "rag_idx"
+            #   embedding_dimension: ${REDIS_EMBEDDING_DIMENSION}
+            #   text_field_name: "content" # Name of the text field in Redis for FT search
+            #   vector_field_name: "embedding" # Name of the vector field in Redis
+            #   hybrid_search_params: # Redis specific params, active if global hybrid_search.enabled is true
+            #     text_score_weight: 0.3 # Example weight for full-text search score
+            #     vector_score_weight: 0.7 # Example weight for vector similarity score
+            #     # Other params like HYBRID_POLICY (e.g., "WEIGHTED") if applicable via client
+
+            # # PostgreSQL with pgvector
+            # db_type: "pgvector"
+            # db_params:
+            #   host: ${PGVECTOR_HOST, "localhost"}
+            #   port: ${PGVECTOR_PORT, 5432}
+            #   database: ${PGVECTOR_DATABASE, "vectordb"}
+            #   user: ${PGVECTOR_USER, "postgres"}
+            #   password: ${PGVECTOR_PASSWORD}
+            #   table_name: ${PGVECTOR_TABLE, "document_embeddings"}
+            #   embedding_dimension: ${PGVECTOR_DIMENSION, 1024}
+
+          llm:
+            load_balancer:
+              - model_name: "gpt-4o" # model alias
+                litellm_params:
+                      model: openai/${OPENAI_MODEL_NAME}
+                      api_key: ${OPENAI_API_KEY}
+                      api_base: ${OPENAI_API_ENDPOINT}
+                      temperature: 0.01
+                      # add any other parameters here
+              - model_name: "claude-3-5-sonnet" # model alias
+                litellm_params:
+                      model: anthropic/${ANTHROPIC_MODEL_NAME}
+                      api_key: ${ANTHROPIC_API_KEY}
+                      api_base: ${ANTHROPIC_API_ENDPOINT}
+                      # add any other parameters here
+              # add more models here
+
+          retrieval:
+            top_k: 7
+
+        broker_request_response:
+          enabled: true
+          broker_config: *broker_connection
+          request_expiry_ms: 120000
+          payload_encoding: utf-8
+          payload_format: json
+          response_topic_prefix: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1
+          response_queue_prefix: ${SOLACE_AGENT_MESH_NAMESPACE}solace-agent-mesh/v1
+        component_input:
+          source_expression: input.payload
+
+      # Output to a Solace broker
+      - component_name: broker_output
+        component_module: broker_output
+        component_config:
+          <<: *broker_connection
+          payload_encoding: utf-8
+          payload_format: json
+          copy_user_properties: true
