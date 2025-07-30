@@ -142,6 +142,12 @@ class SlackGatewayComponent(BaseGatewayComponent):
 
             from . import handlers
 
+            # ensure team_id is always present in events
+            def ensure_team_id_in_event(event, raw_event_body):
+                if "team" not in event and "team_id" not in event:
+                    if team_id := raw_event_body.get("team_id"):
+                        event["team"] = team_id
+
             @self.slack_app.action(CANCEL_BUTTON_ACTION_ID)
             async def handle_cancel_request_button_wrapper(
                 ack, body, client, logger_bolt
@@ -174,14 +180,19 @@ class SlackGatewayComponent(BaseGatewayComponent):
                         )
 
             @self.slack_app.event("message")
-            async def handle_message_events_async(event, say, client):
+            async def handle_message_events_async(event, say, client, body):
+                ensure_team_id_in_event(event, body)                                                                                                                                                                                       
+                log.debug(                                                                                                                                                                                                            
+                    "%s Received Slack 'message' event (async).", self.log_identifier                                                                                                                                                 
+                )  
                 log.debug(
                     "%s Received Slack 'message' event (async).", self.log_identifier
                 )
                 await handlers.handle_slack_message(self, event, say, client)
 
             @self.slack_app.event("app_mention")
-            async def handle_mention_events_async(event, say, client):
+            async def handle_mention_events_async(event, say, client, body):
+                ensure_team_id_in_event(event, body)   
                 log.debug(
                     "%s Received Slack 'app_mention' event (async).",
                     self.log_identifier,
