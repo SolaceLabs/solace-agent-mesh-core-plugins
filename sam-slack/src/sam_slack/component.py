@@ -181,10 +181,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
 
             @self.slack_app.event("message")
             async def handle_message_events_async(event, say, client, body):
-                ensure_team_id_in_event(event, body)                                                                                                                                                                                       
-                log.debug(                                                                                                                                                                                                            
-                    "%s Received Slack 'message' event (async).", self.log_identifier                                                                                                                                                 
-                )  
+                ensure_team_id_in_event(event, body)                                                                                                                                                                                     
                 log.debug(
                     "%s Received Slack 'message' event (async).", self.log_identifier
                 )
