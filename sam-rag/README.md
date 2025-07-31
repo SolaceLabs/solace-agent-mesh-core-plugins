@@ -71,7 +71,7 @@ Open the SAM UI on the browser.
 (Option1): Store documents in a specific directory and configure the directory path in the ```rag.yaml``` file.
 After running SAM, the plugin ingests documents in background automatically.
 
-(Option2): Open the SAM UI on the browser (by default ```http://localhost:5001```), attach files to a query such as "ingest the attached document to RAG".
+(Option2): Open the SAM UI on the browser (by default ```http://localhost:8000```), attach files to a query such as "ingest the attached document to RAG".
 This query persistently stores the attachments in file system and index them in vector database.
 
 #### Retrieving documents
