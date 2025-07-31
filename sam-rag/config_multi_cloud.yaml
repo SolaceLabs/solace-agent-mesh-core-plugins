@@ -11,6 +11,8 @@ log:
   log_file_level: DEBUG
   log_file: __COMPONENT_KEBAB_CASE_NAME__.log
 
+# To use the `shared_config.yaml` file, uncomment the following line and remove the `shared_config` section below.
+# !include ../shared_config.yaml
 shared_config:
   - broker_connection: &broker_connection
       dev_mode: ${SOLACE_DEV_MODE, false}
