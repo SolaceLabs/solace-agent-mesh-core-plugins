@@ -1,0 +1,73 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.sam_rag.metadata]
+type = "agent"
+
+[project]
+name = "sam_rag"
+dynamic = ["version"]
+authors = [
+  { name="SolaceLabs", email="solacelabs@solace.com" },
+]
+description = "A document-ingesting agent that monitors specified directories, keeping stored documents up to date in a vector database for Retrieval-Augmented Generation (RAG) queries."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pdfplumber>=0.1.2",  # For high-quality PDF processing (MIT License)
+    "pypdf>=5.6.0",  # For PDF processing fallback (BSD License)
+    "python-docx>=0.8.11",  # For DOCX processing
+    "beautifulsoup4>=4.12.3",  # For HTML processing
+    "pandas>=1.5.0",  # For Excel processing
+    "odfpy>=1.4.1",  # For ODT processing
+    "lxml>=4.9.1",  # XML parser for BeautifulSoup
+    "PyYAML~=6.0.2",  # For YAML processing
+    "openai~=1.68.2",  # For OpenAI API access
+    "qdrant-client~=1.13.3",  # For Qdrant vector database access
+    "watchdog==6.0.0",  # Fixed syntax for watchdog dependency
+    "ujson==5.10.0",  # For faster JSON processing
+    "odfpy==1.4.1",
+    "scikit-learn>=1.0",  # For TF-IDF and other machine learning utilities
+    "nltk>=3.7",
+]
+
+[project.optional-dependencies]
+nlp = [
+    "nltk>=3.7",  # For more advanced text processing
+    "spacy>=3.4.0",  # For advanced NLP preprocessing
+    "langdetect>=1.0.9",  # For language detection
+]
+
+pinecone = [
+    "pinecone>=6.0.0",  # For Pinecone vector database access
+]
+
+cloud_storage = [
+    "google-api-python-client>=2.100.0",  # For Google Drive API
+    "google-auth-httplib2>=0.1.1",  # For Google API authentication
+    "google-auth-oauthlib>=1.0.0",  # For Google OAuth2 flow
+    "requests>=2.31.0",  # For HTTP requests
+    "boto3>=1.28.0",  # For AWS S3 integration
+]
+
+onedrive = [
+    "msal>=1.24.0",  # Microsoft Authentication Library
+    "requests>=2.31.0",  # For HTTP requests to Microsoft Graph API
+]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/sam_rag" = "sam_rag/"
+"config.yaml" = "sam_rag/config.yaml"
+"README.md" = "sam_rag/README.md"
+"pyproject.toml" = "sam_rag/pyproject.toml"
+
+[tool.hatch.build.targets.wheel]
+packages = ["sam_rag"]
+src-path = "src"
+
+[tool.hatch.version]
+path = "src/sam_rag/__init__.py"
