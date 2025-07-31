@@ -75,4 +75,4 @@ After running SAM, the plugin ingests documents in background automatically.
 This query persistently stores the attachments in file system and index them in vector database.
 
 #### Retrieving documents
-Use SAM UI on the browser (by default ```http://localhost:5001```) or any other interfaces and send a query such as "search documents about <your query> and return a summary and referenced documents". It retrieves top similar documents and returns a summary of documents align with their original documents.
+Use SAM UI on the browser (by default ```http://localhost:8000```) or any other interfaces and send a query such as "search documents about <your query> and return a summary and referenced documents". It retrieves top similar documents and returns a summary of documents align with their original documents.
