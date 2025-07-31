@@ -142,7 +142,6 @@ class SlackGatewayComponent(BaseGatewayComponent):
 
             from . import handlers
 
-            # ensure team_id is always present in events
             def ensure_team_id_in_event(event, raw_event_body):
                 if "team" not in event and "team_id" not in event:
                     if team_id := raw_event_body.get("team_id"):
