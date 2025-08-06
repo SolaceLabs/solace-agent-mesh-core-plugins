@@ -848,6 +848,17 @@ class SlackGatewayComponent(BaseGatewayComponent):
                             log_id, app_name, owner_user_id, owner_session_id, filename, version
                         )
 
+                        # Check if user owns the artifact
+                        current_user_id = external_request_context.get("user_id_for_artifacts")
+                        if owner_user_id != current_user_id:
+                            log.warning(
+                                "%s User %s denied access to artifact owned by %s", 
+                                log_id, current_user_id, owner_user_id
+                            )
+                            error_msg = f":warning: Access denied to artifact `{filename}`."
+                            await send_slack_message(self, channel_id, thread_ts, error_msg)
+                            continue
+
                         # Load the artifact content using the shared service
                         load_result = await load_artifact_content_or_metadata(
                             artifact_service=self.shared_artifact_service,
