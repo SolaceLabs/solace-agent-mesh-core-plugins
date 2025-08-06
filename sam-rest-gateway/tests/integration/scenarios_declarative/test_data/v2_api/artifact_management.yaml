@@ -1,0 +1,28 @@
+test_case_id: "artifacts_list_and_download"
+description: "Test artifacts API for listing and downloading artifacts"
+tags: ["rest_gateway", "v2"]
+
+setup_artifacts:
+  - filename: "test_output.txt"
+    content: "This is a test artifact created by the agent."
+    mime_type: "text/plain"
+  - filename: "data_analysis.csv"
+    content: "name,value\ntest1,100\ntest2,200"
+    mime_type: "text/csv"
+
+gateway_input:
+  endpoint: "/api/v2/artifacts/"
+  method: "GET"
+  query_params:
+    session_id: "setup_session_for_default_artifact_user@example.com"
+
+expected_gateway_output:
+  - status_code: 200
+
+expected_artifacts:
+  - filename: "test_output.txt"
+    mime_type: "text/plain"
+    content_contains: "This is a test artifact created by the agent."
+  - filename: "data_analysis.csv"
+    mime_type: "text/csv"
+    content_contains: "name,value"

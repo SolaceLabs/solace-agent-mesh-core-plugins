@@ -1,0 +1,26 @@
+test_case_id: "v1_basic_invoke"
+description: "Basic v1 API invoke test with simple prompt"
+tags: ["rest_gateway", "v1"]
+
+llm_interactions:
+  - static_response:
+      choices:
+        - message:
+            role: "assistant"
+            content: "Hello! This is a test response from the agent."
+          finish_reason: "stop"
+
+gateway_input:
+  endpoint: "/api/v1/invoke"
+  method: "POST"
+  form_data:
+    agent_name: "TestAgent"
+    prompt: "Hello, test agent!"
+
+expected_gateway_output:
+  - status_code: 200
+    response_json_matches:
+      status:
+        state: "completed"
+    response_contains:
+      "Hello! This is a test response from the agent."
