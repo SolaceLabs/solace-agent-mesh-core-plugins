@@ -10,6 +10,7 @@ import re
 import threading
 from typing import Any, Dict, Optional, List, Tuple, Union, Set
 from datetime import datetime, timezone
+from urllib.parse import urlparse, parse_qs
 
 try:
     import slack_bolt
@@ -40,7 +41,10 @@ from solace_agent_mesh.common.types import (
     JSONRPCError,
     TaskState,
 )
-from solace_agent_mesh.agent.utils.artifact_helpers import save_artifact_with_metadata
+from solace_agent_mesh.agent.utils.artifact_helpers import (
+    save_artifact_with_metadata,
+    load_artifact_content_or_metadata,
+)
 from .utils import (
     generate_a2a_session_id,
     send_slack_message,
@@ -820,8 +824,70 @@ class SlackGatewayComponent(BaseGatewayComponent):
                         file_info["mime_type"],
                     )
                 elif file_info.get("uri"):
-                    uri_text = f":link: Artifact available: {file_info['name']} - {file_info['uri']}"
-                    await send_slack_message(self, channel_id, thread_ts, uri_text)
+                    log.info("%s Dereferencing artifact URI: %s", log_id, file_info['uri'])
+                    try:
+                        # Parse the URI to get the artifact's true context
+                        parsed_uri = urlparse(file_info['uri'])
+                        if parsed_uri.scheme != "artifact":
+                            raise ValueError("Invalid URI scheme, must be 'artifact'.")
+                        
+                        app_name = parsed_uri.netloc
+                        path_parts = parsed_uri.path.strip("/").split("/")
+                        if len(path_parts) != 3:
+                            raise ValueError("Invalid URI path structure.")
+                        
+                        owner_user_id, owner_session_id, filename = path_parts
+                        query_params = parse_qs(parsed_uri.query)
+                        version_list = query_params.get("version")
+                        if not version_list or not version_list[0]:
+                            raise ValueError("Version query parameter is required.")
+                        version = int(version_list[0])
+
+                        log.info(
+                            "%s Parsed URI: app=%s, owner=%s, session=%s, file=%s, version=%s",
+                            log_id, app_name, owner_user_id, owner_session_id, filename, version
+                        )
+
+                        # Load the artifact content using the shared service
+                        load_result = await load_artifact_content_or_metadata(
+                            artifact_service=self.shared_artifact_service,
+                            app_name=app_name,
+                            user_id=owner_user_id,
+                            session_id=owner_session_id,
+                            filename=filename,
+                            version=version,
+                            return_raw_bytes=True,
+                            log_identifier_prefix=log_id,
+                            component=self,
+                        )
+
+                        if load_result.get("status") == "success" and load_result.get("raw_bytes"):
+                            # If successful, upload the fetched bytes to Slack
+                            log.info(
+                                "%s Successfully loaded artifact content (%d bytes). Uploading to Slack.",
+                                log_id, len(load_result["raw_bytes"])
+                            )
+                            await upload_slack_file(
+                                self,
+                                channel_id,
+                                thread_ts,
+                                filename,
+                                load_result["raw_bytes"],
+                                load_result.get("mime_type"),
+                            )
+                        else:
+                            # If loading fails, notify the user in Slack
+                            error_msg = f":warning: Failed to load artifact content for `{filename}`: {load_result.get('message', 'Unknown error')}"
+                            await send_slack_message(self, channel_id, thread_ts, error_msg)
+
+                    except (ValueError, IndexError) as e:
+                        log.warning("%s Invalid artifact URI format: %s", log_id, e)
+                        error_msg = f":warning: Invalid artifact URI format for `{file_info.get('name', 'unknown')}`."
+                        await send_slack_message(self, channel_id, thread_ts, error_msg)
+                    except Exception as e:
+                        log.exception("%s Failed to dereference and upload artifact URI: %s", log_id, file_info['uri'])
+                        error_msg = f":warning: An error occurred while trying to display the artifact `{file_info.get('name', 'unknown')}`."
+                        await send_slack_message(self, channel_id, thread_ts, error_msg)
 
         effective_status_text = status_signal_text
         if is_final_event:
