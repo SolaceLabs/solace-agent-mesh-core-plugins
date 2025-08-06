@@ -70,7 +70,7 @@ jobs:
           dir=$(pwd)
           echo "Directory: $dir"
           hatch run pip install solace-agent-mesh twine -q
-          hatch run solace-agent-mesh plugin add ${{ inputs.plugin_directory }} -u $dir
+          hatch run solace-agent-mesh plugin add test-${{ inputs.plugin_directory }} --plugin $dir
           hatch test
 
       - name: Install dependencies
