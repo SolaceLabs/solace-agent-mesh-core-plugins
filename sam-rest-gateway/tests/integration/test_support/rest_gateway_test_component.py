@@ -58,10 +58,14 @@ class RestGatewayTestComponent:
         start_time = time.time()
         
         while time.time() - start_time < max_wait:
-            if hasattr(self.rest_gateway_component, 'fastapi_app') and self.rest_gateway_component.fastapi_app:
-                self.test_client = TestClient(self.rest_gateway_component.fastapi_app)
-                log.info("REST Gateway test client initialized successfully")
-                return
+            try:
+                fastapi_app = getattr(self.rest_gateway_component, 'fastapi_app', None)
+                if fastapi_app:
+                    self.test_client = TestClient(fastapi_app)
+                    log.info("REST Gateway test client initialized successfully")
+                    return
+            except Exception as e:
+                log.debug(f"Exception while accessing fastapi_app: {e}")
             time.sleep(0.1)
         
         raise RuntimeError("Failed to initialize REST Gateway test client - FastAPI app not ready")
