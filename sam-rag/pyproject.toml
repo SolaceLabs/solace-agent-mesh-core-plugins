@@ -71,3 +71,18 @@ src-path = "src"
 
 [tool.hatch.version]
 path = "src/sam_rag/__init__.py"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "--tb=short --strict-markers --disable-warnings -p pytest_asyncio"
+markers = []
+
+[tool.hatch.envs.hatch-test]
+dependencies = [
+  "pytest-asyncio",
+  "pytest>=8.0.0",
+  "pytest-mock>=3.0.0",
+  "pytest-cov>=4.0.0",
+  "pytest-xdist>=3.5.0",
+  "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=sam-test-infrastructure"
+]

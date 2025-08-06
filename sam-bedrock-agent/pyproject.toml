@@ -30,3 +30,18 @@ src-path = "src"
 "config.yaml" = "sam_bedrock_agent/config.yaml"
 "README.md" = "sam_bedrock_agent/README.md"
 "pyproject.toml" = "sam_bedrock_agent/pyproject.toml"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "--tb=short --strict-markers --disable-warnings -p pytest_asyncio"
+markers = []
+
+[tool.hatch.envs.hatch-test]
+dependencies = [
+  "pytest-asyncio",
+  "pytest>=8.0.0",
+  "pytest-mock>=3.0.0",
+  "pytest-cov>=4.0.0",
+  "pytest-xdist>=3.5.0",
+  "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=sam-test-infrastructure"
+]
