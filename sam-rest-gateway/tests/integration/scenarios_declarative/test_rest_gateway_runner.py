@@ -397,9 +397,15 @@ async def _assert_generated_artifacts(
 
     # For REST Gateway, we need to determine the correct app_name, user_id, and session_id
     # These should match what was used during artifact setup
-    app_name_for_artifacts = "TestAgent_Setup"  # From setup
-    user_id_for_artifacts = "default_artifact_user@example.com"  # From setup
-    session_id_for_artifacts = f"setup_session_for_{user_id_for_artifacts}"  # From setup
+    user_id_for_artifacts = gateway_input_data.get(
+        "user_identity", "default_artifact_user@example.com"
+    )
+    app_name_for_artifacts = gateway_input_data.get(
+        "target_agent_name", "TestAgent_Setup"
+    )
+    session_id_for_artifacts = gateway_input_data.get(
+        "session_id", f"setup_session_for_{user_id_for_artifacts}"
+    )
 
     print(f"Scenario {scenario_id}: Checking artifacts with app={app_name_for_artifacts}, user={user_id_for_artifacts}, session={session_id_for_artifacts}")
 
