@@ -140,6 +140,50 @@ class RestGatewayTestComponent:
         
         return response
 
+    async def make_authenticated_request(
+        self,
+        method: str,
+        endpoint: str,
+        token: Optional[str] = None,
+        form_data: Optional[Dict[str, Any]] = None,
+        files: Optional[List[Tuple[str, Tuple[str, io.BytesIO, str]]]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        query_params: Optional[Dict[str, str]] = None,
+        json_data: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Make an HTTP request to the REST gateway with optional Bearer token authentication.
+        
+        Args:
+            method: HTTP method (GET, POST, etc.)
+            endpoint: API endpoint path
+            token: Bearer token for authentication (optional)
+            form_data: Form data for POST requests
+            files: List of files to upload
+            headers: HTTP headers
+            query_params: Query parameters
+            json_data: JSON data for requests
+            
+        Returns:
+            Response object from the test client
+        """
+        # Prepare headers with authentication
+        auth_headers = headers.copy() if headers else {}
+        
+        if token:
+            auth_headers["Authorization"] = f"Bearer {token}"
+            log.debug(f"REST Gateway authenticated request: Adding Bearer token {token[:10]}...")
+        
+        return await self.make_request(
+            method=method,
+            endpoint=endpoint,
+            form_data=form_data,
+            files=files,
+            headers=auth_headers,
+            query_params=query_params,
+            json_data=json_data,
+        )
+
     def clear_captured_outputs(self):
         """Clear any captured outputs for test isolation."""
         # Clear any internal state if needed

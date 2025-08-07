@@ -1,0 +1,17 @@
+test_case_id: "auth_invalid_token_failure"
+description: "Tests authentication failure with invalid Bearer token"
+tags: ["rest_gateway", "v1", "auth"]
+
+gateway_input:
+  endpoint: "/api/v1/invoke"
+  method: "POST"
+  auth_token: "invalid"  # References the 'invalid' token from auth_tokens fixture
+  form_data:
+    agent_name: "TestAgent"
+    prompt: "This request should fail due to invalid authentication."
+
+# No LLM interactions expected since auth should fail before reaching the agent
+
+expected_gateway_output:
+  - status_code: 401
+    response_contains: "Invalid or expired token"

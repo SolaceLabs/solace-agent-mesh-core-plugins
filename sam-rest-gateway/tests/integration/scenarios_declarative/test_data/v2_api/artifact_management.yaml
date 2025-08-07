@@ -13,6 +13,7 @@ setup_artifacts:
 gateway_input:
   endpoint: "/api/v2/artifacts/"
   method: "GET"
+  auth_token: "valid"
   query_params:
     session_id: "setup_session_for_default_artifact_user@example.com"
 

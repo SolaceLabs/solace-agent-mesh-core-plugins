@@ -1,0 +1,17 @@
+test_case_id: "v2_auth_no_token_failure"
+description: "Tests V2 authentication failure when no Bearer token is provided"
+tags: ["rest_gateway", "v2", "auth"]
+
+gateway_input:
+  endpoint: "/api/v2/tasks"
+  method: "POST"
+  # No auth_token specified - should fail authentication
+  form_data:
+    agent_name: "TestAgent"
+    prompt: "This V2 request should fail due to missing authentication."
+
+# No LLM interactions expected since auth should fail before reaching the agent
+
+expected_gateway_output:
+  - status_code: 401
+    response_contains: "Bearer token not provided"

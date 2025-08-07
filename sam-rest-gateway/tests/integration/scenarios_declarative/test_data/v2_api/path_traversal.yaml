@@ -1,0 +1,18 @@
+test_case_id: "v2_security_path_traversal"
+description: "Tests that the artifacts endpoint is not vulnerable to path traversal"
+tags: ["rest_gateway", "v2", "security", "input_validation"]
+
+# This test requires an authenticated user, so we assume the runner provides a default valid token.
+# The test attempts to access a file outside the intended artifact directory.
+
+gateway_input:
+  endpoint: "/api/v2/artifacts/../../../../../../../../etc/passwd"
+  method: "GET"
+  auth_token: "valid"
+  query_params:
+    session_id: "any_session"
+
+expected_gateway_output:
+  - status_code: 404 # Not Found
+    response_json_matches:
+      detail: "Not Found"
