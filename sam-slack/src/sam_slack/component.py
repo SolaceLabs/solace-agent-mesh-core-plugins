@@ -825,27 +825,18 @@ class SlackGatewayComponent(BaseGatewayComponent):
                     )
                 elif file_info.get("uri"):
                     log.info("%s Dereferencing artifact URI: %s", log_id, file_info['uri'])
-                    try:
-                        # Parse the URI to get the artifact's true context
-                        parsed_uri = urlparse(file_info['uri'])
-                        if parsed_uri.scheme != "artifact":
-                            raise ValueError("Invalid URI scheme, must be 'artifact'.")
-                        
-                        app_name = parsed_uri.netloc
-                        path_parts = parsed_uri.path.strip("/").split("/")
-                        if len(path_parts) != 3:
-                            raise ValueError("Invalid URI path structure.")
-                        
-                        owner_user_id, owner_session_id, filename = path_parts
-                        query_params = parse_qs(parsed_uri.query)
-                        version_list = query_params.get("version")
-                        if not version_list or not version_list[0]:
-                            raise ValueError("Version query parameter is required.")
-                        version = int(version_list[0])
 
-                        log.info(
-                            "%s Parsed URI: app=%s, owner=%s, session=%s, file=%s, version=%s",
-                            log_id, app_name, owner_user_id, owner_session_id, filename, version
+                    try:                                                                                                                                                                             
+                        parsed = self._parse_artifact_uri(file_info['uri'])                                                                                                                          
+                        app_name = parsed["app_name"]                                                                                                                                                
+                        owner_user_id = parsed["user_id"]                                                                                                                                            
+                        owner_session_id = parsed["session_id"]                                                                                                                                      
+                        filename = parsed["filename"]                                                                                                                                                
+                        version = parsed["version"]                                                                                                                                                  
+                                                                                                                                                                                                     
+                        log.info(                                                                                                                                                                    
+                            "%s Parsed URI: app=%s, owner=%s, session=%s, file=%s, version=%s",                                                                                                      
+                            log_id, app_name, owner_user_id, owner_session_id, filename, version                                                                                                     
                         )
 
                         # Check if user owns the artifact
