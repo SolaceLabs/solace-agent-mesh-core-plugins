@@ -330,13 +330,13 @@ async def broker_request_response(
             # Send async request
             host_component.do_broker_request_response(
                 message=message,
-                stream=False,
+                stream=True,
                 streaming_complete_expression=None,
             )
 
             return {
                 "status": "success",
-                "message": "Request accepted for async processing",
+                "message": "Request sent for async processing",
                 "is_async": True,
                 "async_response_id": async_response_id,
             }
