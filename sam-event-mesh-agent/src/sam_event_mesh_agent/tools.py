@@ -222,7 +222,7 @@ def _fill_topic_template(template: str, params: Dict[str, Any]) -> str:
 
 
 async def broker_request_response(
-    params: Optional[Dict[str, Any]]= {},
+    params: Optional[Dict[str, Any]]=None,
     tool_context: Optional[ToolContext] = None,
     tool_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -235,6 +235,8 @@ async def broker_request_response(
     plugin_name = "sam_event_mesh_agent"
     log_identifier = f"[{plugin_name}:broker_request_response]"
 
+    if params is None:
+        params = {}
     config_params = tool_config.get("parameters") or []
     topic_template = tool_config.get("topic", "")
     response_timeout = tool_config.get("response_timeout", 15)
