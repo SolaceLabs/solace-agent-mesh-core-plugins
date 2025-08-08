@@ -1,0 +1,19 @@
+test_case_id: "v2_security_unauthenticated_access"
+description: "Tests that the v2 tasks endpoint returns 401 when no auth token is provided"
+tags: ["rest_gateway", "v2", "security", "auth"]
+
+# This test assumes the gateway is running with 'enforce_authentication: true'
+# and no 'force_user_identity' or 'default_user_identity' is set.
+
+gateway_input:
+  endpoint: "/api/v2/tasks"
+  method: "POST"
+  form_data:
+    agent_name: "TestAgent"
+    prompt: "This should be blocked."
+  # No 'Authorization' header is sent
+
+expected_gateway_output:
+  - status_code: 401 # Unauthorized
+    response_json_matches:
+      detail: "Bearer token not provided."

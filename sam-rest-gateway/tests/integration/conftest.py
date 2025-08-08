@@ -15,6 +15,7 @@ from sam_test_infrastructure.a2a_validator.validator import A2AMessageValidator
 from sam_rest_gateway.app import RestGatewayApp
 from sam_rest_gateway.component import RestGatewayComponent
 from tests.integration.test_support.rest_gateway_test_component import RestGatewayTestComponent
+from tests.integration.test_support.mock_auth_server import MockAuthServer
 
 
 @pytest.fixture
@@ -175,9 +176,51 @@ def session_monkeypatch():
 
 
 @pytest.fixture(scope="session")
+def mock_auth_server():
+    """
+    Manages the lifecycle of the MockAuthServer for the test session.
+    """
+    server = MockAuthServer(host="127.0.0.1", port=8090)
+    server.start()
+
+    print(f"Mock Auth Server fixture: Server ready at {server.url}")
+    yield server
+
+    print("Mock Auth Server fixture: Stopping server...")
+    server.stop()
+    print("Mock Auth Server fixture: Server stopped.")
+
+
+@pytest.fixture(autouse=True)
+def clear_auth_server_tokens(mock_auth_server: MockAuthServer):
+    """
+    Automatically clears any custom test tokens from the MockAuthServer before each test.
+    """
+    yield
+    mock_auth_server.clear_test_tokens()
+
+
+@pytest.fixture
+def auth_tokens(mock_auth_server: MockAuthServer):
+    """
+    Provides test authentication tokens for use in tests.
+    """
+    return mock_auth_server.get_test_tokens()
+
+
+@pytest.fixture
+def test_users(mock_auth_server: MockAuthServer):
+    """
+    Provides test user profiles for use in tests.
+    """
+    return mock_auth_server.get_test_users()
+
+
+@pytest.fixture(scope="session")
 def shared_solace_connector(
     test_llm_server: TestLLMServer,
     test_artifact_service_instance: TestInMemoryArtifactService,
+    mock_auth_server: MockAuthServer,
     session_monkeypatch,
     request,
 ) -> SolaceAiConnector:
@@ -235,15 +278,19 @@ def shared_solace_connector(
         model_suffix="rest_test",
     )
 
-    # REST Gateway configuration
+    # REST Gateway configuration with production authentication
     rest_gateway_config = {
         "namespace": "test_namespace",
         "gateway_id": "TestRestGateway",
         "artifact_service": {"type": "test_in_memory"},
         "rest_api_server_host": "127.0.0.1",
         "rest_api_server_port": 8081,  # Different port to avoid conflicts
-        "enforce_authentication": False,  # Disable auth for testing
-        "default_user_identity": "test_user@example.com",
+
+        # Production Authentication Settings
+        "enforce_authentication": True,
+        "external_auth_service_url": mock_auth_server.url,
+        "external_auth_service_provider": "azure",
+
         "sync_mode_timeout_seconds": 30,
     }
 

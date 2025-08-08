@@ -1,0 +1,33 @@
+test_case_id: "v2_auth_valid_token_success"
+description: "Tests successful V2 authentication with valid Bearer token"
+tags: ["rest_gateway", "v2", "auth"]
+
+enable_polling: true
+max_polling_attempts: 5
+polling_interval_seconds: 0.3
+
+llm_interactions:
+  - static_response:
+      choices:
+        - message:
+            role: "assistant"
+            content: "V2 Authentication successful! I received your async request."
+          finish_reason: "stop"
+
+gateway_input:
+  endpoint: "/api/v2/tasks"
+  method: "POST"
+  auth_token: "valid"
+  form_data:
+    agent_name: "TestAgent"
+    prompt: "This V2 request should succeed with valid authentication."
+
+expected_gateway_output:
+  - status_code: 202  # Task accepted
+    response_contains:
+      taskId: null
+  - status_code: 200  # Task completed
+    response_json_matches:
+      status:
+        state: "completed"
+    response_contains: "V2 Authentication successful"

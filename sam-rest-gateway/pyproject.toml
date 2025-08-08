@@ -37,8 +37,12 @@ asyncio_mode = "auto"
 addopts = "--tb=short --strict-markers --disable-warnings -p pytest_asyncio"
 markers = [
   "rest_gateway: marks tests as rest_gateway tests",
+  "general: marks tests as general tests",
   "v1: marks tests as v1 tests",
   "v2: marks tests as v2 tests",
+  "security: marks tests as security tests",
+  "auth: marks tests as auth tests",
+  "input_validation: marks tests as input_validation tests",
 ]
 
 [tool.hatch.envs.hatch-test]
@@ -48,5 +52,5 @@ dependencies = [
   "pytest-mock>=3.0.0",
   "pytest-cov>=4.0.0",
   "pytest-xdist>=3.5.0",
-  "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=sam-test-infrastructure"
+  "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure"
 ]

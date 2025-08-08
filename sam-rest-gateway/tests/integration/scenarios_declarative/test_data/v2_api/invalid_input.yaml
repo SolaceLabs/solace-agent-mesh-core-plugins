@@ -1,0 +1,18 @@
+test_case_id: "v2_invalid_input"
+description: "Tests that the v2 tasks endpoint rejects requests with missing data"
+tags: ["rest_gateway", "v2"]
+
+gateway_input:
+  endpoint: "/api/v2/tasks"
+  method: "POST"
+  auth_token: "valid"
+  form_data:
+    # Missing 'agent_name' and 'prompt'
+    some_other_field: "some value"
+
+expected_gateway_output:
+  - status_code: 400 # Bad Request
+    response_json_matches:
+      error:
+        code: -32600
+        message: "Invalid request parameters"

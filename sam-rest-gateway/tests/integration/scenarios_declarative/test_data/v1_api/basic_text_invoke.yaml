@@ -1,4 +1,4 @@
-test_case_id: "v1_basic_invoke"
+test_case_id: "v1_basic_text_invoke"
 description: "Basic v1 API invoke test with simple prompt"
 tags: ["rest_gateway", "v1"]
 
@@ -13,6 +13,7 @@ llm_interactions:
 gateway_input:
   endpoint: "/api/v1/invoke"
   method: "POST"
+  auth_token: "valid"
   form_data:
     agent_name: "TestAgent"
     prompt: "Hello, test agent!"

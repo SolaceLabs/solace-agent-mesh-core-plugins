@@ -1,4 +1,4 @@
-test_case_id: "v1_file_upload"
+test_case_id: "v1_basic_file_upload"
 description: "V1 API test with file upload"
 tags: ["rest_gateway", "v1"]
 
@@ -13,6 +13,7 @@ llm_interactions:
 gateway_input:
   endpoint: "/api/v1/invoke"
   method: "POST"
+  auth_token: "valid"
   form_data:
     agent_name: "TestAgent"
     prompt: "Please process the uploaded file"

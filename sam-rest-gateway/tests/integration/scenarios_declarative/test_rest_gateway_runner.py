@@ -114,6 +114,7 @@ async def _execute_rest_gateway_request(
     test_rest_gateway: RestGatewayTestComponent,
     gateway_input_data: Dict[str, Any],
     scenario_id: str,
+    auth_tokens: Optional[Dict[str, str]] = None,
 ) -> Tuple[Dict[str, Any], Optional[str]]:
     """
     Executes a REST gateway request and returns the response and optional task_id.
@@ -142,11 +143,23 @@ async def _execute_rest_gateway_request(
         
         files.append(("files", (filename, io.BytesIO(content), mime_type)))
 
+    # Handle authentication token from scenario
+    auth_token_key = gateway_input_data.get("auth_token")
+    token = None
+    if auth_token_key and auth_tokens:
+        token = auth_tokens.get(auth_token_key)
+        if token:
+            print(f"Scenario {scenario_id}: Using auth token '{auth_token_key}' for request")
+        else:
+            print(f"Scenario {scenario_id}: Warning - auth token '{auth_token_key}' not found in available tokens")
+
     print(f"Scenario {scenario_id}: Making {method} request to {endpoint}")
     
-    response = await test_rest_gateway.make_request(
+    # Use authenticated request method
+    response = await test_rest_gateway.make_authenticated_request(
         method=method,
         endpoint=endpoint,
+        token=token,
         form_data=form_data,
         files=files,
         headers=headers,
@@ -294,6 +307,7 @@ async def test_declarative_scenario(
     test_rest_gateway: RestGatewayTestComponent,
     test_artifact_service_instance: TestInMemoryArtifactService,
     a2a_message_validator: A2AMessageValidator,
+    auth_tokens: Dict[str, str],
     mock_gemini_client: None,
 ):
     """
@@ -318,7 +332,7 @@ async def test_declarative_scenario(
 
     # Phase 2: Execute REST Gateway Request
     response, task_id = await _execute_rest_gateway_request(
-        test_rest_gateway, gateway_input_data, scenario_id
+        test_rest_gateway, gateway_input_data, scenario_id, auth_tokens
     )
 
     print(f"Scenario {scenario_id}: Initial request completed with status {response.status_code}")
@@ -331,11 +345,18 @@ async def test_declarative_scenario(
         max_polls = declarative_scenario.get("max_polling_attempts", 10)
         poll_interval = declarative_scenario.get("polling_interval_seconds", 0.5)
         
+        # Get the same token used for the initial request
+        auth_token_key = gateway_input_data.get("auth_token")
+        token = None
+        if auth_token_key and auth_tokens:
+            token = auth_tokens.get(auth_token_key)
+        
         for attempt in range(max_polls):
             await asyncio.sleep(poll_interval)
-            poll_response = await test_rest_gateway.make_request(
+            poll_response = await test_rest_gateway.make_authenticated_request(
                 method="GET",
                 endpoint=f"/api/v2/tasks/{task_id}",
+                token=token,  # Use the same token for polling
             )
             all_responses.append(poll_response)
             
@@ -379,6 +400,12 @@ async def test_declarative_scenario(
             gateway_input_data=gateway_input_data,
             scenario_id=scenario_id,
         )
+
+    # Phase 7: Optional wait after test
+    wait_after = declarative_scenario.get("wait_after_test_seconds")
+    if wait_after:
+        print(f"Scenario {scenario_id}: Waiting for {wait_after} seconds post-test.")
+        await asyncio.sleep(wait_after)
 
     print(f"Scenario {scenario_id}: Test completed successfully.")
 

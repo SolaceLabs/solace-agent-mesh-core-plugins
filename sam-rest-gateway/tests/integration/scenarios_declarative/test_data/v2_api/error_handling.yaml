@@ -5,6 +5,7 @@ tags: ["rest_gateway", "v2"]
 gateway_input:
   endpoint: "/api/v2/tasks"
   method: "POST"
+  auth_token: "valid"
   form_data:
     agent_name: "NonExistentAgent"
     prompt: "This should fail because the agent doesn't exist"

@@ -1,0 +1,12 @@
+test_case_id: "general_health_check"
+description: "Tests the /health endpoint"
+tags: ["rest_gateway", "general"]
+
+gateway_input:
+  endpoint: "/health"
+  method: "GET"
+
+expected_gateway_output:
+  - status_code: 200
+    response_json_matches:
+      status: "ok"

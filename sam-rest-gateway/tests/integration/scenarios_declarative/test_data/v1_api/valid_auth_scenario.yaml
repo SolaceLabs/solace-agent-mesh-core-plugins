@@ -1,0 +1,27 @@
+test_case_id: "auth_valid_token_success"
+description: "Tests successful authentication with valid Bearer token"
+tags: ["rest_gateway", "v1", "auth"]
+
+gateway_input:
+  endpoint: "/api/v1/invoke"
+  method: "POST"
+  auth_token: "valid"  # References the 'valid' token from auth_tokens fixture
+  form_data:
+    agent_name: "TestAgent"
+    prompt: "This request should succeed with valid authentication."
+
+llm_interactions:
+  - step_id: "llm_responds_to_authenticated_request"
+    static_response:
+      id: "chatcmpl-auth-success"
+      object: "chat.completion"
+      model: "test-llm-model"
+      choices:
+        - message:
+            role: "assistant"
+            content: "Authentication successful! I received your request."
+          finish_reason: "stop"
+
+expected_gateway_output:
+  - status_code: 200
+    response_contains: "Authentication successful"

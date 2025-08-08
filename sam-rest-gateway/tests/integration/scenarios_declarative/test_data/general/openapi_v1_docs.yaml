@@ -1,0 +1,11 @@
+test_case_id: "general_openapi_v1_docs"
+description: "Tests that the v1 Swagger UI documentation page loads correctly"
+tags: ["rest_gateway", "general"]
+
+gateway_input:
+  endpoint: "/api/v1/docs"
+  method: "GET"
+
+expected_gateway_output:
+  - status_code: 200
+    response_contains: "<title>SAM REST API Gateway - v1 (Legacy)</title>"

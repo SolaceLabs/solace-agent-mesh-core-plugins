@@ -1,0 +1,34 @@
+test_case_id: "v1_timeout_scenario"
+description: "Tests that a synchronous v1 request times out correctly when tool takes too long"
+tags: ["rest_gateway", "v1"]
+
+gateway_input:
+  endpoint: "/api/v1/invoke"
+  method: "POST"
+  auth_token: "valid"
+  form_data:
+    agent_name: "TestAgent"
+    prompt: "This will timeout due to a long delay."
+
+llm_interactions:
+  - step_id: "llm_calls_time_delay"
+    static_response:
+      id: "chatcmpl-timeout-test"
+      object: "chat.completion"
+      model: "test-llm-model"
+      choices:
+        - message:
+            role: "assistant"
+            tool_calls:
+              - id: "tool_call_delay"
+                type: "function"
+                function:
+                  name: "time_delay"
+                  arguments: '{"seconds": 31}'
+          finish_reason: "tool_calls"
+
+expected_gateway_output:
+  - status_code: 504  # Gateway timeout
+    response_contains: "The agent task did not complete within the"
+
+wait_after_test_seconds: 5

@@ -17,6 +17,7 @@ llm_interactions:
 gateway_input:
   endpoint: "/api/v2/tasks"
   method: "POST"
+  auth_token: "valid"
   form_data:
     agent_name: "TestAgent"
     prompt: "Process this async request"
