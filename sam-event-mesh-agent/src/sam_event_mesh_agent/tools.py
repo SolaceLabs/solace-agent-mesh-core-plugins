@@ -332,7 +332,6 @@ async def broker_request_response(
                 message=message,
                 stream=False,
                 streaming_complete_expression=None,
-                async_response_id=async_response_id,
             )
 
             return {
