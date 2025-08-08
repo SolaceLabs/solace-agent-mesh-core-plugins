@@ -5,6 +5,7 @@ import io
 
 from sam_test_infrastructure.llm_server.server import TestLLMServer
 from tests.integration.test_support.rest_gateway_test_component import RestGatewayTestComponent
+from tests.integration.test_support.fake_large_file import FakeLargeFile
 
 @pytest.mark.asyncio
 async def test_v2_large_text_payload(
@@ -77,8 +78,8 @@ async def test_v2_large_file_payload(
     Tests that the v2 API can handle a large file payload.
     """
     # 1. Create a large file payload
-    large_file_content = b"a" * (5 * 1024 * 1024)  # 5MB file
-    large_file = ("files", ("large_file.txt", io.BytesIO(large_file_content), "text/plain"))
+    # Use a file-like object that simulates a 5MB file without allocating all bytes in memory
+    large_file = ("files", ("large_file.txt", FakeLargeFile(5 * 1024 * 1024), "text/plain"))
 
     # 2. Prime the LLM server with a simple response
     llm_response = {

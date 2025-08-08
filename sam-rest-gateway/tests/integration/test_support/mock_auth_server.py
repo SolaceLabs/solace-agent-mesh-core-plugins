@@ -170,8 +170,13 @@ class MockAuthServer:
         )
         self.server = uvicorn.Server(config)
         
+        def _run_server():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self.server.serve())
+
         self.server_thread = threading.Thread(
-            target=self.server.run,
+            target=_run_server,
             daemon=True,
             name="MockAuthServer_Thread"
         )
