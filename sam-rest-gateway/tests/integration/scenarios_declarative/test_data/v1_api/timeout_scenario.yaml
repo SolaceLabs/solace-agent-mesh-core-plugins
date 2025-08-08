@@ -30,3 +30,5 @@ llm_interactions:
 expected_gateway_output:
   - status_code: 504  # Gateway timeout
     response_contains: "The agent task did not complete within the"
+
+wait_after_test_seconds: 5

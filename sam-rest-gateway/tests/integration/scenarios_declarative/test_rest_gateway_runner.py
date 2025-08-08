@@ -401,6 +401,12 @@ async def test_declarative_scenario(
             scenario_id=scenario_id,
         )
 
+    # Phase 7: Optional wait after test
+    wait_after = declarative_scenario.get("wait_after_test_seconds")
+    if wait_after:
+        print(f"Scenario {scenario_id}: Waiting for {wait_after} seconds post-test.")
+        await asyncio.sleep(wait_after)
+
     print(f"Scenario {scenario_id}: Test completed successfully.")
 
 
