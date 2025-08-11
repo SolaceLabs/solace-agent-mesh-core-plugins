@@ -863,7 +863,6 @@ class SlackGatewayComponent(BaseGatewayComponent):
                         )
 
                         if load_result.get("status") == "success" and load_result.get("raw_bytes"):
-                            # If successful, upload the fetched bytes to Slack
                             log.info(
                                 "%s Successfully loaded artifact content (%d bytes). Uploading to Slack.",
                                 log_id, len(load_result["raw_bytes"])
