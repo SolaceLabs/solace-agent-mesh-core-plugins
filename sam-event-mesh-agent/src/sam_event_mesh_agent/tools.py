@@ -39,61 +39,6 @@ def _validate_topic_template(topic: str, params) -> str:
         if not any(p["name"] == param for p in params):
             return f"Topic template '{topic}' references undefined parameter '{param}'"
 
-
-def _validate_payload_paths(parameters: Dict[str, Any]):
-    """Validate that all payload paths are properly formatted.
-
-    Valid formats include:
-    - Simple paths: field1.field2.field3
-    - Array dot notation: field1.0.field2
-    - Array bracket notation: field1[0].field2
-
-    Returns:
-        string: If any payload path is invalid.
-    """
-    for param in parameters.values():
-        if "payload_path" not in param:
-            continue
-        path = param["payload_path"]
-        if not isinstance(path, str) or not path:
-            return f"Invalid payload path '{path}' for parameter '{param['name']}'. Payload paths must be non-empty strings."
-
-        # Split on dots but preserve array brackets
-        parts = []
-        current = ""
-        for char in path:
-            if char == "." and not (current.startswith("[") and "]" not in current):
-                if current:
-                    parts.append(current)
-                    current = ""
-            else:
-                current += char
-        if current:
-            parts.append(current)
-
-        if not all(parts):
-            return f"Invalid payload path '{path}' for parameter '{param['name']}'. Path segments cannot be empty."
-
-        for part in parts:
-            # Check if this part is an array index
-            if part.startswith("[") and part.endswith("]"):
-                index_str = part[1:-1]
-                if not index_str.isdigit():
-                    return (
-                        f"Invalid array index '{part}' in path '{path}' for parameter "
-                        f"'{param['name']}'. Array indices must be non-negative integers."
-                    )
-            elif part.isdigit():
-                # Direct numeric index
-                pass
-            elif not (part.replace('_', '').isalnum()):
-                return (
-                    f"Invalid path segment '{part}' in path '{path}' for parameter "
-                    f"'{param['name']}'. Path segments must be alphanumeric, "
-                    "underscores, or array indices."
-                )
-
-
 def _build_payload(
     parameters_map: Dict[str, Any], params: Dict[str, Any]
 ) -> Dict[str, Any]:
