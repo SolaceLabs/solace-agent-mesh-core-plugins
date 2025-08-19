@@ -86,7 +86,7 @@ def _validate_payload_paths(parameters: Dict[str, Any]):
             elif part.isdigit():
                 # Direct numeric index
                 pass
-            elif not part.isalnum() and not "_" in part:
+            elif not (part.replace('_', '').isalnum()):
                 return (
                     f"Invalid path segment '{part}' in path '{path}' for parameter "
                     f"'{param['name']}'. Path segments must be alphanumeric, "
