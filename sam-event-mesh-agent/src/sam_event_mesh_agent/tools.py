@@ -8,7 +8,7 @@ from solace_ai_connector.common.log import log
 from solace_ai_connector.common.message import Message
 
 
-def _validate_topic_template(topic: str, params) -> None:
+def _validate_topic_template(topic: str, params) -> str:
     """Validate that a topic template is properly formatted.
 
     Valid formats include:
