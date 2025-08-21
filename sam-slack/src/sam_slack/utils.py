@@ -7,7 +7,7 @@ import re
 import json
 from typing import TYPE_CHECKING, Optional, List, Tuple, Any, Dict
 from solace_ai_connector.common.log import log
-from solace_agent_mesh.common.types import DataPart
+from a2a.types import DataPart
 from solace_agent_mesh.common.utils.embeds import (
     resolve_embeds_in_string,
     evaluate_embed,
@@ -85,14 +85,6 @@ def correct_slack_markdown(text: str) -> str:
 def format_data_part_for_slack(data_part: DataPart) -> str:
     """Formats an A2A DataPart for display in Slack (e.g., as a JSON code block)."""
     try:
-        if data_part.data.get("a2a_signal_type") == "agent_status_message":
-            status_text = data_part.data.get("text", "[Agent status update]")
-            log.debug(
-                "[SlackUtil:format_data_part] Extracted agent_status_message text: '%s'",
-                status_text,
-            )
-            return status_text
-
         json_string = json.dumps(data_part.data, indent=2)
         header = "Received Data"
         if data_part.metadata:

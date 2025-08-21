@@ -4,11 +4,11 @@ This checklist provides a terse summary of the tasks required to complete the Sl
 
 ## Phase 1: `utils.py` Refactoring
 
-- [ ] **1. Update Imports:** Change `solace_agent_mesh.common.types.DataPart` to `a2a.types.DataPart`.
-- [ ] **2. Refactor `format_data_part_for_slack`:**
-    - [ ] Remove the specific `agent_status_message` signal handling logic.
-    - [ ] Ensure the function acts as a generic JSON fallback for unexpected `DataPart` types.
-    - [ ] Update the function's type hint to use `a2a.types.DataPart`.
+- [x] **1. Update Imports:** Change `solace_agent_mesh.common.types.DataPart` to `a2a.types.DataPart`.
+- [x] **2. Refactor `format_data_part_for_slack`:**
+    - [x] Remove the specific `agent_status_message` signal handling logic.
+    - [x] Ensure the function acts as a generic JSON fallback for unexpected `DataPart` types.
+    - [x] Update the function's type hint to use `a2a.types.DataPart`.
 
 ## Phase 2: `component.py` Refactoring
 
