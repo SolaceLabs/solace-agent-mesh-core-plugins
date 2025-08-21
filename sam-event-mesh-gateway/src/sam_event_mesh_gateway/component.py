@@ -30,14 +30,16 @@ from solace_ai_connector.common.event import Event, EventType
 
 
 from solace_agent_mesh.gateway.base.component import BaseGatewayComponent
-from solace_agent_mesh.common.types import (
+from a2a.types import (
     Part as A2APart,
     TextPart,
     FilePart,
     DataPart,
     Task,
     JSONRPCError,
-    FileContent,
+    FileWithUri,
+    TaskStatusUpdateEvent,
+    TaskArtifactUpdateEvent,
 )
 
 from solace_agent_mesh.common.a2a_protocol import _topic_matches_subscription

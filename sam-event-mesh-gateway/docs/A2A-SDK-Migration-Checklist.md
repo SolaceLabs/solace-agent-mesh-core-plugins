@@ -4,9 +4,9 @@ This checklist provides a terse summary of the tasks required to complete the Ev
 
 ## Phase 1: Core Component Refactoring (`component.py`)
 
-- [ ] **1. Update All A2A Type Imports:**
-    - [ ] Remove all imports from `solace_agent_mesh.common.types`.
-    - [ ] Add corresponding imports from `a2a.types` (`Part as A2APart`, `TextPart`, `FilePart`, `DataPart`, `Task`, `JSONRPCError`, `FileWithUri`, `TaskStatusUpdateEvent`, `TaskArtifactUpdateEvent`).
+- [x] **1. Update All A2A Type Imports:**
+    - [x] Remove all imports from `solace_agent_mesh.common.types`.
+    - [x] Add corresponding imports from `a2a.types` (`Part as A2APart`, `TextPart`, `FilePart`, `DataPart`, `Task`, `JSONRPCError`, `FileWithUri`, `TaskStatusUpdateEvent`, `TaskArtifactUpdateEvent`).
 
 - [ ] **2. Refactor `_translate_external_input`:**
     - [ ] Replace `FileContent` instantiation with `a2a.types.FileWithUri`.
