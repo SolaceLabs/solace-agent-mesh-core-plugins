@@ -31,8 +31,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 
-from solace_agent_mesh.common.types import (
-    JSONRPCResponse as A2AJSONRPCResponse,
+from a2a.types import (
+    JSONRPCErrorResponse as A2AJSONRPCErrorResponse,
     InternalError,
     InvalidRequestError,
 )

@@ -4,8 +4,8 @@ This checklist provides a terse summary of the tasks required to complete the RE
 
 ## Phase 1: Dependencies and Entrypoint Refactoring
 
-- [ ] **1. Update `main.py` Imports:**
-    - [ ] Change `solace_agent_mesh.common.types` imports to `a2a.types` for `JSONRPCErrorResponse`, `InternalError`, and `InvalidRequestError`.
+- [x] **1. Update `main.py` Imports:**
+    - [x] Change `solace_agent_mesh.common.types` imports to `a2a.types` for `JSONRPCErrorResponse`, `InternalError`, and `InvalidRequestError`.
 
 ## Phase 2: Core Component Refactoring (`component.py`)
 
