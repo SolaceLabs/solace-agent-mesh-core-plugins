@@ -231,7 +231,7 @@ async def validation_exception_handler(
     error_obj = InvalidRequestError(
         message="Invalid request parameters", data=exc.errors()
     )
-    response = A2AJSONRPCResponse(error=error_obj)
+    response = JSONRPCErrorResponse(error=error_obj)
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content=response.model_dump(exclude_none=True),
@@ -247,7 +247,7 @@ async def generic_exception_handler(request: FastAPIRequest, exc: Exception):
     error_obj = InternalError(
         message=f"An unexpected server error occurred: {type(exc).__name__}"
     )
-    response = A2AJSONRPCResponse(error=error_obj)
+    response = JSONRPCErrorResponse(error=error_obj)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content=response.model_dump(exclude_none=True),
