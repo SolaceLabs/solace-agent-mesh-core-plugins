@@ -29,16 +29,16 @@ This checklist provides a terse summary of the tasks required to complete the Sl
     - [x] Confirm all task ID access uses `task_data.id`.
     - [x] Confirm task state checks use the `a2a.types.TaskState` enum.
 
-- [ ] **7. Refactor `_send_update_to_external`:**
-    - [ ] Update `event_data` parameter type hint to `Union[TaskStatusUpdateEvent, TaskArtifactUpdateEvent]`.
-    - [ ] Change task ID access from `event_data.id` to `event_data.task_id`.
-    - [ ] In the `TaskStatusUpdateEvent` block, replace `metadata`-based signal checks with `DataPart` parsing.
-    - [ ] Implement logic to parse `agent_progress_update` and `artifact_creation_progress` data parts using the new Pydantic models.
-    - [ ] In the `TaskArtifactUpdateEvent` block, update logic to handle the `part.file` union (`FileWithBytes` vs. `FileWithUri`).
+- [x] **7. Refactor `_send_update_to_external`:**
+    - [x] Update `event_data` parameter type hint to `Union[TaskStatusUpdateEvent, TaskArtifactUpdateEvent]`.
+    - [x] Change task ID access from `event_data.id` to `event_data.task_id`.
+    - [x] In the `TaskStatusUpdateEvent` block, replace `metadata`-based signal checks with `DataPart` parsing.
+    - [x] Implement logic to parse `agent_progress_update` and `artifact_creation_progress` data parts using the new Pydantic models.
+    - [x] In the `TaskArtifactUpdateEvent` block, update logic to handle the `part.file` union (`FileWithBytes` vs. `FileWithUri`).
 
-- [ ] **8. Review `resolve_and_format_for_slack`:**
-    - [ ] Confirm the logic for constructing `session_context_data` is correct.
-    - [ ] Verify that the call to `resolve_embeds_in_string` remains correct.
+- [x] **8. Review `resolve_and_format_for_slack`:**
+    - [x] Confirm the logic for constructing `session_context_data` is correct.
+    - [x] Verify that the call to `resolve_embeds_in_string` remains correct.
 
 ## Phase 3: Verification
 

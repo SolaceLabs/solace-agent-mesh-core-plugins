@@ -1057,7 +1057,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
         event_data: Union[TaskStatusUpdateEvent, TaskArtifactUpdateEvent],
         is_final_chunk_of_update: bool,
     ) -> None:
-        task_id = event_data.id
+        task_id = event_data.task_id
         log_id = f"{self.log_identifier}[SendUpdateExt:{task_id}]"
         log.debug(
             "%s Received event type: %s. GDK final_chunk_of_update: %s",
@@ -1078,7 +1078,8 @@ class SlackGatewayComponent(BaseGatewayComponent):
                 and event_data.status.message
                 and event_data.status.message.parts
             ):
-                for part in event_data.status.message.parts:
+                for part_wrapper in event_data.status.message.parts:
+                    part = part_wrapper.root
                     if isinstance(part, TextPart):
                         if not is_final_chunk_of_update:
                             corrected_text = (
@@ -1088,14 +1089,43 @@ class SlackGatewayComponent(BaseGatewayComponent):
                             )
                             temp_text_parts.append(corrected_text)
                     elif isinstance(part, DataPart):
-                        if part.data.get("a2a_signal_type") == "agent_status_message":
-                            signal_text = part.data.get("text", "[Agent status update]")
-                            status_signal_text = f":thinking_face: {signal_text}"
-                            log.debug(
-                                "%s Processed DataPart as agent_status_message signal: '%s'",
-                                log_id,
-                                status_signal_text,
-                            )
+                        signal_type = part.data.get("type")
+                        if signal_type == "agent_progress_update":
+                            try:
+                                progress_data = AgentProgressUpdateData.model_validate(
+                                    part.data
+                                )
+                                status_signal_text = f":thinking_face: {progress_data.status_text}"
+                                log.debug(
+                                    "%s Processed agent_progress_update signal: '%s'",
+                                    log_id,
+                                    status_signal_text,
+                                )
+                            except Exception as e:
+                                log.warning(
+                                    "%s Failed to parse AgentProgressUpdateData: %s",
+                                    log_id,
+                                    e,
+                                )
+                        elif signal_type == "artifact_creation_progress":
+                            try:
+                                progress_data = (
+                                    ArtifactCreationProgressData.model_validate(
+                                        part.data
+                                    )
+                                )
+                                status_signal_text = f":floppy_disk: Creating artifact `{progress_data.filename}` ({progress_data.bytes_saved} bytes)..."
+                                log.debug(
+                                    "%s Processed artifact_creation_progress signal: '%s'",
+                                    log_id,
+                                    status_signal_text,
+                                )
+                            except Exception as e:
+                                log.warning(
+                                    "%s Failed to parse ArtifactCreationProgressData: %s",
+                                    log_id,
+                                    e,
+                                )
 
             if temp_text_parts:
                 text_to_display = "".join(temp_text_parts)
@@ -1112,15 +1142,16 @@ class SlackGatewayComponent(BaseGatewayComponent):
 
         elif isinstance(event_data, TaskArtifactUpdateEvent):
             if event_data.artifact and event_data.artifact.parts:
-                for part in event_data.artifact.parts:
+                for part_wrapper in event_data.artifact.parts:
+                    part = part_wrapper.root
                     if isinstance(part, FilePart) and part.file:
                         file_info = {
                             "name": part.file.name or f"artifact_{task_id}",
-                            "mime_type": part.file.mimeType,
+                            "mime_type": part.file.mime_type,
                             "bytes": None,
                             "uri": None,
                         }
-                        if part.file.bytes:
+                        if isinstance(part.file, FileWithBytes) and part.file.bytes:
                             try:
                                 file_info["bytes"] = base64.b64decode(part.file.bytes)
                             except Exception as e:
@@ -1130,7 +1161,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
                                     file_info["name"],
                                     e,
                                 )
-                        elif part.file.uri:
+                        elif isinstance(part.file, FileWithUri) and part.file.uri:
                             file_info["uri"] = part.file.uri
                         if file_info["bytes"] or file_info["uri"]:
                             file_infos_for_slack.append(file_info)
