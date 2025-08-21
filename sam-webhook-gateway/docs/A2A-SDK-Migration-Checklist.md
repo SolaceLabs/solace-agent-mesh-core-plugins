@@ -7,9 +7,9 @@ This checklist provides a terse summary of the tasks required to complete the We
 - [x] **1. Update `main.py` Imports:**
     - [x] Change `solace_agent_mesh.common.types` imports to `a2a.types` for `JSONRPCError`, `InternalError`, and `InvalidRequestError`.
 
-- [ ] **2. Update `component.py` A2A Type Imports:**
-    - [ ] Remove all imports from `solace_agent_mesh.common.types`.
-    - [ ] Add corresponding imports from `a2a.types` (`Part as A2APart`, `TextPart`, `Task`, `TaskStatusUpdateEvent`, `TaskArtifactUpdateEvent`, `JSONRPCError`).
+- [x] **2. Update `component.py` A2A Type Imports:**
+    - [x] Remove all imports from `solace_agent_mesh.common.types`.
+    - [x] Add corresponding imports from `a2a.types` (`Part as A2APart`, `TextPart`, `Task`, `TaskStatusUpdateEvent`, `TaskArtifactUpdateEvent`, `JSONRPCError`).
 
 - [ ] **3. Refactor `_translate_external_input` in `component.py`:**
     - [ ] Ensure the created `TextPart` object is wrapped in `A2APart(root=...)`.

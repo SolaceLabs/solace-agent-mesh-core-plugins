@@ -27,7 +27,7 @@ from solace_ai_connector.common.log import log
 from solace_ai_connector.common.message import Message as SolaceMessage
 
 from solace_agent_mesh.gateway.base.component import BaseGatewayComponent
-from solace_agent_mesh.common.types import (
+from a2a.types import (
     Part as A2APart,
     TextPart,
     Task,
