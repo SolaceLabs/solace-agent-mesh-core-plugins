@@ -1188,7 +1188,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
 
         final_status_text_for_slack = ":checkered_flag: Task complete."
         if task_data.status:
-            if task_data.status.state == TaskState.FAILED:
+            if task_data.status.state == TaskState.failed:
                 error_message_text = ""
                 if task_data.status.message and task_data.status.message.parts:
                     for part_wrapper in task_data.status.message.parts:
@@ -1199,7 +1199,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
                 final_status_text_for_slack = (
                     f":x: Error: Task failed. {error_message_text}".strip()
                 )
-            elif task_data.status.state == TaskState.CANCELED:
+            elif task_data.status.state == TaskState.canceled:
                 final_status_text_for_slack = ":octagonal_sign: Task canceled."
 
         await self._update_slack_ui_state(
