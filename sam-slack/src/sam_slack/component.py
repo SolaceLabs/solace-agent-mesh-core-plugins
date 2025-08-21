@@ -210,6 +210,36 @@ class SlackGatewayComponent(BaseGatewayComponent):
             "%s Slack Gateway Component initialization complete.", self.log_identifier
         )
 
+    def _process_file_part(
+        self, part: FilePart, task_id: str, log_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Processes an A2A FilePart and returns a dictionary for Slack upload."""
+        if not part.file:
+            return None
+
+        file_info = {
+            "name": part.file.name or f"artifact_{task_id}",
+            "mime_type": part.file.mime_type,
+            "bytes": None,
+            "uri": None,
+        }
+        if isinstance(part.file, FileWithBytes) and part.file.bytes:
+            try:
+                file_info["bytes"] = base64.b64decode(part.file.bytes)
+            except Exception as e:
+                log.error(
+                    "%s Failed to decode base64 bytes for artifact '%s': %s",
+                    log_id,
+                    file_info["name"],
+                    e,
+                )
+        elif isinstance(part.file, FileWithUri) and part.file.uri:
+            file_info["uri"] = part.file.uri
+
+        if file_info["bytes"] or file_info["uri"]:
+            return file_info
+        return None
+
     async def _resolve_mentions_in_text(self, text: str) -> str:
         """
         Finds all Slack user mentions (<@U...>) in a string and replaces them
@@ -1144,26 +1174,8 @@ class SlackGatewayComponent(BaseGatewayComponent):
             if event_data.artifact and event_data.artifact.parts:
                 for part_wrapper in event_data.artifact.parts:
                     part = part_wrapper.root
-                    if isinstance(part, FilePart) and part.file:
-                        file_info = {
-                            "name": part.file.name or f"artifact_{task_id}",
-                            "mime_type": part.file.mime_type,
-                            "bytes": None,
-                            "uri": None,
-                        }
-                        if isinstance(part.file, FileWithBytes) and part.file.bytes:
-                            try:
-                                file_info["bytes"] = base64.b64decode(part.file.bytes)
-                            except Exception as e:
-                                log.error(
-                                    "%s Failed to decode base64 bytes for artifact '%s': %s",
-                                    log_id,
-                                    file_info["name"],
-                                    e,
-                                )
-                        elif isinstance(part.file, FileWithUri) and part.file.uri:
-                            file_info["uri"] = part.file.uri
-                        if file_info["bytes"] or file_info["uri"]:
+                    if isinstance(part, FilePart):
+                        if file_info := self._process_file_part(part, task_id, log_id):
                             file_infos_for_slack.append(file_info)
 
         await self._update_slack_ui_state(
