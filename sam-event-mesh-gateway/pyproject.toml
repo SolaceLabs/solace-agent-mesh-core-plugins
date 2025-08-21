@@ -38,7 +38,12 @@ packages = ["src/sam_event_mesh_gateway"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 addopts = "--tb=short --strict-markers --disable-warnings -p pytest_asyncio"
-markers = []
+markers = [
+  "basic: marks tests as basic functionality tests",
+  "event_mesh: marks tests as event mesh related",
+  "integration: marks tests as integration tests",
+  "declarative: marks tests as declarative scenario tests"
+]
 
 [tool.hatch.envs.hatch-test]
 dependencies = [
@@ -47,5 +52,6 @@ dependencies = [
   "pytest-mock>=3.0.0",
   "pytest-cov>=4.0.0",
   "pytest-xdist>=3.5.0",
+  "solace-agent-mesh>=1.0.6",
   "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure"
 ]

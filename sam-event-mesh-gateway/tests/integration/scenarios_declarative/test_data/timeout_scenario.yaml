@@ -1,0 +1,44 @@
+# Timeout Scenario Test Case
+# Tests timeout handling with shorter timeouts
+
+test_scenario:
+  name: "timeout_scenario"
+  description: "Test timeout handling and quick response scenarios"
+  
+  llm_responses:
+    - static_response:
+        choices:
+          - message:
+              role: "assistant"
+              content: "Quick response within timeout"
+        usage:
+          prompt_tokens: 8
+          completion_tokens: 6
+          total_tokens: 14
+
+  test_steps:
+    - type: "publish_message"
+      topic: "test/events/timeout/quick"
+      payload:
+        message: "This should be processed quickly"
+        priority: "urgent"
+      user_properties:
+        user_id: "timeout_test_user"
+    
+    - type: "expect_a2a_task"
+      target_agent: "TestEventMeshAgent"
+      content_contains: "This should be processed quickly"
+      timeout_seconds: 3.0
+    
+    - type: "respond_with"
+      content: "Quick response within timeout"
+    
+    - type: "expect_published"
+      topic_pattern: "test/responses/basic/*"
+      payload_contains: "Quick response within timeout"
+      timeout_seconds: 3.0
+
+  validation:
+    expected_messages: 1
+    expected_responses: 1
+    max_duration_seconds: 8.0

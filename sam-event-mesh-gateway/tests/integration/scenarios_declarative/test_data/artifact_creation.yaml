@@ -1,0 +1,59 @@
+# Artifact Creation Test Case
+# Tests agent creating artifacts in response to messages
+
+test_scenario:
+  name: "artifact_creation"
+  description: "Test agent creating artifacts and validating their content"
+  
+  llm_responses:
+    - static_response:
+        choices:
+          - message:
+              role: "assistant"
+              content: "I've analyzed the data and created a summary report. The report has been saved as an artifact."
+              tool_calls:
+                - id: "call_save_artifact_001"
+                  type: "function"
+                  function:
+                    name: "save_artifact"
+                    arguments: |
+                      {
+                        "filename": "analysis_report.md",
+                        "content": "# Data Analysis Report\n\n## Summary\nAnalyzed 150 data points from the event stream.\n\n## Key Findings\n- Average processing time: 2.3 seconds\n- Success rate: 98.7%\n- Peak usage: 14:30-15:30\n\n## Recommendations\n1. Optimize processing for peak hours\n2. Monitor error patterns\n3. Scale resources during high usage\n\n## Conclusion\nSystem performance is within acceptable parameters.",
+                        "description": "Analysis report generated from event stream data",
+                        "mime_type": "text/markdown"
+                      }
+        usage:
+          prompt_tokens: 40
+          completion_tokens: 35
+          total_tokens: 75
+
+  test_steps:
+    - type: "publish_message"
+      topic: "test/events/analysis/request"
+      payload:
+        message: "Please analyze the recent event data and create a summary report"
+        data_source: "event_stream"
+        analysis_type: "performance_summary"
+        time_range: "last_24_hours"
+      user_properties:
+        user_id: "data_analyst"
+        request_id: "REQ-ANALYSIS-001"
+    
+    - type: "expect_a2a_task"
+      target_agent: "TestEventMeshAgent"
+      content_contains: "analyze the recent event data"
+      timeout_seconds: 5.0
+    
+    - type: "respond_with"
+      content: "I've analyzed the data and created a summary report. The report has been saved as an artifact."
+    
+    - type: "expect_published"
+      topic_pattern: "test/responses/basic/*"
+      payload_contains: "I've analyzed the data"
+      timeout_seconds: 5.0
+
+  validation:
+    expected_messages: 1
+    expected_responses: 1
+    max_duration_seconds: 10.0

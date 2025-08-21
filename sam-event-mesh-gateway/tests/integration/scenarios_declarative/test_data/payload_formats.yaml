@@ -1,0 +1,46 @@
+# Payload Formats Test Case
+# Tests different payload encodings and formats
+
+test_scenario:
+  name: "payload_formats"
+  description: "Test different payload encodings (text, binary) and formats"
+  
+  llm_responses:
+    - static_response:
+        choices:
+          - message:
+              role: "assistant"
+              content: "Processed text payload successfully"
+        usage:
+          prompt_tokens: 12
+          completion_tokens: 6
+          total_tokens: 18
+
+  test_steps:
+    - type: "publish_message"
+      topic: "test/events/formats/text"
+      payload:
+        message: "Plain text message content"
+        format_type: "text"
+        encoding: "utf-8"
+      user_properties:
+        user_id: "format_test_user"
+        content_type: "text/plain"
+    
+    - type: "expect_a2a_task"
+      target_agent: "TestEventMeshAgent"
+      content_contains: "Plain text message content"
+      timeout_seconds: 5.0
+    
+    - type: "respond_with"
+      content: "Processed text payload successfully"
+    
+    - type: "expect_published"
+      topic_pattern: "test/responses/basic/*"
+      payload_contains: "Processed text payload"
+      timeout_seconds: 5.0
+
+  validation:
+    expected_messages: 1
+    expected_responses: 1
+    max_duration_seconds: 10.0

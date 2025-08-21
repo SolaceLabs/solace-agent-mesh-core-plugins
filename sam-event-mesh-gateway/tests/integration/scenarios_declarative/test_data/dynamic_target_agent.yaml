@@ -1,0 +1,46 @@
+# Dynamic Target Agent Test Case
+# Tests target_agent_name_expression for dynamic agent resolution
+
+test_scenario:
+  name: "dynamic_target_agent"
+  description: "Test dynamic target agent resolution using target_agent_name_expression"
+  
+  llm_responses:
+    - static_response:
+        choices:
+          - message:
+              role: "assistant"
+              content: "Processed by dynamically resolved agent"
+        usage:
+          prompt_tokens: 12
+          completion_tokens: 8
+          total_tokens: 20
+
+  test_steps:
+    - type: "publish_message"
+      topic: "test/events/dynamic/agent"
+      payload:
+        message: "Message for dynamic agent resolution"
+        target_agent: "TestEventMeshAgent"
+        routing_key: "mesh_agent"
+      user_properties:
+        user_id: "dynamic_test_user"
+        agent_selector: "TestEventMeshAgent"
+    
+    - type: "expect_a2a_task"
+      target_agent: "TestEventMeshAgent"
+      content_contains: "Message for dynamic agent resolution"
+      timeout_seconds: 5.0
+    
+    - type: "respond_with"
+      content: "Processed by dynamically resolved agent"
+    
+    - type: "expect_published"
+      topic_pattern: "test/responses/basic/*"
+      payload_contains: "Processed by dynamically resolved"
+      timeout_seconds: 5.0
+
+  validation:
+    expected_messages: 1
+    expected_responses: 1
+    max_duration_seconds: 10.0

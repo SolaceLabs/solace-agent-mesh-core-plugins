@@ -1,0 +1,39 @@
+# Authentication Failure Test Case
+# Tests authentication failure scenarios
+
+test_scenario:
+  name: "authentication_failure"
+  description: "Test authentication failure when user_identity_expression fails"
+  
+  llm_responses:
+    - static_response:
+        choices:
+          - message:
+              role: "assistant"
+              content: "This should not be reached due to auth failure"
+        usage:
+          prompt_tokens: 5
+          completion_tokens: 10
+          total_tokens: 15
+
+  test_steps:
+    - type: "publish_message"
+      topic: "test/events/auth/failure"
+      payload:
+        message: "Message without proper user identity"
+        data: "test_data"
+      user_properties:
+        # Missing user_id property that the gateway expects
+        correlation_id: "test-123"
+    
+    # This step should timeout since authentication will fail
+    # and no A2A task will be submitted
+    - type: "expect_a2a_task"
+      target_agent: "TestEventMeshAgent"
+      content_contains: "Message without proper user identity"
+      timeout_seconds: 2.0
+
+  validation:
+    expected_messages: 1
+    expected_responses: 0  # No responses expected due to auth failure
+    max_duration_seconds: 5.0

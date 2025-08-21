@@ -1,0 +1,83 @@
+# Multiple Messages Test Case
+# Tests processing multiple messages in sequence
+
+test_scenario:
+  name: "multiple_messages"
+  description: "Test processing multiple messages sequentially"
+  
+  llm_responses:
+    - static_response:
+        choices:
+          - message:
+              role: "assistant"
+              content: "Processed first message successfully"
+        usage:
+          prompt_tokens: 10
+          completion_tokens: 8
+          total_tokens: 18
+    - static_response:
+        choices:
+          - message:
+              role: "assistant"
+              content: "Processed second message successfully"
+        usage:
+          prompt_tokens: 10
+          completion_tokens: 8
+          total_tokens: 18
+    - static_response:
+        choices:
+          - message:
+              role: "assistant"
+              content: "Processed third message successfully"
+        usage:
+          prompt_tokens: 10
+          completion_tokens: 8
+          total_tokens: 18
+
+  test_steps:
+    - type: "publish_message"
+      topic: "test/events/multi/first"
+      payload:
+        message: "First message in sequence"
+        sequence_id: 1
+      user_properties:
+        user_id: "multi_test_user"
+    
+    - type: "expect_a2a_task"
+      target_agent: "TestEventMeshAgent"
+      content_contains: "First message in sequence"
+      timeout_seconds: 5.0
+    
+    - type: "respond_with"
+      content: "Processed first message successfully"
+    
+    - type: "expect_published"
+      topic_pattern: "test/responses/basic/*"
+      payload_contains: "Processed first message successfully"
+      timeout_seconds: 5.0
+    
+    - type: "publish_message"
+      topic: "test/events/multi/second"
+      payload:
+        message: "Second message in sequence"
+        sequence_id: 2
+      user_properties:
+        user_id: "multi_test_user"
+    
+    - type: "expect_a2a_task"
+      target_agent: "TestEventMeshAgent"
+      content_contains: "Second message in sequence"
+      timeout_seconds: 5.0
+    
+    - type: "respond_with"
+      content: "Processed second message successfully"
+    
+    - type: "expect_published"
+      topic_pattern: "test/responses/basic/*"
+      payload_contains: "Processed second message successfully"
+      timeout_seconds: 5.0
+
+  validation:
+    expected_messages: 2
+    expected_responses: 2
+    max_duration_seconds: 15.0

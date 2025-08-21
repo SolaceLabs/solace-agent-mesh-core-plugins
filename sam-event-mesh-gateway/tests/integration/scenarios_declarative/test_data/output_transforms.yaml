@@ -1,0 +1,46 @@
+# Output Transforms Test Case
+# Tests output_transforms and schema validation functionality
+
+test_scenario:
+  name: "output_transforms"
+  description: "Test output transforms and schema validation in output handlers"
+  
+  llm_responses:
+    - static_response:
+        choices:
+          - message:
+              role: "assistant"
+              content: "Transformed response with structured data"
+        usage:
+          prompt_tokens: 15
+          completion_tokens: 8
+          total_tokens: 23
+
+  test_steps:
+    - type: "publish_message"
+      topic: "test/events/transforms/output"
+      payload:
+        message: "Message requiring output transformation"
+        data_type: "structured"
+        transform_required: true
+      user_properties:
+        user_id: "transform_test_user"
+        output_format: "json"
+    
+    - type: "expect_a2a_task"
+      target_agent: "TestEventMeshAgent"
+      content_contains: "Message requiring output transformation"
+      timeout_seconds: 5.0
+    
+    - type: "respond_with"
+      content: "Transformed response with structured data"
+    
+    - type: "expect_published"
+      topic_pattern: "test/responses/basic/*"
+      payload_contains: "Transformed response"
+      timeout_seconds: 5.0
+
+  validation:
+    expected_messages: 1
+    expected_responses: 1
+    max_duration_seconds: 10.0
