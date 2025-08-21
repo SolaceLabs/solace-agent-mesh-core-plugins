@@ -1,8 +1,10 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from sam_slack import component
+
 # This allows us to test the handlers without needing a full Slack connection
-with patch("sam_slack.component.SLACK_BOLT_AVAILABLE", True):
+with patch.object(component, "SLACK_BOLT_AVAILABLE", True):
     from sam_slack.handlers import (
         handle_slack_message,
         handle_slack_mention,
