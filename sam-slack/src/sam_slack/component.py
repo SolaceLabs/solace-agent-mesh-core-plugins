@@ -1160,7 +1160,8 @@ class SlackGatewayComponent(BaseGatewayComponent):
             if task_data.status.state == TaskState.FAILED:
                 error_message_text = ""
                 if task_data.status.message and task_data.status.message.parts:
-                    for part in task_data.status.message.parts:
+                    for part_wrapper in task_data.status.message.parts:
+                        part = part_wrapper.root
                         if isinstance(part, TextPart):
                             error_message_text = part.text
                             break

@@ -21,13 +21,13 @@ This checklist provides a terse summary of the tasks required to complete the Sl
     - [x] Replace `FileContent` instantiation with `a2a.types.FileWithUri`.
     - [x] Ensure all created `TextPart` and `FilePart` objects are wrapped in `A2APart(root=...)`.
 
-- [ ] **5. Refactor `_send_error_to_external`:**
-    - [ ] Update the `error_data` parameter's type hint to `a2a.types.JSONRPCError`.
+- [x] **5. Refactor `_send_error_to_external`:**
+    - [x] Update the `error_data` parameter's type hint to `a2a.types.JSONRPCError`.
 
-- [ ] **6. Refactor `_send_final_response_to_external`:**
-    - [ ] Update the `task_data` parameter's type hint to `a2a.types.Task`.
-    - [ ] Confirm all task ID access uses `task_data.id`.
-    - [ ] Confirm task state checks use the `a2a.types.TaskState` enum.
+- [x] **6. Refactor `_send_final_response_to_external`:**
+    - [x] Update the `task_data` parameter's type hint to `a2a.types.Task`.
+    - [x] Confirm all task ID access uses `task_data.id`.
+    - [x] Confirm task state checks use the `a2a.types.TaskState` enum.
 
 - [ ] **7. Refactor `_send_update_to_external`:**
     - [ ] Update `event_data` parameter type hint to `Union[TaskStatusUpdateEvent, TaskArtifactUpdateEvent]`.
