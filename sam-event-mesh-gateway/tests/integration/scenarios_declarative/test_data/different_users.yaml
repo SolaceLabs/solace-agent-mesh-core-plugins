@@ -1,0 +1,74 @@
+# Different Users Test Case
+# Tests processing messages from different users
+
+test_scenario:
+  name: "different_users"
+  description: "Test processing messages from different user identities"
+  
+  llm_responses:
+    - static_response:
+        choices:
+          - message:
+              role: "assistant"
+              content: "Hello Alice, I processed your message"
+        usage:
+          prompt_tokens: 10
+          completion_tokens: 10
+          total_tokens: 20
+    - static_response:
+        choices:
+          - message:
+              role: "assistant"
+              content: "Hello Bob, I processed your message"
+        usage:
+          prompt_tokens: 10
+          completion_tokens: 10
+          total_tokens: 20
+
+  test_steps:
+    - type: "publish_message"
+      topic: "test/events/users/alice"
+      payload:
+        message: "Message from Alice"
+        user_name: "Alice"
+      user_properties:
+        user_id: "alice_123"
+    
+    - type: "expect_a2a_task"
+      target_agent: "TestEventMeshAgent"
+      content_contains: "Message from Alice"
+      timeout_seconds: 5.0
+    
+    - type: "respond_with"
+      content: "Hello Alice, I processed your message"
+    
+    - type: "expect_published"
+      topic_pattern: "test/responses/basic/*"
+      payload_contains: "Hello Alice"
+      timeout_seconds: 5.0
+    
+    - type: "publish_message"
+      topic: "test/events/users/bob"
+      payload:
+        message: "Message from Bob"
+        user_name: "Bob"
+      user_properties:
+        user_id: "bob_456"
+    
+    - type: "expect_a2a_task"
+      target_agent: "TestEventMeshAgent"
+      content_contains: "Message from Bob"
+      timeout_seconds: 5.0
+    
+    - type: "respond_with"
+      content: "Hello Bob, I processed your message"
+    
+    - type: "expect_published"
+      topic_pattern: "test/responses/basic/*"
+      payload_contains: "Hello Bob"
+      timeout_seconds: 5.0
+
+  validation:
+    expected_messages: 2
+    expected_responses: 2
+    max_duration_seconds: 15.0

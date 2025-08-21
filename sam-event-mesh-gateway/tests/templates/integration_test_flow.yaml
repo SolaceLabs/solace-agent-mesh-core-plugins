@@ -1,0 +1,72 @@
+# Basic Event Handler Configuration Template
+# This template provides a simple event handler configuration for testing
+
+test_scenario:
+  name: "basic_event_processing"
+  description: "Test basic event handler functionality"
+  
+  gateway_config:
+    namespace: "test_event_mesh_namespace"
+    gateway_id: "TestEventMeshGateway_Basic"
+    artifact_service:
+      type: "test_in_memory"
+    
+    event_mesh_broker_config:
+      broker_url: "tcp://127.0.0.1:55555"
+      broker_vpn: "test_vpn"
+      broker_username: "test_user"
+      broker_password: "test_password"
+      broker_client_name: "test_client"
+    
+    event_handlers:
+      - name: "basic_handler"
+        subscriptions:
+          - topic: "test/events/basic/>"
+            qos: 1
+        input_expression: "input.payload:message"
+        target_agent_name: "TestEventMeshAgent"
+        user_identity_expression: "input.user_properties:user_id"
+        on_success: "basic_success_handler"
+        on_error: "basic_error_handler"
+        payload_encoding: "utf-8"
+        payload_format: "json"
+    
+    output_handlers:
+      - name: "basic_success_handler"
+        topic_expression: "test/responses/basic/{{user_data.forward_context.original_topic}}"
+        payload_expression: "input.payload.text"
+        payload_format: "text"
+        payload_encoding: "utf-8"
+      
+      - name: "basic_error_handler"
+        topic_expression: "test/errors/basic/{{user_data.forward_context.original_topic}}"
+        payload_expression: "input.payload.a2a_task_response.error.message"
+        payload_format: "text"
+        payload_encoding: "utf-8"
+
+  test_steps:
+    - type: "publish_message"
+      topic: "test/events/basic/sample"
+      payload:
+        message: "Hello from basic test"
+        timestamp: "2024-01-01T00:00:00Z"
+      user_properties:
+        user_id: "test_user_123"
+    
+    - type: "expect_a2a_task"
+      target_agent: "TestEventMeshAgent"
+      content_contains: "Hello from basic test"
+      timeout_seconds: 5.0
+    
+    - type: "respond_with"
+      content: "Response from test agent"
+    
+    - type: "expect_published"
+      topic_pattern: "test/responses/basic/*"
+      payload_contains: "Response from test agent"
+      timeout_seconds: 5.0
+
+  validation:
+    expected_messages: 1
+    expected_responses: 1
+    max_duration_seconds: 10.0
