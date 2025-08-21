@@ -28,17 +28,22 @@ except ImportError:
 
 from solace_ai_connector.common.log import log
 from solace_agent_mesh.gateway.base.component import BaseGatewayComponent
-from solace_agent_mesh.common.types import (
+from a2a.types import (
     Part as A2APart,
     TextPart,
     FilePart,
     DataPart,
-    FileContent,
+    FileWithUri,
+    FileWithBytes,
     Task,
     TaskStatusUpdateEvent,
     TaskArtifactUpdateEvent,
     JSONRPCError,
     TaskState,
+)
+from solace_agent_mesh.common.data_parts import (
+    AgentProgressUpdateData,
+    ArtifactCreationProgressData,
 )
 from solace_agent_mesh.agent.utils.artifact_helpers import save_artifact_with_metadata
 from .utils import (
@@ -699,10 +704,10 @@ class SlackGatewayComponent(BaseGatewayComponent):
                     if save_result["status"] in ["success", "partial_success"]:
                         data_version = save_result.get("data_version", 0)
                         artifact_uri = f"artifact://{self.gateway_id}/{user_id_for_artifacts}/{a2a_session_id}/{original_filename}?version={data_version}"
-                        file_content_a2a = FileContent(
-                            name=original_filename, mimeType=mime_type, uri=artifact_uri
+                        file_content_a2a = FileWithUri(
+                            name=original_filename, mime_type=mime_type, uri=artifact_uri
                         )
-                        a2a_parts.append(FilePart(file=file_content_a2a))
+                        a2a_parts.append(A2APart(root=FilePart(file=file_content_a2a)))
                         file_metadata_summary_parts.append(
                             f"- {original_filename} ({mime_type}, {len(content_bytes)} bytes, URI: {artifact_uri})"
                         )
@@ -726,7 +731,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
             )
             processed_text_for_a2a = f"{summary_text}\n\nUser message: {resolved_text}"
         if processed_text_for_a2a:
-            a2a_parts.append(TextPart(text=processed_text_for_a2a))
+            a2a_parts.append(A2APart(root=TextPart(text=processed_text_for_a2a)))
         if not a2a_parts:
             log.warning(
                 "%s No text or successfully processed files. Cannot create A2A message.",
