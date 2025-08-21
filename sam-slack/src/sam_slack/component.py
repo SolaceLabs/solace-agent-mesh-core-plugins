@@ -879,7 +879,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
                             error_msg = f":warning: Failed to load artifact content for `{filename}`"
                             await send_slack_message(self, channel_id, thread_ts, error_msg)
 
-                    except (ValueError, IndexError) as e:
+                    except ValueError as e:
                         log.warning("%s Invalid artifact URI format: %s", log_id, e)
                         error_msg = f":warning: Invalid artifact URI format for `{file_info.get('name', 'unknown')}`."
                         await send_slack_message(self, channel_id, thread_ts, error_msg)
