@@ -7,7 +7,7 @@ import queue
 import uuid
 import base64
 import json
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 from datetime import datetime, timezone
 
 import jsonschema
@@ -1258,7 +1258,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
     async def _send_update_to_external(
         self,
         external_request_context: Dict,
-        event_data: Any,
+        event_data: Union[TaskStatusUpdateEvent, TaskArtifactUpdateEvent],
         is_final_chunk_of_update: bool,
     ) -> None:
         log.debug(
