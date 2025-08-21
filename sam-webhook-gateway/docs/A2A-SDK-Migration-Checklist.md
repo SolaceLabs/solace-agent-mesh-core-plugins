@@ -11,8 +11,8 @@ This checklist provides a terse summary of the tasks required to complete the We
     - [x] Remove all imports from `solace_agent_mesh.common.types`.
     - [x] Add corresponding imports from `a2a.types` (`Part as A2APart`, `TextPart`, `Task`, `TaskStatusUpdateEvent`, `TaskArtifactUpdateEvent`, `JSONRPCError`).
 
-- [ ] **3. Refactor `_translate_external_input` in `component.py`:**
-    - [ ] Ensure the created `TextPart` object is wrapped in `A2APart(root=...)`.
+- [x] **3. Refactor `_translate_external_input` in `component.py`:**
+    - [x] Ensure the created `TextPart` object is wrapped in `A2APart(root=...)`.
 
 - [ ] **4. Update Method Signatures in `component.py`:**
     - [ ] Update `_send_update_to_external` parameter `event_data` type hint to `Union[TaskStatusUpdateEvent, TaskArtifactUpdateEvent]`.

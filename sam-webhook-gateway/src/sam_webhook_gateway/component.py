@@ -847,7 +847,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
 
         a2a_parts: List[A2APart] = []
         if templated_text is not None:
-            a2a_parts.append(TextPart(text=str(templated_text)))
+            a2a_parts.append(A2APart(root=TextPart(text=str(templated_text))))
 
         external_request_context = {
             "webhook_path": request.url.path,
