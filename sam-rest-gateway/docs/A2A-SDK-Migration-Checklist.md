@@ -24,8 +24,8 @@ This checklist provides a terse summary of the tasks required to complete the RE
 - [x] **5. Refactor `_send_final_response_to_external`:**
     - [x] Update `task_data` parameter type hint to `a2a.types.Task`.
 
-- [ ] **6. Refactor `_send_error_to_external`:**
-    - [ ] Update `error_data` parameter type hint to `a2a.types.JSONRPCError`.
+- [x] **6. Refactor `_send_error_to_external`:**
+    - [x] Update `error_data` parameter type hint to `a2a.types.JSONRPCError`.
 
 ## Phase 3: Verification
 
