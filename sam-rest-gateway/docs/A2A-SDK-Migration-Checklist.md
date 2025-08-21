@@ -9,13 +9,13 @@ This checklist provides a terse summary of the tasks required to complete the RE
 
 ## Phase 2: Core Component Refactoring (`component.py`)
 
-- [ ] **2. Update All A2A Type Imports:**
-    - [ ] Remove all imports from `solace_agent_mesh.common.types`.
-    - [ ] Add corresponding imports from `a2a.types` (`Part as A2APart`, `Task`, `TaskStatusUpdateEvent`, `TaskArtifactUpdateEvent`, `JSONRPCError`, `TextPart`, `FilePart`, `FileWithUri`, `Artifact as A2AArtifact`).
+- [x] **2. Update All A2A Type Imports:**
+    - [x] Remove all imports from `solace_agent_mesh.common.types`.
+    - [x] Add corresponding imports from `a2a.types` (`Part as A2APart`, `Task`, `TaskStatusUpdateEvent`, `TaskArtifactUpdateEvent`, `JSONRPCError`, `TextPart`, `FilePart`, `FileWithUri`, `Artifact as A2AArtifact`).
 
-- [ ] **3. Refactor `_translate_external_input`:**
-    - [ ] Replace `FileContent` instantiation with `a2a.types.FileWithUri`.
-    - [ ] Ensure all created `TextPart` and `FilePart` objects are wrapped in `A2APart(root=...)`.
+- [x] **3. Refactor `_translate_external_input`:**
+    - [x] Replace `FileContent` instantiation with `a2a.types.FileWithUri`.
+    - [x] Ensure all created `TextPart` and `FilePart` objects are wrapped in `A2APart(root=...)`.
 
 - [ ] **4. Refactor `_send_update_to_external`:**
     - [ ] Update `event_data` parameter type hint to `Union[TaskStatusUpdateEvent, TaskArtifactUpdateEvent]`.

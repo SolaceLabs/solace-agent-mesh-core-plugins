@@ -14,7 +14,7 @@ from solace_ai_connector.common.log import log
 
 from solace_agent_mesh.gateway.base.component import BaseGatewayComponent
 
-from solace_agent_mesh.common.types import (
+from a2a.types import (
     Part as A2APart,
     Task,
     TaskStatusUpdateEvent,
@@ -22,7 +22,7 @@ from solace_agent_mesh.common.types import (
     JSONRPCError,
     TextPart,
     FilePart,
-    FileContent,
+    FileWithUri,
     Artifact as A2AArtifact,
 )
 from solace_agent_mesh.common.utils.in_memory_cache import InMemoryCache
@@ -263,8 +263,10 @@ class RestGatewayComponent(BaseGatewayComponent):
                         version = save_result.get("data_version", 0)
                         uri = f"artifact://{self.gateway_id}/{user_id}/{a2a_session_id}/{upload_file.filename}?version={version}"
                         a2a_parts.append(
-                            FilePart(
-                                file=FileContent(name=upload_file.filename, uri=uri)
+                            A2APart(
+                                root=FilePart(
+                                    file=FileWithUri(name=upload_file.filename, uri=uri)
+                                )
                             )
                         )
                         file_metadata_summary_parts.append(
@@ -288,7 +290,7 @@ class RestGatewayComponent(BaseGatewayComponent):
                 )
 
         if prompt:
-            a2a_parts.append(TextPart(text=prompt))
+            a2a_parts.append(A2APart(root=TextPart(text=prompt)))
 
         external_request_context = {
             "user_id_for_artifacts": user_id,
