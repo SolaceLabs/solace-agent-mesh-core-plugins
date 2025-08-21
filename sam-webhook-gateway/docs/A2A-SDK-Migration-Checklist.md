@@ -14,9 +14,9 @@ This checklist provides a terse summary of the tasks required to complete the We
 - [x] **3. Refactor `_translate_external_input` in `component.py`:**
     - [x] Ensure the created `TextPart` object is wrapped in `A2APart(root=...)`.
 
-- [ ] **4. Update Method Signatures in `component.py`:**
-    - [ ] Update `_send_update_to_external` parameter `event_data` type hint to `Union[TaskStatusUpdateEvent, TaskArtifactUpdateEvent]`.
-    - [ ] Verify that type hints for `_send_final_response_to_external` and `_send_error_to_external` are implicitly updated by the import changes.
+- [x] **4. Update Method Signatures in `component.py`:**
+    - [x] Update `_send_update_to_external` parameter `event_data` type hint to `Union[TaskStatusUpdateEvent, TaskArtifactUpdateEvent]`.
+    - [x] Verify that type hints for `_send_final_response_to_external` and `_send_error_to_external` are implicitly updated by the import changes.
 
 ## Phase 2: Verification
 

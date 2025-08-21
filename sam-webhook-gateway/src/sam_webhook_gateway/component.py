@@ -873,7 +873,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
         is_final_chunk_of_update: bool,
     ) -> None:
         log_id_prefix = f"{self.log_identifier}[SendUpdate]"
-        a2a_task_id = event_data.id
+        a2a_task_id = event_data.task_id
         log.debug(
             "%s _send_update_to_external called for task %s. Webhook gateway already ACKed. Update Type: %s. Final Chunk: %s. Context: %s",
             log_id_prefix,
