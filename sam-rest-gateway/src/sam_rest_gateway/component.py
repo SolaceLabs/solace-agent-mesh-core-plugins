@@ -315,7 +315,7 @@ class RestGatewayComponent(BaseGatewayComponent):
         Intercepts artifact updates to aggregate them. Suppresses all other updates.
         """
         log_id_prefix = f"{self.log_identifier}[SendUpdate]"
-        task_id = event_data.id
+        task_id = event_data.task_id
 
         if isinstance(event_data, TaskArtifactUpdateEvent):
             context = self.task_context_manager.get_context(task_id)

@@ -17,12 +17,12 @@ This checklist provides a terse summary of the tasks required to complete the RE
     - [x] Replace `FileContent` instantiation with `a2a.types.FileWithUri`.
     - [x] Ensure all created `TextPart` and `FilePart` objects are wrapped in `A2APart(root=...)`.
 
-- [ ] **4. Refactor `_send_update_to_external`:**
-    - [ ] Update `event_data` parameter type hint to `Union[TaskStatusUpdateEvent, TaskArtifactUpdateEvent]`.
-    - [ ] Change task ID access from `event_data.id` to `event_data.task_id`.
+- [x] **4. Refactor `_send_update_to_external`:**
+    - [x] Update `event_data` parameter type hint to `Union[TaskStatusUpdateEvent, TaskArtifactUpdateEvent]`.
+    - [x] Change task ID access from `event_data.id` to `event_data.task_id`.
 
-- [ ] **5. Refactor `_send_final_response_to_external`:**
-    - [ ] Update `task_data` parameter type hint to `a2a.types.Task`.
+- [x] **5. Refactor `_send_final_response_to_external`:**
+    - [x] Update `task_data` parameter type hint to `a2a.types.Task`.
 
 - [ ] **6. Refactor `_send_error_to_external`:**
     - [ ] Update `error_data` parameter type hint to `a2a.types.JSONRPCError`.
