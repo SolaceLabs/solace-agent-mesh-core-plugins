@@ -1156,6 +1156,9 @@ class SlackGatewayComponent(BaseGatewayComponent):
                                     log_id,
                                     e,
                                 )
+                    elif isinstance(part, FilePart):
+                        if file_info := self._process_file_part(part, task_id, log_id):
+                            file_infos_for_slack.append(file_info)
 
             if temp_text_parts:
                 text_to_display = "".join(temp_text_parts)
@@ -1197,6 +1200,15 @@ class SlackGatewayComponent(BaseGatewayComponent):
 
         text_to_display: Optional[str] = None
         data_parts_for_slack: List[str] = []
+        file_infos_for_slack: List[Dict] = []
+
+        if task_data.artifacts:
+            for artifact in task_data.artifacts:
+                for part_wrapper in artifact.parts:
+                    part = part_wrapper.root
+                    if isinstance(part, FilePart):
+                        if file_info := self._process_file_part(part, task_id, log_id):
+                            file_infos_for_slack.append(file_info)
 
         final_status_text_for_slack = ":checkered_flag: Task complete."
         if task_data.status:
@@ -1219,7 +1231,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
             external_request_context,
             text_to_display,
             data_parts_for_slack,
-            [],
+            file_infos_for_slack,
             final_status_text_for_slack,
             is_final_event=True,
         )
