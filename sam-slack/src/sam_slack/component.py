@@ -1107,13 +1107,10 @@ class SlackGatewayComponent(BaseGatewayComponent):
 
         if isinstance(event_data, TaskStatusUpdateEvent):
             temp_text_parts = []
-            if (
-                event_data.status
-                and event_data.status.message
-                and event_data.status.message.parts
-            ):
-                for part_wrapper in event_data.status.message.parts:
-                    part = part_wrapper.root
+            message = a2a.get_message_from_status_update(event_data)
+            if message:
+                parts = a2a.get_parts_from_message(message)
+                for part in parts:
                     if isinstance(part, TextPart):
                         if not is_final_chunk_of_update:
                             corrected_text = (
@@ -1178,9 +1175,10 @@ class SlackGatewayComponent(BaseGatewayComponent):
                     text_to_display = None
 
         elif isinstance(event_data, TaskArtifactUpdateEvent):
-            if event_data.artifact and event_data.artifact.parts:
-                for part_wrapper in event_data.artifact.parts:
-                    part = part_wrapper.root
+            artifact = a2a.get_artifact_from_artifact_update(event_data)
+            if artifact:
+                parts = a2a.get_parts_from_artifact(artifact)
+                for part in parts:
                     if isinstance(part, FilePart):
                         if file_info := self._process_file_part(part, task_id, log_id):
                             file_infos_for_slack.append(file_info)
@@ -1198,7 +1196,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
     async def _send_final_response_to_external(
         self, external_request_context: Dict[str, Any], task_data: Task
     ) -> None:
-        task_id = task_data.id
+        task_id = a2a.get_task_id(task_data)
         log_id = f"{self.log_identifier}[SendFinalResponseExt:{task_id}]"
         log.debug("%s Processing final task data.", log_id)
 
@@ -1206,28 +1204,28 @@ class SlackGatewayComponent(BaseGatewayComponent):
         data_parts_for_slack: List[str] = []
         file_infos_for_slack: List[Dict] = []
 
-        if task_data.artifacts:
-            for artifact in task_data.artifacts:
-                for part_wrapper in artifact.parts:
-                    part = part_wrapper.root
+        artifacts = a2a.get_task_artifacts(task_data)
+        if artifacts:
+            for artifact in artifacts:
+                parts = a2a.get_parts_from_artifact(artifact)
+                for part in parts:
                     if isinstance(part, FilePart):
                         if file_info := self._process_file_part(part, task_id, log_id):
                             file_infos_for_slack.append(file_info)
 
         final_status_text_for_slack = ":checkered_flag: Task complete."
-        if task_data.status:
-            if task_data.status.state == TaskState.failed:
+        task_status = a2a.get_task_status(task_data)
+        if task_status:
+            if task_status == TaskState.failed:
                 error_message_text = ""
-                if task_data.status.message and task_data.status.message.parts:
-                    for part_wrapper in task_data.status.message.parts:
-                        part = part_wrapper.root
-                        if isinstance(part, TextPart):
-                            error_message_text = part.text
-                            break
+                if task_data.status and task_data.status.message:
+                    error_message_text = a2a.get_text_from_message(
+                        task_data.status.message
+                    )
                 final_status_text_for_slack = (
                     f":x: Error: Task failed. {error_message_text}".strip()
                 )
-            elif task_data.status.state == TaskState.canceled:
+            elif task_status == TaskState.canceled:
                 final_status_text_for_slack = ":octagonal_sign: Task canceled."
 
         await self._update_slack_ui_state(
