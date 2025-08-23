@@ -638,7 +638,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
 
     async def _translate_external_input(
         self, external_event: Any, authenticated_user_identity: Dict[str, Any]
-    ) -> Tuple[str, List[A2APart], Dict[str, Any]]:
+    ) -> Tuple[str, List[Union[TextPart, DataPart, FilePart]], Dict[str, Any]]:
         log_id = f"{self.log_identifier}[TranslateInput]"
         event: Dict = external_event
         if event.get("bot_id") or event.get("subtype") == "bot_message":
@@ -690,7 +690,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
         a2a_session_id = generate_a2a_session_id(
             channel_id, thread_ts, target_agent_name
         )
-        a2a_parts: List[A2APart] = []
+        a2a_parts: List[Union[TextPart, DataPart, FilePart]] = []
         file_metadata_summary_parts: List[str] = []
         processed_text_for_a2a = resolved_text
         if files_info and self.shared_artifact_service:
@@ -741,7 +741,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
                             name=original_filename,
                             mime_type=mime_type,
                         )
-                        a2a_parts.append(a2a.create_part(file_part))
+                        a2a_parts.append(file_part)
                         file_metadata_summary_parts.append(
                             f"- {original_filename} ({mime_type}, {len(content_bytes)} bytes, URI: {artifact_uri})"
                         )
@@ -766,7 +766,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
             processed_text_for_a2a = f"{summary_text}\n\nUser message: {resolved_text}"
         if processed_text_for_a2a:
             text_part = a2a.create_text_part(text=processed_text_for_a2a)
-            a2a_parts.append(a2a.create_part(text_part))
+            a2a_parts.append(text_part)
         if not a2a_parts:
             log.warning(
                 "%s No text or successfully processed files. Cannot create A2A message.",
