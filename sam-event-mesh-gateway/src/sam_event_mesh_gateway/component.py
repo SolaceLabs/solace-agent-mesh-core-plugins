@@ -174,31 +174,14 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             "error": None,
         }
 
-        uri = a2a.get_uri_from_file_part(part)
-        if not uri:
-            file_info["error"] = "FilePart has no URI to load content from."
+        content_bytes = a2a.get_bytes_from_file_part(part)
+        if not content_bytes:
+            file_info["error"] = "FilePart has no byte content to process."
             return file_info
 
         max_size = handler_config.get("max_file_size_for_base64_bytes", 1048576)
 
         try:
-            load_result = await load_artifact_content_or_metadata(
-                artifact_service=self.shared_artifact_service,
-                app_name=context.get("app_name_for_artifacts"),
-                user_id=context.get("user_id_for_artifacts"),
-                session_id=context.get("a2a_session_id"),
-                filename=a2a.get_filename_from_file_part(part),
-                version="latest",
-                return_raw_bytes=True,
-            )
-
-            if load_result.get("status") != "success":
-                file_info["error"] = (
-                    f"Failed to load artifact: {load_result.get('message')}"
-                )
-                return file_info
-
-            content_bytes = load_result.get("raw_bytes")
             if len(content_bytes) > max_size:
                 file_info["error"] = (
                     f"File size ({len(content_bytes)} bytes) exceeds handler limit ({max_size} bytes)."
@@ -933,6 +916,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 "a2a_task_response": task_data.model_dump(exclude_none=True),
             }
 
+            # Process the final status message for text and data parts
             if task_data.status and task_data.status.message:
                 message = task_data.status.message
                 parts = a2a.get_parts_from_message(message)
@@ -944,14 +928,19 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                         simplified_payload["data"].append(
                             part.model_dump(exclude_none=True)
                         )
-                    elif isinstance(part, FilePart) and self.shared_artifact_service:
-                        file_info = await self._process_file_part_for_output(
-                            part, external_request_context, handler_config
-                        )
-                        simplified_payload["files"].append(file_info)
-
                 if text_parts_content:
                     simplified_payload["text"] = "\n".join(text_parts_content)
+
+            # Process artifacts for file parts
+            if task_data.artifacts:
+                for artifact in task_data.artifacts:
+                    parts = a2a.get_parts_from_artifact(artifact)
+                    for part in parts:
+                        if isinstance(part, FilePart):
+                            file_info = await self._process_file_part_for_output(
+                                part, external_request_context, handler_config
+                            )
+                            simplified_payload["files"].append(file_info)
 
             original_user_props = external_request_context.get(
                 "original_solace_user_properties", {}
