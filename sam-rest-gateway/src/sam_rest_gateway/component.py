@@ -352,16 +352,20 @@ class RestGatewayComponent(BaseGatewayComponent):
         Handles the final task result by enriching artifact data and then either
         caching it for v2 polling or resolving content for a v1 synchronous call.
         """
-        task_id = task_data.id
+        task_id = a2a.get_task_id(task_data)
         log_id_prefix = f"{self.log_identifier}[SendFinalResponse:{task_id}]"
 
         context = self.task_context_manager.get_context(task_id)
+
+        # Start with the original artifacts from the task, or an empty list
+        task_artifacts = a2a.get_task_artifacts(task_data) or []
+
         if context and "aggregated_artifacts" in context:
-            task_data.artifacts = context["aggregated_artifacts"]
+            task_artifacts = context["aggregated_artifacts"]
             log.info(
                 "%s Injected %d aggregated artifacts into final task object.",
                 log_id_prefix,
-                len(task_data.artifacts),
+                len(task_artifacts),
             )
 
         api_version = context.get("api_version", "v2") if context else "v2"
@@ -376,9 +380,10 @@ class RestGatewayComponent(BaseGatewayComponent):
                 "%s Resolving artifact URIs for v1 synchronous response...",
                 log_id_prefix,
             )
-            if task_data.artifacts:
-                for artifact in task_data.artifacts:
-                    await self._resolve_uris_in_parts_list(artifact.parts)
+            if task_artifacts:
+                for artifact in task_artifacts:
+                    parts = a2a.get_parts_from_artifact(artifact)
+                    await self._resolve_uris_in_parts_list(parts)
 
             with self.sync_wait_lock:
                 wait_context = self.sync_wait_events.get(task_id)
@@ -387,7 +392,11 @@ class RestGatewayComponent(BaseGatewayComponent):
                     "%s Synchronous v1 call detected. Setting event with resolved task.",
                     log_id_prefix,
                 )
-                wait_context["result"] = task_data.model_dump(exclude_none=True)
+                final_task_dict = task_data.model_dump(exclude_none=True)
+                final_task_dict["artifacts"] = [
+                    art.model_dump(exclude_none=True) for art in task_artifacts
+                ]
+                wait_context["result"] = final_task_dict
                 wait_context["event"].set()
             else:
                 log.warning(
@@ -398,13 +407,13 @@ class RestGatewayComponent(BaseGatewayComponent):
 
         else:
             enriched_artifacts = []
-            if self.shared_artifact_service and task_data.artifacts:
+            if self.shared_artifact_service and task_artifacts:
                 log.info(
                     "%s Enriching %d artifacts with full metadata for v2 response...",
                     log_id_prefix,
-                    len(task_data.artifacts),
+                    len(task_artifacts),
                 )
-                for a2a_artifact in task_data.artifacts:
+                for a2a_artifact in task_artifacts:
                     try:
                         user_id = context.get("user_id_for_artifacts")
                         session_id = context.get("a2a_session_id")
@@ -413,7 +422,7 @@ class RestGatewayComponent(BaseGatewayComponent):
                             log.warning(
                                 "%s Missing user/session context for artifact lookup. Skipping enrichment for %s.",
                                 log_id_prefix,
-                                a2a_artifact.name,
+                                a2a.get_artifact_name(a2a_artifact),
                             )
                             continue
 
@@ -422,7 +431,7 @@ class RestGatewayComponent(BaseGatewayComponent):
                             app_name=self.gateway_id,
                             user_id=user_id,
                             session_id=session_id,
-                            filename=a2a_artifact.name,
+                            filename=a2a.get_artifact_name(a2a_artifact),
                             version="latest",
                             load_metadata_only=True,
                         )
@@ -449,23 +458,22 @@ class RestGatewayComponent(BaseGatewayComponent):
                             log.warning(
                                 "%s Could not load metadata for artifact %s.",
                                 log_id_prefix,
-                                a2a_artifact.name,
+                                a2a.get_artifact_name(a2a_artifact),
                             )
                     except Exception as e:
                         log.exception(
                             "%s Error enriching artifact %s: %s",
                             log_id_prefix,
-                            a2a_artifact.name,
+                            a2a.get_artifact_name(a2a_artifact),
                             e,
                         )
-            task_data.artifacts = enriched_artifacts
+            final_task_dict = task_data.model_dump(exclude_none=True, by_alias=True)
+            final_task_dict["artifacts"] = enriched_artifacts
 
             log.info(
                 "%s Storing final task result in cache for v2 polling.", log_id_prefix
             )
-            self.result_cache.set(
-                task_id, task_data.model_dump(exclude_none=True, by_alias=True), ttl=600
-            )
+            self.result_cache.set(task_id, final_task_dict, ttl=600)
 
     async def _send_error_to_external(
         self, external_request_context: Dict[str, Any], error_data: JSONRPCError
