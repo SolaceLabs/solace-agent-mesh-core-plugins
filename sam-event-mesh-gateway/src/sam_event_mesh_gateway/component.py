@@ -1127,12 +1127,15 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
         )
 
         try:
+            # Create a standard error response using the helper
+            error_response = a2a.create_error_response(error=error_data, request_id=None)
+
             simplified_payload = {
                 "text": None,
                 "files": [],
                 "data": [],
                 "a2a_task_response": {
-                    "error": error_data.model_dump(exclude_none=True)
+                    "error": error_response.model_dump(exclude_none=True)["error"]
                 },
             }
 
