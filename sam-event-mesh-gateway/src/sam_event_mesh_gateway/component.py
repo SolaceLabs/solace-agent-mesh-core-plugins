@@ -37,7 +37,6 @@ from a2a.types import (
     DataPart,
     Task,
     JSONRPCError,
-    FileWithUri,
     TaskStatusUpdateEvent,
     TaskArtifactUpdateEvent,
 )
@@ -1129,7 +1128,9 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
 
         try:
             # Create a standard error response using the helper
-            error_response = a2a.create_error_response(error=error_data, request_id=None)
+            error_response = a2a.create_error_response(
+                error=error_data, request_id=None
+            )
 
             simplified_payload = {
                 "text": None,
