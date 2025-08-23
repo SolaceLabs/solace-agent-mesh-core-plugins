@@ -9,13 +9,6 @@ from typing import TYPE_CHECKING, Optional, List, Tuple, Any, Dict
 from solace_ai_connector.common.log import log
 from a2a.types import DataPart
 from solace_agent_mesh.common import a2a
-from solace_agent_mesh.common.utils.embeds import (
-    resolve_embeds_in_string,
-    evaluate_embed,
-    LATE_EMBED_TYPES,
-    EMBED_DELIMITER_OPEN,
-)
-from solace_agent_mesh.common.a2a_protocol import _subscription_to_regex
 
 if TYPE_CHECKING:
     from .component import SlackGatewayComponent
@@ -41,7 +34,9 @@ def extract_task_id_from_topic(topic: str, subscription_pattern: str) -> Optiona
     """
     log_id = "[SlackUtil:extract_task_id]"
     try:
-        base_regex_str = _subscription_to_regex(subscription_pattern).replace(r".*", "")
+        base_regex_str = a2a.subscription_to_regex(subscription_pattern).replace(
+            r".*", ""
+        )
         base_regex = re.compile(base_regex_str)
         match = base_regex.match(topic)
         if match:
@@ -275,7 +270,6 @@ async def upload_slack_file(
                 log_id,
                 notify_err,
             )
-
 
 
 def create_feedback_blocks(

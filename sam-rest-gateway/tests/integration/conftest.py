@@ -14,7 +14,9 @@ from sam_test_infrastructure.a2a_validator.validator import A2AMessageValidator
 
 from sam_rest_gateway.app import RestGatewayApp
 from sam_rest_gateway.component import RestGatewayComponent
-from tests.integration.test_support.rest_gateway_test_component import RestGatewayTestComponent
+from tests.integration.test_support.rest_gateway_test_component import (
+    RestGatewayTestComponent,
+)
 from tests.integration.test_support.mock_auth_server import MockAuthServer
 
 
@@ -41,6 +43,7 @@ def mock_gemini_client(monkeypatch):
 
     try:
         from PIL import Image
+
         monkeypatch.setattr(Image, "open", mock_open)
     except ImportError:
         pass
@@ -100,7 +103,9 @@ def test_llm_server():
     """
     Manages the lifecycle of the TestLLMServer for the test session.
     """
-    server = TestLLMServer(host="127.0.0.1", port=8089)  # Different port from main tests
+    server = TestLLMServer(
+        host="127.0.0.1", port=8089
+    )  # Different port from main tests
     server.start()
 
     max_retries = 20
@@ -110,10 +115,14 @@ def test_llm_server():
         time.sleep(retry_delay)
         try:
             if server.started:
-                print(f"REST Gateway TestLLMServer confirmed started after {i+1} attempts.")
+                print(
+                    f"REST Gateway TestLLMServer confirmed started after {i+1} attempts."
+                )
                 ready = True
                 break
-            print(f"REST Gateway TestLLMServer not ready yet (attempt {i+1}/{max_retries})...")
+            print(
+                f"REST Gateway TestLLMServer not ready yet (attempt {i+1}/{max_retries})..."
+            )
         except Exception as e:
             print(
                 f"REST Gateway TestLLMServer readiness check (attempt {i+1}/{max_retries}) encountered an error: {e}"
@@ -149,7 +158,9 @@ def test_artifact_service_instance() -> TestInMemoryArtifactService:
     Provides a single instance of TestInMemoryArtifactService for the test session.
     """
     service = TestInMemoryArtifactService()
-    print("[REST Gateway SessionFixture] TestInMemoryArtifactService instance created for session.")
+    print(
+        "[REST Gateway SessionFixture] TestInMemoryArtifactService instance created for session."
+    )
     yield service
     print("[REST Gateway SessionFixture] TestInMemoryArtifactService session ended.")
 
@@ -261,16 +272,10 @@ def shared_solace_connector(
 
     # Test agent configuration
     test_agent_tools = [
-        {
-            "tool_type": "python",
-            "component_module": "solace_agent_mesh.agent.tools.test_tools",
-            "function_name": "time_delay",
-            "component_base_path": ".",
-        },
         {"tool_type": "builtin-group", "group_name": "artifact_management"},
         {"tool_type": "builtin-group", "group_name": "test"},
     ]
-    
+
     test_agent_config = create_agent_config(
         agent_name="TestAgent",
         description="Test agent for REST Gateway testing",
@@ -285,12 +290,10 @@ def shared_solace_connector(
         "artifact_service": {"type": "test_in_memory"},
         "rest_api_server_host": "127.0.0.1",
         "rest_api_server_port": 8081,  # Different port to avoid conflicts
-
         # Production Authentication Settings
         "enforce_authentication": True,
         "external_auth_service_url": mock_auth_server.url,
         "external_auth_service_provider": "azure",
-
         "sync_mode_timeout_seconds": 30,
     }
 
@@ -325,11 +328,15 @@ def shared_solace_connector(
             "enable_trace": False,
         },
     }
-    
-    print(f"\n[REST Gateway Conftest] Configuring SolaceAiConnector with stdout log level: {log_level_str.upper()}")
+
+    print(
+        f"\n[REST Gateway Conftest] Configuring SolaceAiConnector with stdout log level: {log_level_str.upper()}"
+    )
     connector = SolaceAiConnector(config=connector_config)
     connector.run()
-    print(f"REST Gateway shared_solace_connector fixture: Started SolaceAiConnector with apps: {[app['name'] for app in connector_config['apps']]}")
+    print(
+        f"REST Gateway shared_solace_connector fixture: Started SolaceAiConnector with apps: {[app['name'] for app in connector_config['apps']]}"
+    )
 
     # Allow time for initialization
     print("REST Gateway shared_solace_connector fixture: Waiting for initialization...")
@@ -338,10 +345,14 @@ def shared_solace_connector(
 
     yield connector
 
-    print(f"REST Gateway shared_solace_connector fixture: Cleaning up SolaceAiConnector...")
+    print(
+        f"REST Gateway shared_solace_connector fixture: Cleaning up SolaceAiConnector..."
+    )
     connector.stop()
     connector.cleanup()
-    print(f"REST Gateway shared_solace_connector fixture: SolaceAiConnector cleaned up.")
+    print(
+        f"REST Gateway shared_solace_connector fixture: SolaceAiConnector cleaned up."
+    )
 
 
 @pytest.fixture(scope="session")
@@ -353,7 +364,9 @@ def rest_gateway_app(shared_solace_connector: SolaceAiConnector) -> RestGatewayA
     assert isinstance(
         app_instance, RestGatewayApp
     ), "Failed to retrieve RestGatewayApp from shared connector."
-    print(f"REST Gateway app fixture: Retrieved app {app_instance.name} from shared SolaceAiConnector.")
+    print(
+        f"REST Gateway app fixture: Retrieved app {app_instance.name} from shared SolaceAiConnector."
+    )
     yield app_instance
 
 
@@ -371,8 +384,10 @@ def test_rest_gateway(
         test_artifact_service=test_artifact_service_instance,
         test_llm_server=test_llm_server,
     )
-    
-    print(f"[REST Gateway SessionFixture] RestGatewayTestComponent instance created for session.")
+
+    print(
+        f"[REST Gateway SessionFixture] RestGatewayTestComponent instance created for session."
+    )
     yield test_component
     print(f"[REST Gateway SessionFixture] RestGatewayTestComponent session ended.")
 
@@ -411,20 +426,30 @@ def a2a_message_validator(
     # Get the test agent component
     test_agent_app = shared_solace_connector.get_app("TestAgentApp")
     test_agent_component = None
-    if test_agent_app and test_agent_app.flows and test_agent_app.flows[0].component_groups:
+    if (
+        test_agent_app
+        and test_agent_app.flows
+        and test_agent_app.flows[0].component_groups
+    ):
         for group in test_agent_app.flows[0].component_groups:
             for comp_wrapper in group:
                 actual_comp = getattr(comp_wrapper, "component", comp_wrapper)
-                if hasattr(actual_comp, 'agent_name'):  # SamAgentComponent
+                if hasattr(actual_comp, "agent_name"):  # SamAgentComponent
                     test_agent_component = actual_comp
                     break
 
-    components_to_patch = [comp for comp in [rest_gateway_component, test_agent_component] if comp is not None]
+    components_to_patch = [
+        comp
+        for comp in [rest_gateway_component, test_agent_component]
+        if comp is not None
+    ]
 
     if not components_to_patch:
         pytest.skip("No suitable components found to patch for A2A validation.")
 
-    print(f"REST Gateway A2A Validator activating on components: {[getattr(c, 'name', str(c)) for c in components_to_patch]}")
+    print(
+        f"REST Gateway A2A Validator activating on components: {[getattr(c, 'name', str(c)) for c in components_to_patch]}"
+    )
     validator.activate(components_to_patch)
     yield validator
     validator.deactivate()

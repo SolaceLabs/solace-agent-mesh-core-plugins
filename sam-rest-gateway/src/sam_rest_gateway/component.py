@@ -19,19 +19,12 @@ from a2a.types import (
     TaskStatusUpdateEvent,
     TaskArtifactUpdateEvent,
     JSONRPCError,
-    TextPart,
-    FilePart,
-    DataPart,
-    FileWithUri,
-    Artifact as A2AArtifact,
 )
 from solace_agent_mesh.common import a2a
 from solace_agent_mesh.common.a2a import ContentPart
 from solace_agent_mesh.common.utils.in_memory_cache import InMemoryCache
 from solace_agent_mesh.agent.utils.artifact_helpers import (
     save_artifact_with_metadata,
-    DEFAULT_SCHEMA_MAX_KEYS,
-    load_artifact_content_or_metadata,
 )
 
 info = {
@@ -101,7 +94,11 @@ class RestGatewayComponent(BaseGatewayComponent):
             config = uvicorn.Config(
                 app=self.fastapi_app,
                 host=self.fastapi_host,
-                port=self.fastapi_https_port if (self.ssl_keyfile and self.ssl_certfile) else self.fastapi_port,
+                port=(
+                    self.fastapi_https_port
+                    if (self.ssl_keyfile and self.ssl_certfile)
+                    else self.fastapi_port
+                ),
                 ssl_keyfile=self.ssl_keyfile,
                 ssl_certfile=self.ssl_certfile,
                 ssl_keyfile_password=self.ssl_keyfile_password,
