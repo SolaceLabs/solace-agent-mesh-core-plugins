@@ -41,6 +41,7 @@ from a2a.types import (
     TaskStatusUpdateEvent,
     TaskArtifactUpdateEvent,
 )
+from solace_agent_mesh.common import a2a
 
 from solace_agent_mesh.common.a2a_protocol import _topic_matches_subscription
 from solace_agent_mesh.agent.utils.artifact_helpers import (
@@ -770,8 +771,8 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             for uri in created_artifact_uris:
                 try:
                     filename = uri.split("/")[-1].split("?")[0]
-                    file_content = FileWithUri(name=filename, uri=uri)
-                    a2a_parts.append(A2APart(root=FilePart(file=file_content)))
+                    file_part = a2a.create_file_part_from_uri(uri=uri, name=filename)
+                    a2a_parts.append(a2a.create_part(file_part))
                 except Exception as uri_parse_err:
                     log.warning(
                         "%s Failed to parse URI to create FilePart: %s",
@@ -788,14 +789,16 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
         try:
             transformed_text = msg_for_expression.get_data(input_expression)
             if transformed_text is not None:
-                a2a_parts.append(A2APart(root=TextPart(text=str(transformed_text))))
+                text_part = a2a.create_text_part(text=str(transformed_text))
+                a2a_parts.append(a2a.create_part(text_part))
             else:
                 log.warning(
                     "%s Input expression '%s' yielded None. Creating empty TextPart.",
                     log_id_prefix,
                     input_expression,
                 )
-                a2a_parts.append(A2APart(root=TextPart(text="")))
+                text_part = a2a.create_text_part(text="")
+                a2a_parts.append(a2a.create_part(text_part))
             log.debug(
                 "%s Input expression evaluated. Result length: %d",
                 log_id_prefix,
