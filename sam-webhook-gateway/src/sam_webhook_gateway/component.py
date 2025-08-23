@@ -35,6 +35,7 @@ from a2a.types import (
     TaskArtifactUpdateEvent,
     JSONRPCError,
 )
+from solace_agent_mesh.common import a2a
 
 from solace_agent_mesh.agent.utils.artifact_helpers import save_artifact_with_metadata
 
@@ -847,7 +848,8 @@ class WebhookGatewayComponent(BaseGatewayComponent):
 
         a2a_parts: List[A2APart] = []
         if templated_text is not None:
-            a2a_parts.append(A2APart(root=TextPart(text=str(templated_text))))
+            text_part = a2a.create_text_part(text=str(templated_text))
+            a2a_parts.append(a2a.create_part(text_part))
 
         external_request_context = {
             "webhook_path": request.url.path,

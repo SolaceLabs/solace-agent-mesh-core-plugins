@@ -17,6 +17,7 @@ from solace_ai_connector.common.log import log
 
 from .dependencies import set_component_instance
 
+from solace_agent_mesh.common import a2a
 from a2a.types import (
     JSONRPCError,
     InternalError,
