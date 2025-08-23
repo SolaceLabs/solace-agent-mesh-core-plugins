@@ -31,7 +31,6 @@ from solace_ai_connector.common.event import Event, EventType
 
 from solace_agent_mesh.gateway.base.component import BaseGatewayComponent
 from a2a.types import (
-    Part as A2APart,
     TextPart,
     FilePart,
     DataPart,
@@ -41,6 +40,7 @@ from a2a.types import (
     TaskArtifactUpdateEvent,
 )
 from solace_agent_mesh.common import a2a
+from solace_agent_mesh.common.a2a import ContentPart
 
 from solace_agent_mesh.agent.utils.artifact_helpers import (
     load_artifact_content_or_metadata,
@@ -718,12 +718,12 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
         external_event_data: SolaceMessage,
         user_identity: Dict[str, Any],
         handler_config: Dict,
-    ) -> Tuple[Optional[str], List[Union[TextPart, DataPart, FilePart]], Dict[str, Any]]:
+    ) -> Tuple[Optional[str], List[ContentPart], Dict[str, Any]]:
         """
         Translates an incoming SolaceMessage into A2A task parameters.
         """
         log_id_prefix = f"{self.log_identifier}[TranslateInput]"
-        a2a_parts: List[Union[TextPart, DataPart, FilePart]] = []
+        a2a_parts: List[ContentPart] = []
         external_request_context: Dict[str, Any] = {}
         a2a_session_id = f"event-mesh-session-{uuid.uuid4().hex}"
 

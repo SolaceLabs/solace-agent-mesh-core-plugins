@@ -27,11 +27,11 @@ This checklist tracks the implementation of the `ContentPart` refactoring across
 
 ## Phase 3: Event Mesh Gateway (`src/sam_event_mesh_gateway/component.py`)
 
-- [ ] **Update Imports:**
-    - [ ] Add `ContentPart` to `solace_agent_mesh.common.a2a` import.
-- [ ] **Refactor `_translate_external_input`:**
-    - [ ] Update method signature to return `List[ContentPart]`.
-    - [ ] Update `a2a_parts` local variable to be `List[ContentPart]`.
+- [x] **Update Imports:**
+    - [x] Add `ContentPart` to `solace_agent_mesh.common.a2a` import.
+- [x] **Refactor `_translate_external_input`:**
+    - [x] Update method signature to return `List[ContentPart]`.
+    - [x] Update `a2a_parts` local variable to be `List[ContentPart]`.
 
 ## Phase 4: Webhook Gateway (`src/sam_webhook_gateway/component.py`)
 
