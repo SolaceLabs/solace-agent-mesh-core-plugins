@@ -42,7 +42,6 @@ from a2a.types import (
 )
 from solace_agent_mesh.common import a2a
 
-from solace_agent_mesh.common.a2a_protocol import _topic_matches_subscription
 from solace_agent_mesh.agent.utils.artifact_helpers import (
     load_artifact_content_or_metadata,
     save_artifact_with_metadata,
@@ -1403,7 +1402,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
         for handler_config in self.event_handlers_config:
             for sub_config in handler_config.get("subscriptions", []):
                 subscription_topic = sub_config.get("topic")
-                if subscription_topic and _topic_matches_subscription(
+                if subscription_topic and a2a.topic_matches_subscription(
                     incoming_topic, subscription_topic
                 ):
                     matched_handler_config = handler_config
