@@ -8,6 +8,7 @@ import json
 from typing import TYPE_CHECKING, Optional, List, Tuple, Any, Dict
 from solace_ai_connector.common.log import log
 from a2a.types import DataPart
+from solace_agent_mesh.common import a2a
 from solace_agent_mesh.common.utils.embeds import (
     resolve_embeds_in_string,
     evaluate_embed,

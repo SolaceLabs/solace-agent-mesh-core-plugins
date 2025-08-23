@@ -41,6 +41,7 @@ from a2a.types import (
     JSONRPCError,
     TaskState,
 )
+from solace_agent_mesh.common import a2a
 from solace_agent_mesh.common.data_parts import (
     AgentProgressUpdateData,
     ArtifactCreationProgressData,
@@ -734,10 +735,12 @@ class SlackGatewayComponent(BaseGatewayComponent):
                     if save_result["status"] in ["success", "partial_success"]:
                         data_version = save_result.get("data_version", 0)
                         artifact_uri = f"artifact://{self.gateway_id}/{user_id_for_artifacts}/{a2a_session_id}/{original_filename}?version={data_version}"
-                        file_content_a2a = FileWithUri(
-                            name=original_filename, mime_type=mime_type, uri=artifact_uri
+                        file_part = a2a.create_file_part_from_uri(
+                            uri=artifact_uri,
+                            name=original_filename,
+                            mime_type=mime_type,
                         )
-                        a2a_parts.append(A2APart(root=FilePart(file=file_content_a2a)))
+                        a2a_parts.append(a2a.create_part(file_part))
                         file_metadata_summary_parts.append(
                             f"- {original_filename} ({mime_type}, {len(content_bytes)} bytes, URI: {artifact_uri})"
                         )
@@ -761,7 +764,8 @@ class SlackGatewayComponent(BaseGatewayComponent):
             )
             processed_text_for_a2a = f"{summary_text}\n\nUser message: {resolved_text}"
         if processed_text_for_a2a:
-            a2a_parts.append(A2APart(root=TextPart(text=processed_text_for_a2a)))
+            text_part = a2a.create_text_part(text=processed_text_for_a2a)
+            a2a_parts.append(a2a.create_part(text_part))
         if not a2a_parts:
             log.warning(
                 "%s No text or successfully processed files. Cannot create A2A message.",
