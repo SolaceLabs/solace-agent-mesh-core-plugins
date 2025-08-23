@@ -321,7 +321,9 @@ class RestGatewayComponent(BaseGatewayComponent):
             if context:
                 if "aggregated_artifacts" not in context:
                     context["aggregated_artifacts"] = []
-                context["aggregated_artifacts"].append(event_data.artifact)
+                artifact = a2a.get_artifact_from_artifact_update(event_data)
+                if artifact:
+                    context["aggregated_artifacts"].append(artifact)
                 self.task_context_manager.store_context(task_id, context)
                 log.debug(
                     "%s Aggregated artifact for task %s. Total artifacts: %d",
