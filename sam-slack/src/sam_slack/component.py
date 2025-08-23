@@ -55,6 +55,7 @@ from .utils import (
     create_feedback_blocks,
     _build_current_slack_blocks,
     correct_slack_markdown,
+    format_data_part_for_slack,
     CANCEL_BUTTON_ACTION_ID,
 )
 
@@ -1204,14 +1205,33 @@ class SlackGatewayComponent(BaseGatewayComponent):
         data_parts_for_slack: List[str] = []
         file_infos_for_slack: List[Dict] = []
 
+        all_final_parts: List[Union[TextPart, DataPart, FilePart]] = []
+        if task_data.status and task_data.status.message:
+            all_final_parts.extend(a2a.get_parts_from_message(task_data.status.message))
+
         artifacts = a2a.get_task_artifacts(task_data)
         if artifacts:
             for artifact in artifacts:
-                parts = a2a.get_parts_from_artifact(artifact)
-                for part in parts:
-                    if isinstance(part, FilePart):
-                        if file_info := self._process_file_part(part, task_id, log_id):
-                            file_infos_for_slack.append(file_info)
+                all_final_parts.extend(a2a.get_parts_from_artifact(artifact))
+
+        if all_final_parts:
+            log.debug(
+                "%s Processing %d final parts from status message and artifacts.",
+                log_id,
+                len(all_final_parts),
+            )
+            text_parts_content = []
+            for part in all_final_parts:
+                if isinstance(part, TextPart):
+                    text_parts_content.append(part.text)
+                elif isinstance(part, DataPart):
+                    data_parts_for_slack.append(format_data_part_for_slack(part))
+                elif isinstance(part, FilePart):
+                    if file_info := self._process_file_part(part, task_id, log_id):
+                        file_infos_for_slack.append(file_info)
+
+            if text_parts_content:
+                text_to_display = "\n".join(text_parts_content)
 
         final_status_text_for_slack = ":checkered_flag: Task complete."
         task_status = a2a.get_task_status(task_data)

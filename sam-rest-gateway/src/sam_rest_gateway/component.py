@@ -357,15 +357,13 @@ class RestGatewayComponent(BaseGatewayComponent):
 
         context = self.task_context_manager.get_context(task_id)
 
-        # Start with the original artifacts from the task, or an empty list
-        task_artifacts = a2a.get_task_artifacts(task_data) or []
-
+        # If there are aggregated artifacts from streaming, update the main task object.
         if context and "aggregated_artifacts" in context:
-            task_artifacts = context["aggregated_artifacts"]
+            task_data.artifacts = context["aggregated_artifacts"]
             log.info(
                 "%s Injected %d aggregated artifacts into final task object.",
                 log_id_prefix,
-                len(task_artifacts),
+                len(task_data.artifacts),
             )
 
         api_version = context.get("api_version", "v2") if context else "v2"
@@ -375,16 +373,11 @@ class RestGatewayComponent(BaseGatewayComponent):
             api_version,
         )
 
-        if api_version == "v1":
-            log.info(
-                "%s Resolving artifact URIs for v1 synchronous response...",
-                log_id_prefix,
-            )
-            if task_artifacts:
-                for artifact in task_artifacts:
-                    parts = a2a.get_parts_from_artifact(artifact)
-                    await self._resolve_uris_in_parts_list(parts)
+        # The base gateway has already resolved artifact URIs.
+        # We just need to format the final task object and either set the sync event or cache it.
+        final_task_dict = task_data.model_dump(exclude_none=True, by_alias=True)
 
+        if api_version == "v1":
             with self.sync_wait_lock:
                 wait_context = self.sync_wait_events.get(task_id)
             if wait_context:
@@ -392,10 +385,6 @@ class RestGatewayComponent(BaseGatewayComponent):
                     "%s Synchronous v1 call detected. Setting event with resolved task.",
                     log_id_prefix,
                 )
-                final_task_dict = task_data.model_dump(exclude_none=True)
-                final_task_dict["artifacts"] = [
-                    art.model_dump(exclude_none=True) for art in task_artifacts
-                ]
                 wait_context["result"] = final_task_dict
                 wait_context["event"].set()
             else:
@@ -404,72 +393,7 @@ class RestGatewayComponent(BaseGatewayComponent):
                     log_id_prefix,
                     task_id,
                 )
-
-        else:
-            enriched_artifacts = []
-            if self.shared_artifact_service and task_artifacts:
-                log.info(
-                    "%s Enriching %d artifacts with full metadata for v2 response...",
-                    log_id_prefix,
-                    len(task_artifacts),
-                )
-                for a2a_artifact in task_artifacts:
-                    try:
-                        user_id = context.get("user_id_for_artifacts")
-                        session_id = context.get("a2a_session_id")
-
-                        if not user_id or not session_id:
-                            log.warning(
-                                "%s Missing user/session context for artifact lookup. Skipping enrichment for %s.",
-                                log_id_prefix,
-                                a2a.get_artifact_name(a2a_artifact),
-                            )
-                            continue
-
-                        info = await load_artifact_content_or_metadata(
-                            artifact_service=self.shared_artifact_service,
-                            app_name=self.gateway_id,
-                            user_id=user_id,
-                            session_id=session_id,
-                            filename=a2a.get_artifact_name(a2a_artifact),
-                            version="latest",
-                            load_metadata_only=True,
-                        )
-                        if info.get("status") == "success":
-                            metadata = info.get("metadata", {})
-                            created_ts = metadata.get("timestamp_utc")
-                            created_iso = (
-                                datetime.fromtimestamp(
-                                    created_ts, tz=timezone.utc
-                                ).isoformat()
-                                if created_ts
-                                else None
-                            )
-                            flat_artifact_info = {
-                                "name": info.get("filename"),
-                                "mimeType": metadata.get("mime_type"),
-                                "size": metadata.get("size_bytes"),
-                                "version": info.get("version"),
-                                "created": created_iso,
-                                "metadata": metadata,
-                            }
-                            enriched_artifacts.append(flat_artifact_info)
-                        else:
-                            log.warning(
-                                "%s Could not load metadata for artifact %s.",
-                                log_id_prefix,
-                                a2a.get_artifact_name(a2a_artifact),
-                            )
-                    except Exception as e:
-                        log.exception(
-                            "%s Error enriching artifact %s: %s",
-                            log_id_prefix,
-                            a2a.get_artifact_name(a2a_artifact),
-                            e,
-                        )
-            final_task_dict = task_data.model_dump(exclude_none=True, by_alias=True)
-            final_task_dict["artifacts"] = enriched_artifacts
-
+        else:  # api_version == "v2"
             log.info(
                 "%s Storing final task result in cache for v2 polling.", log_id_prefix
             )
