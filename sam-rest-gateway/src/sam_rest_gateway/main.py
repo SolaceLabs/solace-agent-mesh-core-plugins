@@ -31,11 +31,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 
-from a2a.types import (
-    JSONRPCErrorResponse,
-    InternalError,
-    InvalidRequestError,
-)
+from solace_agent_mesh.common import a2a
 
 
 def setup_dependencies(component: "RestGatewayComponent"):
@@ -228,10 +224,10 @@ async def validation_exception_handler(
     request: FastAPIRequest, exc: RequestValidationError
 ):
     """Handles Pydantic validation errors."""
-    error_obj = InvalidRequestError(
+    error_obj = a2a.create_invalid_request_error(
         message="Invalid request parameters", data=exc.errors()
     )
-    response = JSONRPCErrorResponse(error=error_obj)
+    response = a2a.create_error_response(error=error_obj, request_id=None)
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content=response.model_dump(exclude_none=True),
@@ -244,10 +240,10 @@ async def generic_exception_handler(request: FastAPIRequest, exc: Exception):
     log.exception(
         "Unhandled Exception: %s, Request: %s %s", exc, request.method, request.url
     )
-    error_obj = InternalError(
+    error_obj = a2a.create_internal_error(
         message=f"An unexpected server error occurred: {type(exc).__name__}"
     )
-    response = JSONRPCErrorResponse(error=error_obj)
+    response = a2a.create_error_response(error=error_obj, request_id=None)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content=response.model_dump(exclude_none=True),
