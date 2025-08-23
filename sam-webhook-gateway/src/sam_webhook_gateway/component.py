@@ -889,12 +889,12 @@ class WebhookGatewayComponent(BaseGatewayComponent):
         self, external_request_context: Dict[str, Any], task_data: Task
     ) -> None:
         log_id_prefix = f"{self.log_identifier}[SendFinalResponse]"
-        a2a_task_id = task_data.id
+        a2a_task_id = a2a.get_task_id(task_data)
         log.debug(
             "%s _send_final_response_to_external called for task %s. Webhook gateway already ACKed. Task Status: %s. Context: %s",
             log_id_prefix,
             a2a_task_id,
-            task_data.status.state,
+            a2a.get_task_status(task_data),
             external_request_context,
         )
 
@@ -905,7 +905,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
         log.debug(
             "%s _send_error_to_external called. Webhook gateway already ACKed. Error Code: %s, Message: %s. Context: %s",
             log_id_prefix,
-            error_data.code,
-            error_data.message,
+            a2a.get_error_code(error_data),
+            a2a.get_error_message(error_data),
             external_request_context,
         )
