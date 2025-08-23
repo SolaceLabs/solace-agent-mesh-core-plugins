@@ -718,12 +718,12 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
         external_event_data: SolaceMessage,
         user_identity: Dict[str, Any],
         handler_config: Dict,
-    ) -> Tuple[Optional[str], List[A2APart], Dict[str, Any]]:
+    ) -> Tuple[Optional[str], List[Union[TextPart, DataPart, FilePart]], Dict[str, Any]]:
         """
         Translates an incoming SolaceMessage into A2A task parameters.
         """
         log_id_prefix = f"{self.log_identifier}[TranslateInput]"
-        a2a_parts: List[A2APart] = []
+        a2a_parts: List[Union[TextPart, DataPart, FilePart]] = []
         external_request_context: Dict[str, Any] = {}
         a2a_session_id = f"event-mesh-session-{uuid.uuid4().hex}"
 
@@ -754,7 +754,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 try:
                     filename = uri.split("/")[-1].split("?")[0]
                     file_part = a2a.create_file_part_from_uri(uri=uri, name=filename)
-                    a2a_parts.append(a2a.create_part(file_part))
+                    a2a_parts.append(file_part)
                 except Exception as uri_parse_err:
                     log.warning(
                         "%s Failed to parse URI to create FilePart: %s",
@@ -772,7 +772,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             transformed_text = msg_for_expression.get_data(input_expression)
             if transformed_text is not None:
                 text_part = a2a.create_text_part(text=str(transformed_text))
-                a2a_parts.append(a2a.create_part(text_part))
+                a2a_parts.append(text_part)
             else:
                 log.warning(
                     "%s Input expression '%s' yielded None. Creating empty TextPart.",
@@ -780,7 +780,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     input_expression,
                 )
                 text_part = a2a.create_text_part(text="")
-                a2a_parts.append(a2a.create_part(text_part))
+                a2a_parts.append(text_part)
             log.debug(
                 "%s Input expression evaluated. Result length: %d",
                 log_id_prefix,
