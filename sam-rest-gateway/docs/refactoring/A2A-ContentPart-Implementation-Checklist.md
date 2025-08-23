@@ -45,6 +45,6 @@ This checklist tracks the implementation of the `ContentPart` refactoring across
 
 ## Phase 5: Verification
 
-- [ ] **Global Search:** Confirm no instances of `a2a.create_part()` remain in the codebase.
+- [x] **Global Search:** Confirm no instances of `a2a.create_part()` remain in the codebase.
 - [ ] **Static Analysis:** Run `mypy` and linters to ensure type consistency.
 - [ ] **Integration Testing:** Run the full integration test suite for all gateways.
