@@ -168,14 +168,15 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
         self, part: FilePart, context: Dict, handler_config: Dict
     ) -> Dict:
         file_info = {
-            "name": part.file.name,
-            "mimeType": part.file.mime_type,
+            "name": a2a.get_filename_from_file_part(part),
+            "mimeType": a2a.get_mimetype_from_file_part(part),
             "content": None,
             "bytes": None,
             "error": None,
         }
 
-        if not part.file.uri:
+        uri = a2a.get_uri_from_file_part(part)
+        if not uri:
             file_info["error"] = "FilePart has no URI to load content from."
             return file_info
 
@@ -187,7 +188,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 app_name=context.get("app_name_for_artifacts"),
                 user_id=context.get("user_id_for_artifacts"),
                 session_id=context.get("a2a_session_id"),
-                filename=part.file.name,
+                filename=a2a.get_filename_from_file_part(part),
                 version="latest",
                 return_raw_bytes=True,
             )
@@ -205,7 +206,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 )
                 return file_info
 
-            if is_text_based_mime_type(part.file.mime_type):
+            if is_text_based_mime_type(a2a.get_mimetype_from_file_part(part)):
                 file_info["content"] = content_bytes.decode("utf-8")
             else:
                 file_info["bytes"] = base64.b64encode(content_bytes).decode("utf-8")
