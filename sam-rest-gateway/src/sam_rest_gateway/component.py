@@ -519,7 +519,7 @@ class RestGatewayComponent(BaseGatewayComponent):
             log.warning(
                 "%s Storing error result in cache for v2 polling: %s",
                 log_id_prefix,
-                error_data.message,
+                a2a.get_error_message(error_data),
             )
             self.result_cache.set(
                 task_id, error_data.model_dump(exclude_none=True), ttl=600
