@@ -25,6 +25,7 @@ from a2a.types import (
     FileWithUri,
     Artifact as A2AArtifact,
 )
+from solace_agent_mesh.common import a2a
 from solace_agent_mesh.common.utils.in_memory_cache import InMemoryCache
 from solace_agent_mesh.agent.utils.artifact_helpers import (
     save_artifact_with_metadata,
@@ -262,13 +263,10 @@ class RestGatewayComponent(BaseGatewayComponent):
                     if save_result["status"] in ["success", "partial_success"]:
                         version = save_result.get("data_version", 0)
                         uri = f"artifact://{self.gateway_id}/{user_id}/{a2a_session_id}/{upload_file.filename}?version={version}"
-                        a2a_parts.append(
-                            A2APart(
-                                root=FilePart(
-                                    file=FileWithUri(name=upload_file.filename, uri=uri)
-                                )
-                            )
+                        file_part = a2a.create_file_part_from_uri(
+                            uri=uri, name=upload_file.filename
                         )
+                        a2a_parts.append(a2a.create_part(file_part))
                         file_metadata_summary_parts.append(
                             f"- {upload_file.filename} ({len(content_bytes)} bytes)"
                         )
@@ -290,7 +288,8 @@ class RestGatewayComponent(BaseGatewayComponent):
                 )
 
         if prompt:
-            a2a_parts.append(A2APart(root=TextPart(text=prompt)))
+            text_part = a2a.create_text_part(text=prompt)
+            a2a_parts.append(a2a.create_part(text_part))
 
         external_request_context = {
             "user_id_for_artifacts": user_id,
