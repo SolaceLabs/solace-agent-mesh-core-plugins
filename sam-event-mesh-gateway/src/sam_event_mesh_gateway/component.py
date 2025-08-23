@@ -545,7 +545,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
 
         user_identity_str: Optional[str] = None
         user_identity_expression = handler_config.get("user_identity_expression")
-
+        source = "solace_message"
         if user_identity_expression:
             try:
                 user_identity_str = solace_msg.get_data(user_identity_expression)
@@ -559,6 +559,12 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 return None
 
         if not user_identity_str:
+            default_identity = handler_config.get("default_user_identity")
+            if default_identity:
+                user_identity_str = default_identity
+                source = "configured_default"
+
+        if not user_identity_str:
             log.debug(
                 "%s No user identity extracted from expression. Returning None for claims.",
                 log_id_prefix,
@@ -568,7 +574,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
         log.info(
             "%s Extracted initial claims with id: %s", log_id_prefix, user_identity_str
         )
-        return {"id": user_identity_str, "source": "solace_message"}
+        return {"id": user_identity_str, "source": source}
 
     async def _process_artifacts_from_message(
         self,
