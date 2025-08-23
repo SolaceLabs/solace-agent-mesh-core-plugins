@@ -35,13 +35,13 @@ This checklist tracks the implementation of the `ContentPart` refactoring across
 
 ## Phase 4: Webhook Gateway (`src/sam_webhook_gateway/component.py`)
 
-- [ ] **Update Imports:**
-    - [ ] Remove `Part as A2APart` from `a2a.types` import.
-    - [ ] Add `ContentPart` to `solace_agent_mesh.common.a2a` import.
-- [ ] **Refactor `_translate_external_input`:**
-    - [ ] Update method signature to return `List[ContentPart]`.
-    - [ ] Update `a2a_parts` local variable to be `List[ContentPart]`.
-    - [ ] Remove `a2a.create_part()` call.
+- [x] **Update Imports:**
+    - [x] Remove `Part as A2APart` from `a2a.types` import.
+    - [x] Add `ContentPart` to `solace_agent_mesh.common.a2a` import.
+- [x] **Refactor `_translate_external_input`:**
+    - [x] Update method signature to return `List[ContentPart]`.
+    - [x] Update `a2a_parts` local variable to be `List[ContentPart]`.
+    - [x] Remove `a2a.create_part()` call.
 
 ## Phase 5: Verification
 

@@ -28,7 +28,6 @@ from solace_ai_connector.common.message import Message as SolaceMessage
 
 from solace_agent_mesh.gateway.base.component import BaseGatewayComponent
 from a2a.types import (
-    Part as A2APart,
     TextPart,
     Task,
     TaskStatusUpdateEvent,
@@ -36,6 +35,7 @@ from a2a.types import (
     JSONRPCError,
 )
 from solace_agent_mesh.common import a2a
+from solace_agent_mesh.common.a2a import ContentPart
 
 from solace_agent_mesh.agent.utils.artifact_helpers import save_artifact_with_metadata
 
@@ -580,7 +580,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
         request: FastAPIRequest,
         endpoint_config: Dict[str, Any],
         user_identity: Dict[str, Any],
-    ) -> Tuple[str, List[A2APart], Dict[str, Any]]:
+    ) -> Tuple[str, List[ContentPart], Dict[str, Any]]:
         """
         Translates webhook data (FastAPIRequest) into A2A task parameters.
         Parses payload based on 'payload_format', optionally saves as artifact,
@@ -846,10 +846,10 @@ class WebhookGatewayComponent(BaseGatewayComponent):
                 f"Error processing input_template: {template_err}"
             ) from template_err
 
-        a2a_parts: List[A2APart] = []
+        a2a_parts: List[ContentPart] = []
         if templated_text is not None:
             text_part = a2a.create_text_part(text=str(templated_text))
-            a2a_parts.append(a2a.create_part(text_part))
+            a2a_parts.append(text_part)
 
         external_request_context = {
             "webhook_path": request.url.path,
