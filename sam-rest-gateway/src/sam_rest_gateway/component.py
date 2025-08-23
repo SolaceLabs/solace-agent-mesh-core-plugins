@@ -15,17 +15,18 @@ from solace_ai_connector.common.log import log
 from solace_agent_mesh.gateway.base.component import BaseGatewayComponent
 
 from a2a.types import (
-    Part as A2APart,
     Task,
     TaskStatusUpdateEvent,
     TaskArtifactUpdateEvent,
     JSONRPCError,
     TextPart,
     FilePart,
+    DataPart,
     FileWithUri,
     Artifact as A2AArtifact,
 )
 from solace_agent_mesh.common import a2a
+from solace_agent_mesh.common.a2a import ContentPart
 from solace_agent_mesh.common.utils.in_memory_cache import InMemoryCache
 from solace_agent_mesh.agent.utils.artifact_helpers import (
     save_artifact_with_metadata,
@@ -194,7 +195,7 @@ class RestGatewayComponent(BaseGatewayComponent):
     async def submit_a2a_task(
         self,
         target_agent_name: str,
-        a2a_parts: List[Union[TextPart, DataPart, FilePart]],
+        a2a_parts: List[ContentPart],
         external_request_context: Dict[str, Any],
         user_identity: Any,
         is_streaming: bool = True,
@@ -223,7 +224,7 @@ class RestGatewayComponent(BaseGatewayComponent):
 
     async def _translate_external_input(
         self, external_event: Any
-    ) -> Tuple[str, List[A2APart], Dict[str, Any]]:
+    ) -> Tuple[str, List[ContentPart], Dict[str, Any]]:
         """Translates raw HTTP request data into A2A task parameters."""
         log_id_prefix = f"{self.log_identifier}[TranslateInput]"
 
@@ -235,7 +236,7 @@ class RestGatewayComponent(BaseGatewayComponent):
         if not agent_name or not user_identity:
             raise ValueError("Agent name and user identity are required.")
 
-        a2a_parts: List[A2APart] = []
+        a2a_parts: List[ContentPart] = []
         user_id = user_identity.get("id")
         a2a_session_id = f"rest-session-{uuid.uuid4().hex}"
 
@@ -266,7 +267,7 @@ class RestGatewayComponent(BaseGatewayComponent):
                         file_part = a2a.create_file_part_from_uri(
                             uri=uri, name=upload_file.filename
                         )
-                        a2a_parts.append(a2a.create_part(file_part))
+                        a2a_parts.append(file_part)
                         file_metadata_summary_parts.append(
                             f"- {upload_file.filename} ({len(content_bytes)} bytes)"
                         )
@@ -289,7 +290,7 @@ class RestGatewayComponent(BaseGatewayComponent):
 
         if prompt:
             text_part = a2a.create_text_part(text=prompt)
-            a2a_parts.append(a2a.create_part(text_part))
+            a2a_parts.append(text_part)
 
         external_request_context = {
             "user_id_for_artifacts": user_id,
