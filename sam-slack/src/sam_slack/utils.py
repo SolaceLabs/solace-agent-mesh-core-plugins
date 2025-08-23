@@ -86,10 +86,12 @@ def correct_slack_markdown(text: str) -> str:
 def format_data_part_for_slack(data_part: DataPart) -> str:
     """Formats an A2A DataPart for display in Slack (e.g., as a JSON code block)."""
     try:
-        json_string = json.dumps(data_part.data, indent=2)
+        data_dict = a2a.get_data_from_data_part(data_part)
+        json_string = json.dumps(data_dict, indent=2)
         header = "Received Data"
-        if data_part.metadata:
-            tool_name = data_part.metadata.get("tool_name")
+        metadata = a2a.get_metadata_from_part(data_part)
+        if metadata:
+            tool_name = metadata.get("tool_name")
             if tool_name:
                 header = f"Result from Tool: `{tool_name}`"
 

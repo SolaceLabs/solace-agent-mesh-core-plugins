@@ -1245,17 +1245,21 @@ class SlackGatewayComponent(BaseGatewayComponent):
             "a2a_task_id_for_event", "unknown_task_error"
         )
         log_id = f"{self.log_identifier}[SendErrorExt:{task_id}]"
-        log.debug("%s Processing error: %s", log_id, error_data.message)
+        error_message = a2a.get_error_message(error_data)
+        error_code = a2a.get_error_code(error_data)
+        error_details_data = a2a.get_error_data(error_data)
+
+        log.debug("%s Processing error: %s", log_id, error_message)
 
         error_text_for_slack = (
-            f":boom: An error occurred: {error_data.message} (Code: {error_data.code})"
+            f":boom: An error occurred: {error_message} (Code: {error_code})"
         )
-        if error_data.data:
+        if error_details_data:
             try:
-                error_details = json.dumps(error_data.data, indent=2)
+                error_details = json.dumps(error_details_data, indent=2)
                 error_text_for_slack += f"\nDetails:\n```\n{error_details}\n```"
             except Exception:
-                error_text_for_slack += f"\nDetails: {str(error_data.data)}"
+                error_text_for_slack += f"\nDetails: {str(error_details_data)}"
 
         await self._update_slack_ui_state(
             task_id,
