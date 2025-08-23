@@ -16,14 +16,14 @@ This checklist tracks the implementation of the `ContentPart` refactoring across
 
 ## Phase 2: Slack Gateway (`src/sam_slack/component.py`)
 
-- [ ] **Update Imports:**
-    - [ ] Remove `Part as A2APart` from `a2a.types` import.
-    - [ ] Add `ContentPart` to `solace_agent_mesh.common.a2a` import.
-- [ ] **Refactor `_translate_external_input`:**
-    - [ ] Update method signature to return `List[ContentPart]`.
-    - [ ] Update `a2a_parts` local variable to be `List[ContentPart]`.
-- [ ] **Refactor `_send_final_response_to_external`:**
-    - [ ] Update `all_final_parts` local variable to be `List[ContentPart]`.
+- [x] **Update Imports:**
+    - [x] Remove `Part as A2APart` from `a2a.types` import.
+    - [x] Add `ContentPart` to `solace_agent_mesh.common.a2a` import.
+- [x] **Refactor `_translate_external_input`:**
+    - [x] Update method signature to return `List[ContentPart]`.
+    - [x] Update `a2a_parts` local variable to be `List[ContentPart]`.
+- [x] **Refactor `_send_final_response_to_external`:**
+    - [x] Update `all_final_parts` local variable to be `List[ContentPart]`.
 
 ## Phase 3: Event Mesh Gateway (`src/sam_event_mesh_gateway/component.py`)
 

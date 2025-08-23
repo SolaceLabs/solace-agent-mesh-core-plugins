@@ -29,7 +29,6 @@ except ImportError:
 from solace_ai_connector.common.log import log
 from solace_agent_mesh.gateway.base.component import BaseGatewayComponent
 from a2a.types import (
-    Part as A2APart,
     TextPart,
     FilePart,
     DataPart,
@@ -42,6 +41,7 @@ from a2a.types import (
     TaskState,
 )
 from solace_agent_mesh.common import a2a
+from solace_agent_mesh.common.a2a import ContentPart
 from solace_agent_mesh.common.data_parts import (
     AgentProgressUpdateData,
     ArtifactCreationProgressData,
@@ -638,7 +638,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
 
     async def _translate_external_input(
         self, external_event: Any, authenticated_user_identity: Dict[str, Any]
-    ) -> Tuple[str, List[Union[TextPart, DataPart, FilePart]], Dict[str, Any]]:
+    ) -> Tuple[str, List[ContentPart], Dict[str, Any]]:
         log_id = f"{self.log_identifier}[TranslateInput]"
         event: Dict = external_event
         if event.get("bot_id") or event.get("subtype") == "bot_message":
@@ -690,7 +690,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
         a2a_session_id = generate_a2a_session_id(
             channel_id, thread_ts, target_agent_name
         )
-        a2a_parts: List[Union[TextPart, DataPart, FilePart]] = []
+        a2a_parts: List[ContentPart] = []
         file_metadata_summary_parts: List[str] = []
         processed_text_for_a2a = resolved_text
         if files_info and self.shared_artifact_service:
@@ -1205,7 +1205,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
         data_parts_for_slack: List[str] = []
         file_infos_for_slack: List[Dict] = []
 
-        all_final_parts: List[Union[TextPart, DataPart, FilePart]] = []
+        all_final_parts: List[ContentPart] = []
         if task_data.status and task_data.status.message:
             all_final_parts.extend(a2a.get_parts_from_message(task_data.status.message))
 
