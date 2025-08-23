@@ -933,13 +933,11 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 "a2a_task_response": task_data.model_dump(exclude_none=True),
             }
 
-            if (
-                task_data.status
-                and task_data.status.message
-                and task_data.status.message.parts
-            ):
+            if task_data.status and task_data.status.message:
+                message = task_data.status.message
+                parts = a2a.get_parts_from_message(message)
                 text_parts_content = []
-                for part in task_data.status.message.parts:
+                for part in parts:
                     if isinstance(part, TextPart):
                         text_parts_content.append(part.text)
                     elif isinstance(part, DataPart):
