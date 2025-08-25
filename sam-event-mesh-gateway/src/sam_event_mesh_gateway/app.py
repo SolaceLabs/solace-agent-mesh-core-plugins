@@ -101,6 +101,11 @@ class EventMeshGatewayApp(BaseGatewayApp):
                         "required": False,
                         "description": "SAC expression to extract a user identity from the incoming Solace message.",
                     },
+                    "default_user_identity": {
+                        "type": "string",
+                        "required": False,
+                        "description": "Default user identity to use if none is extracted from the incoming message or if no user_identity_expression is provided.",
+                    },
                     "target_agent_name": {
                         "type": "string",
                         "required": False,

@@ -17,7 +17,8 @@ from solace_ai_connector.common.log import log
 
 from .dependencies import set_component_instance
 
-from solace_agent_mesh.common.types import (
+from solace_agent_mesh.common import a2a
+from a2a.types import (
     JSONRPCError,
     InternalError,
     InvalidRequestError,
@@ -115,7 +116,7 @@ async def validation_exception_handler(
         request.method,
         request.url,
     )
-    error_obj = InvalidRequestError(
+    error_obj = a2a.create_invalid_request_error(
         message="Invalid request parameters", data=exc.errors()
     )
     return JSONResponse(
@@ -130,9 +131,8 @@ async def generic_exception_handler(request: FastAPIRequest, exc: Exception):
     log.exception(
         "Unhandled Exception: %s, Request: %s %s", exc, request.method, request.url
     )
-    error_obj = InternalError(
-        code=InternalError().code,
-        message="An unexpected server error occurred: %s" % type(exc).__name__,
+    error_obj = a2a.create_internal_error(
+        message=f"An unexpected server error occurred: {type(exc).__name__}"
     )
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

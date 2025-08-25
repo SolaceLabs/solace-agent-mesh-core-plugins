@@ -14,22 +14,17 @@ from solace_ai_connector.common.log import log
 
 from solace_agent_mesh.gateway.base.component import BaseGatewayComponent
 
-from solace_agent_mesh.common.types import (
-    Part as A2APart,
+from a2a.types import (
     Task,
     TaskStatusUpdateEvent,
     TaskArtifactUpdateEvent,
     JSONRPCError,
-    TextPart,
-    FilePart,
-    FileContent,
-    Artifact as A2AArtifact,
 )
+from solace_agent_mesh.common import a2a
+from solace_agent_mesh.common.a2a import ContentPart
 from solace_agent_mesh.common.utils.in_memory_cache import InMemoryCache
 from solace_agent_mesh.agent.utils.artifact_helpers import (
     save_artifact_with_metadata,
-    DEFAULT_SCHEMA_MAX_KEYS,
-    load_artifact_content_or_metadata,
 )
 
 info = {
@@ -99,7 +94,11 @@ class RestGatewayComponent(BaseGatewayComponent):
             config = uvicorn.Config(
                 app=self.fastapi_app,
                 host=self.fastapi_host,
-                port=self.fastapi_https_port if (self.ssl_keyfile and self.ssl_certfile) else self.fastapi_port,
+                port=(
+                    self.fastapi_https_port
+                    if (self.ssl_keyfile and self.ssl_certfile)
+                    else self.fastapi_port
+                ),
                 ssl_keyfile=self.ssl_keyfile,
                 ssl_certfile=self.ssl_certfile,
                 ssl_keyfile_password=self.ssl_keyfile_password,
@@ -193,7 +192,7 @@ class RestGatewayComponent(BaseGatewayComponent):
     async def submit_a2a_task(
         self,
         target_agent_name: str,
-        a2a_parts: List[A2APart],
+        a2a_parts: List[ContentPart],
         external_request_context: Dict[str, Any],
         user_identity: Any,
         is_streaming: bool = True,
@@ -222,7 +221,7 @@ class RestGatewayComponent(BaseGatewayComponent):
 
     async def _translate_external_input(
         self, external_event: Any
-    ) -> Tuple[str, List[A2APart], Dict[str, Any]]:
+    ) -> Tuple[str, List[ContentPart], Dict[str, Any]]:
         """Translates raw HTTP request data into A2A task parameters."""
         log_id_prefix = f"{self.log_identifier}[TranslateInput]"
 
@@ -234,7 +233,7 @@ class RestGatewayComponent(BaseGatewayComponent):
         if not agent_name or not user_identity:
             raise ValueError("Agent name and user identity are required.")
 
-        a2a_parts: List[A2APart] = []
+        a2a_parts: List[ContentPart] = []
         user_id = user_identity.get("id")
         a2a_session_id = f"rest-session-{uuid.uuid4().hex}"
 
@@ -262,11 +261,10 @@ class RestGatewayComponent(BaseGatewayComponent):
                     if save_result["status"] in ["success", "partial_success"]:
                         version = save_result.get("data_version", 0)
                         uri = f"artifact://{self.gateway_id}/{user_id}/{a2a_session_id}/{upload_file.filename}?version={version}"
-                        a2a_parts.append(
-                            FilePart(
-                                file=FileContent(name=upload_file.filename, uri=uri)
-                            )
+                        file_part = a2a.create_file_part_from_uri(
+                            uri=uri, name=upload_file.filename
                         )
+                        a2a_parts.append(file_part)
                         file_metadata_summary_parts.append(
                             f"- {upload_file.filename} ({len(content_bytes)} bytes)"
                         )
@@ -288,7 +286,8 @@ class RestGatewayComponent(BaseGatewayComponent):
                 )
 
         if prompt:
-            a2a_parts.append(TextPart(text=prompt))
+            text_part = a2a.create_text_part(text=prompt)
+            a2a_parts.append(text_part)
 
         external_request_context = {
             "user_id_for_artifacts": user_id,
@@ -313,14 +312,16 @@ class RestGatewayComponent(BaseGatewayComponent):
         Intercepts artifact updates to aggregate them. Suppresses all other updates.
         """
         log_id_prefix = f"{self.log_identifier}[SendUpdate]"
-        task_id = event_data.id
+        task_id = event_data.task_id
 
         if isinstance(event_data, TaskArtifactUpdateEvent):
             context = self.task_context_manager.get_context(task_id)
             if context:
                 if "aggregated_artifacts" not in context:
                     context["aggregated_artifacts"] = []
-                context["aggregated_artifacts"].append(event_data.artifact)
+                artifact = a2a.get_artifact_from_artifact_update(event_data)
+                if artifact:
+                    context["aggregated_artifacts"].append(artifact)
                 self.task_context_manager.store_context(task_id, context)
                 log.debug(
                     "%s Aggregated artifact for task %s. Total artifacts: %d",
@@ -349,10 +350,12 @@ class RestGatewayComponent(BaseGatewayComponent):
         Handles the final task result by enriching artifact data and then either
         caching it for v2 polling or resolving content for a v1 synchronous call.
         """
-        task_id = task_data.id
+        task_id = a2a.get_task_id(task_data)
         log_id_prefix = f"{self.log_identifier}[SendFinalResponse:{task_id}]"
 
         context = self.task_context_manager.get_context(task_id)
+
+        # If there are aggregated artifacts from streaming, update the main task object.
         if context and "aggregated_artifacts" in context:
             task_data.artifacts = context["aggregated_artifacts"]
             log.info(
@@ -368,15 +371,11 @@ class RestGatewayComponent(BaseGatewayComponent):
             api_version,
         )
 
-        if api_version == "v1":
-            log.info(
-                "%s Resolving artifact URIs for v1 synchronous response...",
-                log_id_prefix,
-            )
-            if task_data.artifacts:
-                for artifact in task_data.artifacts:
-                    await self._resolve_uris_in_parts_list(artifact.parts)
+        # The base gateway has already resolved artifact URIs.
+        # We just need to format the final task object and either set the sync event or cache it.
+        final_task_dict = task_data.model_dump(exclude_none=True, by_alias=True)
 
+        if api_version == "v1":
             with self.sync_wait_lock:
                 wait_context = self.sync_wait_events.get(task_id)
             if wait_context:
@@ -384,7 +383,7 @@ class RestGatewayComponent(BaseGatewayComponent):
                     "%s Synchronous v1 call detected. Setting event with resolved task.",
                     log_id_prefix,
                 )
-                wait_context["result"] = task_data.model_dump(exclude_none=True)
+                wait_context["result"] = final_task_dict
                 wait_context["event"].set()
             else:
                 log.warning(
@@ -392,77 +391,11 @@ class RestGatewayComponent(BaseGatewayComponent):
                     log_id_prefix,
                     task_id,
                 )
-
-        else:
-            enriched_artifacts = []
-            if self.shared_artifact_service and task_data.artifacts:
-                log.info(
-                    "%s Enriching %d artifacts with full metadata for v2 response...",
-                    log_id_prefix,
-                    len(task_data.artifacts),
-                )
-                for a2a_artifact in task_data.artifacts:
-                    try:
-                        user_id = context.get("user_id_for_artifacts")
-                        session_id = context.get("a2a_session_id")
-
-                        if not user_id or not session_id:
-                            log.warning(
-                                "%s Missing user/session context for artifact lookup. Skipping enrichment for %s.",
-                                log_id_prefix,
-                                a2a_artifact.name,
-                            )
-                            continue
-
-                        info = await load_artifact_content_or_metadata(
-                            artifact_service=self.shared_artifact_service,
-                            app_name=self.gateway_id,
-                            user_id=user_id,
-                            session_id=session_id,
-                            filename=a2a_artifact.name,
-                            version="latest",
-                            load_metadata_only=True,
-                        )
-                        if info.get("status") == "success":
-                            metadata = info.get("metadata", {})
-                            created_ts = metadata.get("timestamp_utc")
-                            created_iso = (
-                                datetime.fromtimestamp(
-                                    created_ts, tz=timezone.utc
-                                ).isoformat()
-                                if created_ts
-                                else None
-                            )
-                            flat_artifact_info = {
-                                "name": info.get("filename"),
-                                "mimeType": metadata.get("mime_type"),
-                                "size": metadata.get("size_bytes"),
-                                "version": info.get("version"),
-                                "created": created_iso,
-                                "metadata": metadata,
-                            }
-                            enriched_artifacts.append(flat_artifact_info)
-                        else:
-                            log.warning(
-                                "%s Could not load metadata for artifact %s.",
-                                log_id_prefix,
-                                a2a_artifact.name,
-                            )
-                    except Exception as e:
-                        log.exception(
-                            "%s Error enriching artifact %s: %s",
-                            log_id_prefix,
-                            a2a_artifact.name,
-                            e,
-                        )
-            task_data.artifacts = enriched_artifacts
-
+        else:  # api_version == "v2"
             log.info(
                 "%s Storing final task result in cache for v2 polling.", log_id_prefix
             )
-            self.result_cache.set(
-                task_id, task_data.model_dump(exclude_none=True, by_alias=True), ttl=600
-            )
+            self.result_cache.set(task_id, final_task_dict, ttl=600)
 
     async def _send_error_to_external(
         self, external_request_context: Dict[str, Any], error_data: JSONRPCError
@@ -508,7 +441,7 @@ class RestGatewayComponent(BaseGatewayComponent):
             log.warning(
                 "%s Storing error result in cache for v2 polling: %s",
                 log_id_prefix,
-                error_data.message,
+                a2a.get_error_message(error_data),
             )
             self.result_cache.set(
                 task_id, error_data.model_dump(exclude_none=True), ttl=600
