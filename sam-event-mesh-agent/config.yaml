@@ -70,14 +70,14 @@ apps:
       namespace: ${NAMESPACE} 
       supports_streaming: true 
       agent_name: "__COMPONENT_PASCAL_CASE_NAME__" 
-      display_name: "__COMPONENT_PASCAL_CASE_NAME__ Agent"
+      display_name: "__COMPONENT_SPACED_CAPITALIZED_NAME__ Agent"
       model: *general_model 
 
       ##############################
       # 1. UPDATE REQUIRED - START #
       ##############################
       instruction: |
-        You're __COMPONENT_PASCAL_CASE_NAME__. You can use your tools to
+        You're __COMPONENT_SPACED_CAPITALIZED_NAME__ Agent. You can use your tools to
         send messages into the event mesh and subscribe for responses.
 
         Provide all the required params for the tool.
