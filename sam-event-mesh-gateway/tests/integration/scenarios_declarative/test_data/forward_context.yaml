@@ -1,0 +1,50 @@
+# Forward Context Test Case
+# Tests forward_context functionality for preserving data across the flow
+
+test_scenario:
+  name: "forward_context"
+  description: "Test forward_context configuration for preserving original message data"
+  
+  llm_responses:
+    - static_response:
+        choices:
+          - message:
+              role: "assistant"
+              content: "Processed message with context preservation"
+        usage:
+          prompt_tokens: 15
+          completion_tokens: 8
+          total_tokens: 23
+
+  test_steps:
+    - type: "publish_message"
+      topic: "test/events/context/preserve"
+      payload:
+        message: "Message with context to preserve"
+        request_id: "REQ-CTX-001"
+        priority: "high"
+        metadata:
+          source_system: "external_api"
+          timestamp: "2024-01-01T12:00:00Z"
+      user_properties:
+        user_id: "context_test_user"
+        correlation_id: "corr-ctx-123"
+        message_type: "context_test"
+    
+    - type: "expect_a2a_task"
+      target_agent: "TestEventMeshAgent"
+      content_contains: "Message with context to preserve"
+      timeout_seconds: 5.0
+    
+    - type: "respond_with"
+      content: "Processed message with context preservation"
+    
+    - type: "expect_published"
+      topic_pattern: "test/responses/basic/*"
+      payload_contains: "Processed message with context"
+      timeout_seconds: 5.0
+
+  validation:
+    expected_messages: 1
+    expected_responses: 1
+    max_duration_seconds: 10.0

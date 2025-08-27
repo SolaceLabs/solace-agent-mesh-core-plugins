@@ -1,0 +1,49 @@
+# Basic Event Processing Test Case
+# This test validates the basic end-to-end flow of the Event Mesh Gateway
+
+test_scenario:
+  name: "basic_event_processing"
+  description: "Test basic event handler functionality with simple message flow"
+  
+  # Prime the LLM server with a response for the agent
+  llm_responses:
+    - static_response:
+        choices:
+          - message:
+              role: "assistant"
+              content: "Response from test agent: I received your message 'Hello from basic test'"
+  
+  # Define the test steps to execute
+  test_steps:
+    - type: "publish_message"
+      topic: "test/events/basic/sample"
+      payload:
+        message: "Hello from basic test"
+        timestamp: "2024-01-01T00:00:00Z"
+      user_properties:
+        user_id: "test_user_123"
+    
+    - type: "expect_a2a_task"
+      target_agent: "TestEventMeshAgent"
+      content_contains: "Hello from basic test"
+      timeout_seconds: 5.0
+    
+    - type: "respond_with"
+      content: "Response from test agent: I received your message"
+    
+    - type: "expect_published"
+      topic_pattern: "test/responses/basic/*"
+      payload_contains: "Response from test agent"
+      timeout_seconds: 5.0
+
+  # Validation criteria for the test
+  validation:
+    expected_messages: 1
+    expected_responses: 1
+    max_duration_seconds: 10.0
+
+# Test metadata
+tags:
+  - "basic"
+  - "event_mesh"
+  - "integration"
