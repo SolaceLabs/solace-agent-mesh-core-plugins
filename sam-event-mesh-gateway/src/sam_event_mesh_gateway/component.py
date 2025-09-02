@@ -212,6 +212,14 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 )
                 return
 
+            # Check if we're in test mode and should skip data plane connection
+            if self.event_mesh_broker_config.get("test_mode", False):
+                log.info(
+                    "%s Test mode detected - skipping data plane client initialization.",
+                    log_id_prefix,
+                )
+                return
+
             log.info(
                 "%s Starting data plane client (internal SAC app)...", log_id_prefix
             )

@@ -1,0 +1,78 @@
+# Binary Artifacts Test Case
+# Tests handling of binary artifacts with base64 encoding
+
+test_scenario:
+  name: "binary_artifacts"
+  description: "Test processing binary artifacts and metadata validation"
+  
+  setup_artifacts:
+    - filename: "config_template.json"
+      content: |
+        {
+          "version": "1.0",
+          "template_type": "configuration",
+          "parameters": {
+            "max_connections": 100,
+            "timeout_seconds": 30,
+            "retry_attempts": 3
+          },
+          "metadata": {
+            "created_by": "system",
+            "template_id": "TMPL-001"
+          }
+        }
+      mime_type: "application/json"
+      metadata:
+        template_version: "1.0"
+        category: "configuration"
+        usage_count: 0
+        last_modified: "2024-01-01T00:00:00Z"
+    - filename: "sample_image.png"
+      content_base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+      mime_type: "image/png"
+      metadata:
+        width: 1
+        height: 1
+        format: "PNG"
+        size_bytes: 67
+  
+  llm_responses:
+    - static_response:
+        choices:
+          - message:
+              role: "assistant"
+              content: "I've processed the configuration template and image. Template version 1.0 loaded successfully. Image is 1x1 PNG format."
+        usage:
+          prompt_tokens: 30
+          completion_tokens: 20
+          total_tokens: 50
+
+  test_steps:
+    - type: "publish_message"
+      topic: "test/events/artifacts/binary"
+      payload:
+        message: "Process configuration template and validate image format"
+        template_id: "TMPL-001"
+        image_validation_required: true
+        operation: "validate_artifacts"
+      user_properties:
+        user_id: "artifact_processor"
+        validation_level: "strict"
+    
+    - type: "expect_a2a_task"
+      target_agent: "TestEventMeshAgent"
+      content_contains: "Process configuration template"
+      timeout_seconds: 5.0
+    
+    - type: "respond_with"
+      content: "I've processed the configuration template and image. Template version 1.0 loaded successfully. Image is 1x1 PNG format."
+    
+    - type: "expect_published"
+      topic_pattern: "test/responses/basic/*"
+      payload_contains: "Template version 1.0 loaded successfully"
+      timeout_seconds: 5.0
+
+  validation:
+    expected_messages: 1
+    expected_responses: 1
+    max_duration_seconds: 10.0
