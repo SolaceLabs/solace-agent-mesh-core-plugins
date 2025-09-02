@@ -52,6 +52,5 @@ dependencies = [
   "pytest-mock>=3.0.0",
   "pytest-cov>=4.0.0",
   "pytest-xdist>=3.5.0",
-  "solace-agent-mesh @ /Users/edfunnekotter/github/solace-agent-mesh", 
-  "sam-test-infrastructure @ /Users/edfunnekotter/github/solace-agent-mesh/tests/sam-test-infrastructure"
+  "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure"
 ]
