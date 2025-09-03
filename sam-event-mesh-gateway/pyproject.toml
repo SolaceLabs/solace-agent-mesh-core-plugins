@@ -47,6 +47,7 @@ markers = [
 
 [tool.hatch.envs.hatch-test]
 dependencies = [
+  "a2a-sdk[http-server]>=0.3.1",
   "pytest-asyncio",
   "pytest>=8.0.0",
   "pytest-mock>=3.0.0",
