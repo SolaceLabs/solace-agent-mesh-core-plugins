@@ -328,7 +328,7 @@ class MySQLService(DatabaseService):
     def _create_engine(self) -> Engine:
         """Create MySQL database engine."""
         connection_url = sa.URL.create(
-            "mysql+mysqlconnector",
+            "mysql+pymysql",
             username=self.connection_params.get("user"),
             password=self.connection_params.get("password"),
             host=self.connection_params.get("host"),
