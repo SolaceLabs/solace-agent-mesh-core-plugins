@@ -7,7 +7,7 @@ import queue
 import uuid
 import base64
 import json
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 from datetime import datetime, timezone
 
 import jsonschema
@@ -30,17 +30,18 @@ from solace_ai_connector.common.event import Event, EventType
 
 
 from solace_agent_mesh.gateway.base.component import BaseGatewayComponent
-from solace_agent_mesh.common.types import (
-    Part as A2APart,
+from a2a.types import (
     TextPart,
     FilePart,
     DataPart,
     Task,
     JSONRPCError,
-    FileContent,
+    TaskStatusUpdateEvent,
+    TaskArtifactUpdateEvent,
 )
+from solace_agent_mesh.common import a2a
+from solace_agent_mesh.common.a2a import ContentPart
 
-from solace_agent_mesh.common.a2a_protocol import _topic_matches_subscription
 from solace_agent_mesh.agent.utils.artifact_helpers import (
     load_artifact_content_or_metadata,
     save_artifact_with_metadata,
@@ -165,44 +166,28 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
         self, part: FilePart, context: Dict, handler_config: Dict
     ) -> Dict:
         file_info = {
-            "name": part.file.name,
-            "mimeType": part.file.mimeType,
+            "name": a2a.get_filename_from_file_part(part),
+            "mimeType": a2a.get_mimetype_from_file_part(part),
             "content": None,
             "bytes": None,
             "error": None,
         }
 
-        if not part.file.uri:
-            file_info["error"] = "FilePart has no URI to load content from."
+        content_bytes = a2a.get_bytes_from_file_part(part)
+        if not content_bytes:
+            file_info["error"] = "FilePart has no byte content to process."
             return file_info
 
         max_size = handler_config.get("max_file_size_for_base64_bytes", 1048576)
 
         try:
-            load_result = await load_artifact_content_or_metadata(
-                artifact_service=self.shared_artifact_service,
-                app_name=context.get("app_name_for_artifacts"),
-                user_id=context.get("user_id_for_artifacts"),
-                session_id=context.get("a2a_session_id"),
-                filename=part.file.name,
-                version="latest",
-                return_raw_bytes=True,
-            )
-
-            if load_result.get("status") != "success":
-                file_info["error"] = (
-                    f"Failed to load artifact: {load_result.get('message')}"
-                )
-                return file_info
-
-            content_bytes = load_result.get("raw_bytes")
             if len(content_bytes) > max_size:
                 file_info["error"] = (
                     f"File size ({len(content_bytes)} bytes) exceeds handler limit ({max_size} bytes)."
                 )
                 return file_info
 
-            if is_text_based_mime_type(part.file.mimeType):
+            if is_text_based_mime_type(a2a.get_mimetype_from_file_part(part)):
                 file_info["content"] = content_bytes.decode("utf-8")
             else:
                 file_info["bytes"] = base64.b64encode(content_bytes).decode("utf-8")
@@ -551,7 +536,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
 
         user_identity_str: Optional[str] = None
         user_identity_expression = handler_config.get("user_identity_expression")
-
+        source = "solace_message"
         if user_identity_expression:
             try:
                 user_identity_str = solace_msg.get_data(user_identity_expression)
@@ -565,6 +550,12 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 return None
 
         if not user_identity_str:
+            default_identity = handler_config.get("default_user_identity")
+            if default_identity:
+                user_identity_str = default_identity
+                source = "configured_default"
+
+        if not user_identity_str:
             log.debug(
                 "%s No user identity extracted from expression. Returning None for claims.",
                 log_id_prefix,
@@ -574,7 +565,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
         log.info(
             "%s Extracted initial claims with id: %s", log_id_prefix, user_identity_str
         )
-        return {"id": user_identity_str, "source": "solace_message"}
+        return {"id": user_identity_str, "source": source}
 
     async def _process_artifacts_from_message(
         self,
@@ -735,12 +726,12 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
         external_event_data: SolaceMessage,
         user_identity: Dict[str, Any],
         handler_config: Dict,
-    ) -> Tuple[Optional[str], List[A2APart], Dict[str, Any]]:
+    ) -> Tuple[Optional[str], List[ContentPart], Dict[str, Any]]:
         """
         Translates an incoming SolaceMessage into A2A task parameters.
         """
         log_id_prefix = f"{self.log_identifier}[TranslateInput]"
-        a2a_parts: List[A2APart] = []
+        a2a_parts: List[ContentPart] = []
         external_request_context: Dict[str, Any] = {}
         a2a_session_id = f"event-mesh-session-{uuid.uuid4().hex}"
 
@@ -770,8 +761,8 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             for uri in created_artifact_uris:
                 try:
                     filename = uri.split("/")[-1].split("?")[0]
-                    file_content = FileContent(name=filename, uri=uri)
-                    a2a_parts.append(FilePart(file=file_content))
+                    file_part = a2a.create_file_part_from_uri(uri=uri, name=filename)
+                    a2a_parts.append(file_part)
                 except Exception as uri_parse_err:
                     log.warning(
                         "%s Failed to parse URI to create FilePart: %s",
@@ -788,14 +779,16 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
         try:
             transformed_text = msg_for_expression.get_data(input_expression)
             if transformed_text is not None:
-                a2a_parts.append(TextPart(text=str(transformed_text)))
+                text_part = a2a.create_text_part(text=str(transformed_text))
+                a2a_parts.append(text_part)
             else:
                 log.warning(
                     "%s Input expression '%s' yielded None. Creating empty TextPart.",
                     log_id_prefix,
                     input_expression,
                 )
-                a2a_parts.append(TextPart(text=""))
+                text_part = a2a.create_text_part(text="")
+                a2a_parts.append(text_part)
             log.debug(
                 "%s Input expression evaluated. Result length: %d",
                 log_id_prefix,
@@ -930,27 +923,31 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 "a2a_task_response": task_data.model_dump(exclude_none=True),
             }
 
-            if (
-                task_data.status
-                and task_data.status.message
-                and task_data.status.message.parts
-            ):
+            # Process the final status message for text and data parts
+            if task_data.status and task_data.status.message:
+                message = task_data.status.message
+                parts = a2a.get_parts_from_message(message)
                 text_parts_content = []
-                for part in task_data.status.message.parts:
+                for part in parts:
                     if isinstance(part, TextPart):
                         text_parts_content.append(part.text)
                     elif isinstance(part, DataPart):
                         simplified_payload["data"].append(
                             part.model_dump(exclude_none=True)
                         )
-                    elif isinstance(part, FilePart) and self.shared_artifact_service:
-                        file_info = await self._process_file_part_for_output(
-                            part, external_request_context, handler_config
-                        )
-                        simplified_payload["files"].append(file_info)
-
                 if text_parts_content:
                     simplified_payload["text"] = "\n".join(text_parts_content)
+
+            # Process artifacts for file parts
+            if task_data.artifacts:
+                for artifact in task_data.artifacts:
+                    parts = a2a.get_parts_from_artifact(artifact)
+                    for part in parts:
+                        if isinstance(part, FilePart):
+                            file_info = await self._process_file_part_for_output(
+                                part, external_request_context, handler_config
+                            )
+                            simplified_payload["files"].append(file_info)
 
             original_user_props = external_request_context.get(
                 "original_solace_user_properties", {}
@@ -1126,12 +1123,17 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
         )
 
         try:
+            # Create a standard error response using the helper
+            error_response = a2a.create_error_response(
+                error=error_data, request_id=None
+            )
+
             simplified_payload = {
                 "text": None,
                 "files": [],
                 "data": [],
                 "a2a_task_response": {
-                    "error": error_data.model_dump(exclude_none=True)
+                    "error": error_response.model_dump(exclude_none=True)["error"]
                 },
             }
 
@@ -1264,7 +1266,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
     async def _send_update_to_external(
         self,
         external_request_context: Dict,
-        event_data: Any,
+        event_data: Union[TaskStatusUpdateEvent, TaskArtifactUpdateEvent],
         is_final_chunk_of_update: bool,
     ) -> None:
         log.debug(
@@ -1408,7 +1410,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
         for handler_config in self.event_handlers_config:
             for sub_config in handler_config.get("subscriptions", []):
                 subscription_topic = sub_config.get("topic")
-                if subscription_topic and _topic_matches_subscription(
+                if subscription_topic and a2a.topic_matches_subscription(
                     incoming_topic, subscription_topic
                 ):
                     matched_handler_config = handler_config
