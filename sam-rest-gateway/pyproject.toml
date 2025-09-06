@@ -10,7 +10,7 @@ type = "gateway"
 
 [project]
 name = "sam_rest_gateway"
-version = "0.1.0"
+version = "0.2.0"
 authors = [
   { name="SolaceLabs", email="solacelabs@solace.com" },
 ]
