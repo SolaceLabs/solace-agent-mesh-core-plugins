@@ -26,10 +26,6 @@ from sam_test_infrastructure.a2a_validator.validator import A2AMessageValidator
 from solace_agent_mesh.common.types import (
     TextPart,
     DataPart,
-    Task,
-    TaskStatusUpdateEvent,
-    TaskArtifactUpdateEvent,
-    JSONRPCError,
 )
 from solace_agent_mesh.agent.sac.app import SamAgentApp
 from solace_agent_mesh.agent.sac.component import SamAgentComponent
