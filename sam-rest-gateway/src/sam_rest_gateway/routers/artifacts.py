@@ -17,7 +17,7 @@ from fastapi.responses import StreamingResponse
 from google.adk.artifacts import BaseArtifactService
 
 from solace_ai_connector.common.log import log
-from solace_agent_mesh.common.types import ArtifactInfo
+from solace_agent_mesh.common.a2a.types import ArtifactInfo
 from solace_agent_mesh.agent.utils.artifact_helpers import (
     get_artifact_info_list,
     load_artifact_content_or_metadata,
