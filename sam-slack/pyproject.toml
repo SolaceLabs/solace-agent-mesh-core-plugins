@@ -10,7 +10,7 @@ type = "gateway"
 
 [project]
 name = "sam_slack"
-version = "0.1.0"
+version = "0.2.0"
 authors = [
   { name="SolaceLabs", email="solacelabs@solace.com" },
 ]
@@ -44,6 +44,6 @@ dependencies = [
   "pytest-mock>=3.0.0",
   "pytest-cov>=4.0.0",
   "pytest-xdist>=3.5.0",
-  "solace-agent-mesh>=1.0.6",
+  "solace_agent_mesh>=1.1.0,<2.0.0",
   "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure"
 ]

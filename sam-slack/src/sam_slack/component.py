@@ -553,23 +553,16 @@ class SlackGatewayComponent(BaseGatewayComponent):
             "%s [_start_listener] Scheduling Slack listener startup...",
             self.log_identifier,
         )
-        if self.async_loop and self.async_loop.is_running():
-            self.async_loop.create_task(self._start_slack_listener())
+        loop = self.get_async_loop()
+        if loop:
+            loop.create_task(self._start_slack_listener())
             log.info(
-                "%s Slack listener startup task created on async_loop.",
+                "%s Slack listener startup task created on the event loop.",
                 self.log_identifier,
-            )
-        elif self.async_loop:
-            log.warning(
-                "%s async_loop exists but is not running. Attempting to run _start_slack_listener via call_soon_threadsafe.",
-                self.log_identifier,
-            )
-            self.async_loop.call_soon_threadsafe(
-                self.async_loop.create_task, self._start_slack_listener()
             )
         else:
             log.error(
-                "%s Cannot start Slack listener: self.async_loop is not available.",
+                "%s Cannot start Slack listener: Event loop not available.",
                 self.log_identifier,
             )
             self.stop_signal.set()
@@ -637,10 +630,11 @@ class SlackGatewayComponent(BaseGatewayComponent):
             return {"error": f"Unexpected error downloading file: {e}"}
 
     async def _translate_external_input(
-        self, external_event: Any, authenticated_user_identity: Dict[str, Any]
+        self, external_event: Any
     ) -> Tuple[str, List[ContentPart], Dict[str, Any]]:
         log_id = f"{self.log_identifier}[TranslateInput]"
         event: Dict = external_event
+        authenticated_user_identity = event.get("_authenticated_user_identity", {})
         if event.get("bot_id") or event.get("subtype") == "bot_message":
             log.debug("%s Ignoring message from bot.", log_id)
             raise ValueError("Ignoring bot message")
