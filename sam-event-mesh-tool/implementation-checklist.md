@@ -11,14 +11,14 @@ This checklist outlines the high-level steps required to refactor the `sam-event
 
 ## Phase 2: Core Tool Implementation (`EventMeshTool`)
 
-- [ ] In `tools.py`, create the `EventMeshTool` class inheriting from `DynamicTool`.
-- [ ] Implement the `__init__` method to store `tool_config` and initialize `self.session_id`.
-- [ ] Implement the `init` lifecycle method to call `create_request_response_session` and store the resulting `session_id`.
-- [ ] Implement the `cleanup` lifecycle method to call `destroy_request_response_session`.
-- [ ] Implement the `tool_name` and `tool_description` properties to read from the configuration.
-- [ ] Implement the `parameters_schema` property to programmatically generate the ADK schema from the `parameters` list in the YAML config.
-- [ ] Implement the `_run_async_impl` method with the core request-response logic, using `do_broker_request_response_async`.
-- [ ] Adapt helper functions (`_build_payload`, `_fill_topic_template`) from the legacy agent into `tools.py`.
+- [x] In `tools.py`, create the `EventMeshTool` class inheriting from `DynamicTool`.
+- [x] Implement the `__init__` method to store `tool_config` and initialize `self.session_id`.
+- [x] Implement the `init` lifecycle method to call `create_request_response_session` and store the resulting `session_id`.
+- [x] Implement the `cleanup` lifecycle method to call `destroy_request_response_session`.
+- [x] Implement the `tool_name` and `tool_description` properties to read from the configuration.
+- [x] Implement the `parameters_schema` property to programmatically generate the ADK schema from the `parameters` list in the YAML config.
+- [x] Implement the `_run_async_impl` method with the core request-response logic, using `do_broker_request_response_async`.
+- [x] Adapt helper functions (`_build_payload`, `_fill_topic_template`) from the legacy agent into `tools.py`.
 
 ## Phase 3: Documentation & Configuration
 
