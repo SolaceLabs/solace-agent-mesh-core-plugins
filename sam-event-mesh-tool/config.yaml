@@ -1,40 +1,10 @@
-# Solace Agent Mesh: Plugin Configuration Template
+# Solace Agent Mesh: Event Mesh Tool Configuration Example
 #
 # This file serves as a template demonstrating how to use the Event Mesh Tool plugin.
 # You should copy the 'tools' block into your own agent's configuration file.
 
 # --- Start of Example Agent Configuration ---
-
-log:
-  stdout_log_level: INFO
-  log_file_level: DEBUG
-  log_file: my-event-mesh-agent.log
-
-!include ../shared_config.yaml
-
-apps:
-  - name: my-event-mesh-agent-app
-    app_base_path: . 
-    app_module: solace_agent_mesh.agent.sac.app 
-    broker:
-      <<: *broker_connection
-
-    # App Level Config
-    app_config:
-      namespace: ${NAMESPACE} 
-      agent_name: "MyEventMeshAgent" 
-      display_name: "My Event Mesh Agent"
-      model: *general_model 
-
-      # --- IMPORTANT PREREQUISITE ---
-      # Multi-session request/response must be enabled for the Event Mesh Tool to work.
-      multi_session_request_response:
-        enabled: true
-        max_sessions: 10 # Optional: Adjust as needed
-
-      instruction: |
-        You are a helpful assistant that can interact with backend services
-        on the event mesh. Use the GetWeather tool to find out the weather.
+# This is just a tools section from an agent config file.
 
       tools:
         # --- Example Event Mesh Tool Configuration ---
@@ -74,12 +44,3 @@ apps:
             topic: "acme/weather/request/{{ request_id }}"
             wait_for_response: true
 
-      session_service: *default_session_service
-      artifact_service: *default_artifact_service
-
-      agent_card:
-        description: "This agent can retrieve weather information from the event mesh."
-        skills: 
-          - id: "get_weather"
-            name: "Get Weather"
-            description: "Gets the current weather for a given city."

@@ -77,7 +77,6 @@ tools:
     -   `payload_format`: (Optional) The format for the payload (e.g., `json`, `yaml`, `text`). This controls both the encoding of the outgoing request and the decoding of the incoming response. Defaults to `json`.
     -   `payload_encoding`: (Optional) The encoding for the payload (e.g., `utf-8`, `base64`). Defaults to `utf-8`.
     -   `response_topic_prefix`: (Optional) A custom prefix for the dynamically generated reply topics. Defaults to `reply`.
-    -   `response_topic_suffix`: (Optional) A custom suffix for the dynamically generated reply topics. Defaults to `""`.
     -   `response_queue_prefix`: (Optional) A custom prefix for the dynamically generated reply queues. Defaults to `reply-queue`.
     -   `response_topic_insertion_expression`: (Optional) An expression to insert the reply topic directly into the request message's payload (e.g., `input.payload:reply_to`).
     -   `user_properties_reply_topic_key`: (Optional) The key used to store the reply topic in the request message's user properties.
