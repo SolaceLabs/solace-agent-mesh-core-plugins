@@ -73,7 +73,6 @@ apps:
             # --- Per-Request Configuration ---
             topic: "acme/weather/request/{{ request_id }}"
             wait_for_response: true
-            response_format: "json" # How to parse the incoming response payload
 
       session_service: *default_session_service
       artifact_service: *default_artifact_service

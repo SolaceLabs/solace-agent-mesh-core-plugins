@@ -159,7 +159,6 @@ class EventMeshTool(DynamicTool):
         try:
             config_params = self.tool_config.get("parameters", [])
             topic_template = self.tool_config.get("topic", "")
-            response_format = self.tool_config.get("response_format", "text")
             wait_for_response = self.tool_config.get("wait_for_response", True)
 
             parameters_map = {param["name"]: param for param in config_params}
@@ -190,21 +189,10 @@ class EventMeshTool(DynamicTool):
                     "message": "Request failed. No response received.",
                 }
 
-            response_payload = response.get_payload()
-
-            if response_format == "json":
-                if isinstance(response_payload, (str, bytes)):
-                    response_payload = json.loads(response_payload)
-            elif response_format == "yaml":
-                if isinstance(response_payload, (str, bytes)):
-                    response_payload = yaml.safe_load(response_payload)
-            elif response_format == "text":
-                response_payload = str(response_payload)
-
             return {
                 "status": "success",
                 "message": "Request processed successfully.",
-                "payload": response_payload,
+                "payload": response.get_payload(),
             }
 
         except Exception as e:

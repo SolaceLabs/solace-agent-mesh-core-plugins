@@ -67,15 +67,17 @@ tools:
       # --- Per-Request Configuration ---
       topic: "acme/weather/request/{{ request_id }}"
       wait_for_response: true
-      response_format: "json" # How to parse the incoming response payload
 ```
 
 ### `tool_config` Details
 
--   `event_mesh_config`: Configures the dedicated session for this tool.
-    -   This dictionary is passed directly to the `create_request_response_session` function.
-    -   It should contain a `broker_config` block and can include other session settings like `request_expiry_ms`, `response_topic_prefix`, etc.
-    -   For a full list of options, refer to the "Broker Request-Response Guide" in the Solace AI Connector documentation.
+-   `event_mesh_config`: Configures the dedicated session for this tool. This dictionary is passed directly to the `create_request_response_session` function. Key options include:
+    -   `broker_config`: (Required) A block containing the connection details for the broker (`broker_url`, `broker_username`, `broker_password`, `broker_vpn`).
+    -   `request_expiry_ms`: (Optional) Timeout in milliseconds for a request to receive a response. Defaults to `30000`.
+    -   `payload_format`: (Optional) The format for the payload (e.g., `json`, `yaml`, `text`). This controls both the encoding of the outgoing request and the decoding of the incoming response. Defaults to `json`.
+    -   `payload_encoding`: (Optional) The encoding for the payload (e.g., `utf-8`, `base64`). Defaults to `utf-8`.
+    -   `response_topic_prefix`: (Optional) A custom prefix for the dynamically generated reply topics. Defaults to `reply`.
+    -   For a full list of all available options, refer to the "Broker Request-Response Guide" in the Solace AI Connector documentation.
 -   `tool_name`: The function name the LLM will use to call the tool.
 -   `description`: A clear description for the LLM explaining what the tool does.
 -   `parameters`: A list of parameters the tool accepts.
@@ -87,11 +89,6 @@ tools:
     -   `payload_path`: (Optional) The path to map the parameter's value into the outgoing JSON payload. It supports dot notation for nested objects (e.g., `customer.address.city`). If omitted, the parameter is not included in the payload but can still be used in the topic template.
 -   `topic`: The topic string for the outgoing request message. You can insert parameter values into the topic using `{{ parameter_name }}`.
 -   `wait_for_response`: (Optional) `true` (default) for synchronous requests that wait for a reply. Set to `false` for asynchronous "fire-and-forget" requests.
--   `response_format`: (Optional) The expected format of the response message payload.
-    -   `json`: The tool will parse the response as JSON.
-    -   `yaml`: The tool will parse the response as YAML.
-    -   `text`: The tool will treat the response as a plain string (default).
-    -   `none`: The tool will return the raw response payload without any parsing.
 
 ### Advanced Usage: Multiple Tools
 
