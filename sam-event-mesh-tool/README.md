@@ -15,10 +15,10 @@ Unlike a standalone agent, this is a **tool** that can be added to any existing 
 
 ## Installation
 
-To add this tool to a new or existing agent, you must manually add the tool configuration to your agent's YAML file. If installing from a separate repository, you would first run:
+To add this tool to a new or existing agent, you must first install it and then manually add the tool configuration to your agent's YAML file:
 
 ```bash
-sam plugin add <your-agent-name> --plugin sam-event-mesh-tool
+sam plugin install sam-event-mesh-tool
 ```
 
 ## Configuration
