@@ -73,10 +73,15 @@ tools:
 
 -   `event_mesh_config`: Configures the dedicated session for this tool. This dictionary is passed directly to the `create_request_response_session` function. Key options include:
     -   `broker_config`: (Required) A block containing the connection details for the broker (`broker_url`, `broker_username`, `broker_password`, `broker_vpn`).
-    -   `request_expiry_ms`: (Optional) Timeout in milliseconds for a request to receive a response. Defaults to `30000`.
+    -   `request_expiry_ms`: (Optional) Timeout in milliseconds for a request to receive a response. Defaults to `60000`.
     -   `payload_format`: (Optional) The format for the payload (e.g., `json`, `yaml`, `text`). This controls both the encoding of the outgoing request and the decoding of the incoming response. Defaults to `json`.
     -   `payload_encoding`: (Optional) The encoding for the payload (e.g., `utf-8`, `base64`). Defaults to `utf-8`.
     -   `response_topic_prefix`: (Optional) A custom prefix for the dynamically generated reply topics. Defaults to `reply`.
+    -   `response_topic_suffix`: (Optional) A custom suffix for the dynamically generated reply topics. Defaults to `""`.
+    -   `response_queue_prefix`: (Optional) A custom prefix for the dynamically generated reply queues. Defaults to `reply-queue`.
+    -   `response_topic_insertion_expression`: (Optional) An expression to insert the reply topic directly into the request message's payload (e.g., `input.payload:reply_to`).
+    -   `user_properties_reply_topic_key`: (Optional) The key used to store the reply topic in the request message's user properties.
+    -   `user_properties_reply_metadata_key`: (Optional) The key used to store the reply metadata in the request message's user properties.
     -   For a full list of all available options, refer to the "Broker Request-Response Guide" in the Solace AI Connector documentation.
 -   `tool_name`: The function name the LLM will use to call the tool.
 -   `description`: A clear description for the LLM explaining what the tool does.
