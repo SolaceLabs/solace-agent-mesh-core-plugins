@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sam-event-mesh-tool"
+version = "0.1.0"
+description = "A dynamic tool for sending requests into the Solace event mesh."
+authors = [
+    { name = "SolaceLabs", email = "solacelabs@solace.com" }
+]
+dependencies = [
+    "solace-agent-mesh>=0.1.0",
+    "solace-ai-connector>=0.1.0"
+]
+
+[project.entry-points."sam.plugins"]
+sam-event-mesh-tool = "sam_event_mesh_tool"

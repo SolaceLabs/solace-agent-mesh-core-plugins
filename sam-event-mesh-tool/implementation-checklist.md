@@ -4,10 +4,10 @@ This checklist outlines the high-level steps required to refactor the `sam-event
 
 ## Phase 1: New Plugin Scaffolding & Definition
 
-- [ ] Create the directory structure for `sam-event-mesh-tool`.
-- [ ] Create the `src/sam_event_mesh_tool/` subdirectory and `__init__.py` file.
-- [ ] Create the `src/sam_event_mesh_tool/tools.py` file for the core implementation.
-- [ ] Create and populate `pyproject.toml` with project metadata, dependencies (`solace-agent-mesh`, `solace-ai-connector`), and the `sam.plugins` entry point.
+- [x] Create the directory structure for `sam-event-mesh-tool`.
+- [x] Create the `src/sam_event_mesh_tool/` subdirectory and `__init__.py` file.
+- [x] Create the `src/sam_event_mesh_tool/tools.py` file for the core implementation.
+- [x] Create and populate `pyproject.toml` with project metadata, dependencies (`solace-agent-mesh`, `solace-ai-connector`), and the `sam.plugins` entry point.
 
 ## Phase 2: Core Tool Implementation (`EventMeshTool`)
 
