@@ -164,3 +164,36 @@ The `README.md` will be the primary user-facing documentation. It will contain:
         -   `wait_for_response`: How to enable asynchronous mode.
         -   `response_format`: The available options and their behavior.
 -   **Advanced Usage:** An example showing two tool instances configured in the same agent.
+
+## 7. Implementation Plan
+
+1.  **Create Plugin Scaffolding**:
+    -   Create the directory structure for `sam-event-mesh-tool`.
+    -   Create the initial files: `pyproject.toml`, `README.md`, `config.yaml`, `src/sam_event_mesh_tool/__init__.py`, and `src/sam_event_mesh_tool/tools.py`.
+
+2.  **Define Project Metadata**:
+    -   Populate `sam-event-mesh-tool/pyproject.toml` with the project name, version, dependencies (`solace-agent-mesh`, `solace-ai-connector`), and the `sam.plugins` entry point.
+
+3.  **Implement the `EventMeshTool` Class**:
+    -   In `src/sam_event_mesh_tool/tools.py`, create the `EventMeshTool` class inheriting from `DynamicTool`.
+    -   Adapt helper functions `_build_payload` and `_fill_topic_template` from the legacy `sam-event-mesh-agent/src/sam_event_mesh_agent/tools.py` file. These can be private functions within the `tools.py` module.
+    -   Implement the `__init__` method to store the `tool_config` and initialize `self.session_id`.
+    -   Implement the `init` lifecycle method to call `component.create_request_response_session` using the `event_mesh_config` from the tool's configuration and store the returned `session_id`.
+    -   Implement the `cleanup` lifecycle method to call `component.destroy_request_response_session` with the stored `session_id`.
+    -   Implement the `tool_name` and `tool_description` properties to read from `self.tool_config`.
+    -   Implement the `parameters_schema` property. This method will parse the `parameters` list from the config and build a valid `adk_types.Schema` object, correctly mapping types (string, integer, boolean, number) and the `required` flag.
+    -   Implement the `_run_async_impl` method. This is the core logic that will be executed when the tool is called. It will:
+        -   Merge default parameter values with arguments provided by the LLM.
+        -   Use the adapted helper functions to build the payload and construct the topic.
+        -   Create a `solace_ai_connector.common.message.Message` object.
+        -   Call `await component.do_broker_request_response_async(...)`, passing the message, `session_id`, and the `wait_for_response` flag.
+        -   If a response is expected, parse it based on `response_format` and return a structured dictionary.
+
+4.  **Create User-Facing Documentation and Configuration**:
+    -   Populate `sam-event-mesh-tool/README.md` with a comprehensive guide covering the tool's purpose, prerequisites (`multi_session_request_response`), installation, and a detailed configuration example. This will be adapted from the legacy agent's README.
+    -   Populate `sam-event-mesh-tool/config.yaml` with a well-commented example configuration that users can adapt.
+
+5.  **Deprecate and Remove the Legacy `sam-event-mesh-agent`**:
+    -   Update `sam-event-mesh-agent/README.md` to clearly state that the plugin is deprecated and direct users to the new `sam-event-mesh-tool`.
+    -   Remove the core implementation from `sam-event-mesh-agent/src/sam_event_mesh_agent/tools.py` and `sam-event-mesh-agent/config.yaml`.
+    -   Finally, remove the entire `sam-event-mesh-agent` directory from the repository.
