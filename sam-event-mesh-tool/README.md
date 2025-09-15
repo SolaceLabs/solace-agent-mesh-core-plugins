@@ -13,18 +13,6 @@ Unlike a standalone agent, this is a **tool** that can be added to any existing 
 - **Dynamic Topics**: Use tool parameters to construct the request topic dynamically.
 - **Synchronous & Asynchronous Modes**: Choose between blocking calls that wait for a response, or non-blocking "fire-and-forget" calls.
 
-## Prerequisites
-
-For this tool to function, the host agent **must** have multi-session request-response enabled in its configuration. Add the following block to your agent's `app_config` (or `component_config` for older SAM versions):
-
-```yaml
-# In your agent's app_config:
-multi_session_request_response:
-  enabled: true
-  # Optional: set a limit on the number of sessions
-  # max_sessions: 10
-```
-
 ## Installation
 
 To add this tool to a new or existing agent, you must manually add the tool configuration to your agent's YAML file. If installing from a separate repository, you would first run:
