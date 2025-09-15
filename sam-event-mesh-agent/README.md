@@ -1,5 +1,8 @@
 # SAM Event Mesh Agent Plugin
 
+> [!WARNING]
+> **DEPRECATED**: This agent plugin is deprecated and will be removed in a future release. Please use the more flexible and powerful **[Event Mesh Tool](../sam-event-mesh-tool/README.md)** instead. The new tool provides the same functionality but can be added to any agent, supports multiple instances with dedicated connections, and offers a more robust configuration.
+
 This agent plugin for Solace Agent Mesh (SAM) provides a powerful tool to send messages into a Solace event mesh and subscribe to a response. It acts as a bridge, allowing a Large Language Model (LLM) to interact with any microservice or application connected to the event mesh.
 
 ## Key Features
