@@ -1,7 +1,7 @@
 import re
 import yaml
 import json
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional
 
 from google.adk.tools import ToolContext
 from google.genai import types as adk_types
