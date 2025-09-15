@@ -50,6 +50,7 @@ def setup_dependencies(component: "RestGatewayComponent"):
     )
 
     class AuthMiddleware:
+
         def __init__(self, app):
             self.app = app
 
@@ -79,6 +80,9 @@ def setup_dependencies(component: "RestGatewayComponent"):
                 return
 
             if enforce_auth:
+                if scope["method"] == "OPTIONS":
+                    await self.app(scope, receive, send)
+                    return
                 if not auth_service_url:
                     log.error(
                         "Authentication is enforced, but 'external_auth_service_url' is not configured."
