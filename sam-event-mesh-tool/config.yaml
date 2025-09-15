@@ -1,0 +1,86 @@
+# Solace Agent Mesh: Plugin Configuration Template
+#
+# This file serves as a template demonstrating how to use the Event Mesh Tool plugin.
+# You should copy the 'tools' block into your own agent's configuration file.
+
+# --- Start of Example Agent Configuration ---
+
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: my-event-mesh-agent.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: my-event-mesh-agent-app
+    app_base_path: . 
+    app_module: solace_agent_mesh.agent.sac.app 
+    broker:
+      <<: *broker_connection
+
+    # App Level Config
+    app_config:
+      namespace: ${NAMESPACE} 
+      agent_name: "MyEventMeshAgent" 
+      display_name: "My Event Mesh Agent"
+      model: *general_model 
+
+      # --- IMPORTANT PREREQUISITE ---
+      # Multi-session request/response must be enabled for the Event Mesh Tool to work.
+      multi_session_request_response:
+        enabled: true
+        max_sessions: 10 # Optional: Adjust as needed
+
+      instruction: |
+        You are a helpful assistant that can interact with backend services
+        on the event mesh. Use the GetWeather tool to find out the weather.
+
+      tools:
+        # --- Example Event Mesh Tool Configuration ---
+        - tool_type: python
+          component_module: "sam_event_mesh_tool.tools"
+          class_name: "EventMeshTool"
+          tool_config:
+            # --- Connection & Session Configuration ---
+            # This block configures the dedicated event mesh session for this tool.
+            event_mesh_config:
+              broker_config: *broker_connection # Anchor to shared broker settings
+              request_expiry_ms: 10000          # Timeout for requests in milliseconds
+              payload_format: "json"            # Format of the outgoing request payload
+
+            # --- Tool Definition for LLM ---
+            tool_name: "GetWeather"
+            description: "Gets the current weather for a specific city."
+            
+            # --- Tool Parameters ---
+            parameters:
+              - name: "city"
+                type: "string"
+                required: true
+                description: "The city to get the weather for."
+                payload_path: "location.city" # Maps to payload: {"location": {"city": "..."}}
+              - name: "unit"
+                type: "string"
+                required: false
+                default: "celsius"
+                payload_path: "unit" # Maps to payload: {"unit": "..."}
+              - name: "request_id" # Used in topic, but not in payload
+                type: "string"
+                required: true
+                description: "A unique identifier for this request."
+            
+            # --- Per-Request Configuration ---
+            topic: "acme/weather/request/{{ request_id }}"
+            wait_for_response: true
+            response_format: "json" # How to parse the incoming response payload
+
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+
+      agent_card:
+        description: "This agent can retrieve weather information from the event mesh."
+        skills: 
+          - id: "get_weather"
+            name: "Get Weather"
+            description: "Gets the current weather for a given city."

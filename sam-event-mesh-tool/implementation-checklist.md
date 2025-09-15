@@ -22,8 +22,8 @@ This checklist outlines the high-level steps required to refactor the `sam-event
 
 ## Phase 3: Documentation & Configuration
 
-- [ ] Create `sam-event-mesh-tool/README.md` with comprehensive user documentation, including prerequisites and configuration examples.
-- [ ] Create `sam-event-mesh-tool/config.yaml` with a well-commented example configuration for users to adapt.
+- [x] Create `sam-event-mesh-tool/README.md` with comprehensive user documentation, including prerequisites and configuration examples.
+- [x] Create `sam-event-mesh-tool/config.yaml` with a well-commented example configuration for users to adapt.
 
 ## Phase 4: Deprecate and Remove Legacy Agent
 
