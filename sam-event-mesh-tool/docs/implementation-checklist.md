@@ -43,10 +43,10 @@ This checklist provides a terse summary of the tasks required to implement the t
 
 ## 4. Test Cases (`tests/integration/test_event_mesh_tool.py`)
 
-- [ ] **`test_simple_request_response`**:
-    - [ ] Arrange: `put` a response payload on the control queue.
-    - [ ] Act: `await` a single tool call.
-    - [ ] Assert: Check if the returned payload matches.
+- [x] **`test_simple_request_response`**:
+    - [x] Arrange: `put` a response payload on the control queue.
+    - [x] Act: `await` a single tool call.
+    - [x] Assert: Check if the returned payload matches.
 - [ ] **`test_concurrent_requests`**:
     - [ ] Arrange: `put` two responses with different delays on the control queue.
     - [ ] Act: Use `asyncio.gather` to run two tool calls concurrently.
