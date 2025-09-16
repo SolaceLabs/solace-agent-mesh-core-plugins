@@ -4,11 +4,11 @@ This checklist provides a terse summary of the tasks required to implement the t
 
 ## 1. Project Setup
 
-- [ ] Create `tests/` directory.
-- [ ] Create `tests/integration/` subdirectory.
-- [ ] Create `tests/test_configs/` subdirectory.
-- [ ] Create empty `__init__.py` files in `tests/` and `tests/integration/`.
-- [ ] Add `pytest` and `pytest-asyncio` to `[project.optional-dependencies]` in `pyproject.toml`.
+- [x] Create `tests/` directory.
+- [x] Create `tests/integration/` subdirectory.
+- [x] Create `tests/test_configs/` subdirectory.
+- [x] Create empty `__init__.py` files in `tests/` and `tests/integration/`.
+- [x] Add `pytest` and `pytest-asyncio` to `[project.optional-dependencies]` in `pyproject.toml`.
 
 ## 2. Configuration Files
 

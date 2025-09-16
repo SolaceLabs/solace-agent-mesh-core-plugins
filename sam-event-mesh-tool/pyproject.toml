@@ -22,6 +22,12 @@ dependencies = [
     # Add plugin-specific dependencies here
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-asyncio",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/sam_event_mesh_tool"]
 src-path = "src"
