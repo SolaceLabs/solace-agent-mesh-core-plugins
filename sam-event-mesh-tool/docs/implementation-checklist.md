@@ -24,22 +24,22 @@ This checklist provides a terse summary of the tasks required to implement the t
 
 ## 3. Test Fixtures (`tests/conftest.py`)
 
-- [ ] **`response_control_queue` fixture**:
-    - [ ] Create and `yield` a session-scoped `queue.Queue`.
-- [ ] **`responder_invoke_handler` function**:
-    - [ ] Implement the handler logic: `get` from control queue, `sleep`, extract `reply_to` topic, and return `{'topic': ..., 'payload': ...}`.
-- [ ] **`responder_service` fixture**:
-    - [ ] Load `responder_config.yaml`.
-    - [ ] Use `functools.partial` to bind the `response_control_queue` to the `responder_invoke_handler`.
-    - [ ] Inject the handler into the loaded config.
-    - [ ] Instantiate and run `SolaceAiConnector` in a background thread.
-    - [ ] `yield` the connector and `stop()` it on teardown.
-- [ ] **`agent_with_event_mesh_tool` fixture**:
-    - [ ] Depend on `responder_service` to ensure startup order.
-    - [ ] Load `agent_config.yaml`.
-    - [ ] Instantiate and run `SolaceAiConnector` in a background thread.
-    - [ ] Find and `yield` the `SamAgentComponent` instance.
-    - [ ] `stop()` the connector on teardown.
+- [x] **`response_control_queue` fixture**:
+    - [x] Create and `yield` a session-scoped `queue.Queue`.
+- [x] **`responder_invoke_handler` function**:
+    - [x] Implement the handler logic: `get` from control queue, `sleep`, extract `reply_to` topic, and return `{'topic': ..., 'payload': ...}`.
+- [x] **`responder_service` fixture**:
+    - [x] Load `responder_config.yaml`.
+    - [x] Use `functools.partial` to bind the `response_control_queue` to the `responder_invoke_handler`.
+    - [x] Inject the handler into the loaded config.
+    - [x] Instantiate and run `SolaceAiConnector` in a background thread.
+    - [x] `yield` the connector and `stop()` it on teardown.
+- [x] **`agent_with_event_mesh_tool` fixture**:
+    - [x] Depend on `responder_service` to ensure startup order.
+    - [x] Load `agent_config.yaml`.
+    - [x] Instantiate and run `SolaceAiConnector` in a background thread.
+    - [x] Find and `yield` the `SamAgentComponent` instance.
+    - [x] `stop()` the connector on teardown.
 
 ## 4. Test Cases (`tests/integration/test_event_mesh_tool.py`)
 
