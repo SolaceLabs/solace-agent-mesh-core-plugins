@@ -1,0 +1,59 @@
+# Test configuration for the agent hosting the EventMeshTool.
+# This agent acts as the "client" in the integration tests.
+
+log:
+  stdout_log_level: INFO
+
+shared_config:
+  - broker_connection: &broker_connection
+      dev_mode: true
+      broker_type: solace # Explicitly use solace dev broker
+
+apps:
+  - name: test-agent-app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    # The multi-session manager must be enabled for the EventMeshTool to create sessions.
+    multi_session_request_response:
+      enabled: true
+      # Use the dev broker as the default for any sessions created.
+      default_broker_config:
+        <<: *broker_connection
+
+    app_config:
+      namespace: "test"
+      agent_name: "TestAgent"
+      display_name: "Test Agent"
+      model:
+        model: "mock-model" # Dummy model for testing, not used by the tool.
+
+      tools:
+        - tool_type: python
+          component_module: "sam_event_mesh_tool.tools"
+          class_name: "EventMeshTool"
+          tool_config:
+            # --- Connection & Session Configuration ---
+            # This config is passed to create_request_response_session.
+            event_mesh_config:
+              # We can rely on the app's default_broker_config, but being explicit is fine.
+              broker_config:
+                dev_mode: true
+                broker_type: solace
+              request_expiry_ms: 2000 # Use a short timeout for tests.
+              payload_format: "json"
+
+            # --- Tool Definition for LLM ---
+            tool_name: "EventMeshRequest"
+            description: "Sends a request to the test event mesh."
+
+            # --- Tool Parameters ---
+            parameters:
+              - name: "request_data"
+                type: "string"
+                required: true
+                description: "The data to send in the request."
+                payload_path: "data" # Maps to {"data": "..."} in the payload
+
+            # --- Per-Request Configuration ---
+            topic: "test/request/tool"
+            wait_for_response: true

@@ -12,15 +12,15 @@ This checklist provides a terse summary of the tasks required to implement the t
 
 ## 2. Configuration Files
 
-- [ ] Create `tests/test_configs/agent_config.yaml`.
-    - [ ] Define `SamAgentApp` with `dev_mode: true`.
-    - [ ] Configure `EventMeshTool` with `tool_name`, `topic`, `parameters`, and `event_mesh_config` using `dev_mode: true`.
-- [ ] Create `tests/test_configs/responder_config.yaml`.
-    - [ ] Define a flow with `broker_input`, `handler_callback`, and `broker_output`.
-    - [ ] Use `dev_mode: true` for the broker connection.
-    - [ ] `broker_input` subscribes to the agent's request topic.
-    - [ ] `handler_callback` is configured for a runtime-injected `invoke_handler`.
-    - [ ] `broker_output` is configured to use `previous:topic` and `previous:payload`.
+- [x] Create `tests/test_configs/agent_config.yaml`.
+    - [x] Define `SamAgentApp` with `dev_mode: true`.
+    - [x] Configure `EventMeshTool` with `tool_name`, `topic`, `parameters`, and `event_mesh_config` using `dev_mode: true`.
+- [x] Create `tests/test_configs/responder_config.yaml`.
+    - [x] Define a flow with `broker_input`, `handler_callback`, and `broker_output`.
+    - [x] Use `dev_mode: true` for the broker connection.
+    - [x] `broker_input` subscribes to the agent's request topic.
+    - [x] `handler_callback` is configured for a runtime-injected `invoke_handler`.
+    - [x] `broker_output` is configured to use `previous:topic` and `previous:payload`.
 
 ## 3. Test Fixtures (`tests/conftest.py`)
 
