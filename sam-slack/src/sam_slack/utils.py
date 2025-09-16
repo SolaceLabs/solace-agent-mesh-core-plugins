@@ -27,37 +27,6 @@ def generate_a2a_session_id(channel_id: str, thread_ts: str, agent_name: str) ->
     return f"slack_{channel_id}__{thread_ts_sanitized}_agent_{agent_name}"
 
 
-def extract_task_id_from_topic(topic: str, subscription_pattern: str) -> Optional[str]:
-    """
-    Extracts the task ID from the end of a topic string based on the subscription pattern.
-    (Copied/adapted from Web UI MessageProcessor)
-    """
-    log_id = "[SlackUtil:extract_task_id]"
-    try:
-        base_regex_str = a2a.subscription_to_regex(subscription_pattern).replace(
-            r".*", ""
-        )
-        base_regex = re.compile(base_regex_str)
-        match = base_regex.match(topic)
-        if match:
-            task_id_part = topic[match.end() :]
-            task_id = task_id_part.lstrip("/")
-            if task_id:
-                log.debug(
-                    "%s Extracted Task ID '%s' from topic '%s'", log_id, task_id, topic
-                )
-                return task_id
-        log.warning(
-            "%s Could not extract Task ID from topic '%s' using pattern '%s'",
-            log_id,
-            topic,
-            subscription_pattern,
-        )
-        return None
-    except Exception as e:
-        log.error("%s Error extracting task ID from topic '%s': %s", log_id, topic, e)
-        return None
-
 
 def correct_slack_markdown(text: str) -> str:
     """

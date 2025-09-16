@@ -58,8 +58,12 @@ async def _process_slack_event(
         )
 
         log.debug("%s Calling _translate_external_input for Slack event...", log_id)
+        # Add the authenticated user to the event for translation
+        event_with_identity = event.copy()
+        event_with_identity["_authenticated_user_identity"] = user_identity
+
         target_agent_name, a2a_parts, external_request_context = (
-            await component._translate_external_input(event, user_identity)
+            await component._translate_external_input(event_with_identity)
         )
         log.info(
             "%s Translation complete. Target: %s, Parts: %d",
