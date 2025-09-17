@@ -36,7 +36,9 @@ apps:
       agent_card:
         description: "A test agent for the EventMeshTool."
         skills: []
-      agent_card_publishing: { enabled: false } # Disable for tests
+      agent_card_publishing:
+        enabled: false
+        interval_seconds: 10 # Dummy value, not used when disabled
 
       tools:
         - tool_type: python
