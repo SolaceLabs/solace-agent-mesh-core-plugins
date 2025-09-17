@@ -120,7 +120,8 @@ def agent_with_event_mesh_tool(
     # Find the running agent component instance to yield to the test
     agent_app = connector.get_app("test-agent-app")
     
-    # In simplified mode, the component is in the first flow
+    # For SamAgentApp, the component is created automatically and stored in the flows
+    # The SamAgentApp creates a single flow with a single SamAgentComponent
     if agent_app.flows:
         flow = agent_app.flows[0]
         # Find the SamAgentComponent in the flow's components

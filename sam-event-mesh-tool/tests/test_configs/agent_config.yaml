@@ -21,57 +21,68 @@ apps:
     broker:
       <<: *broker_connection
     
-    # Use simplified agent mode - single component list instead of flows
-    components:
-      - name: test_agent
-        component_module: solace_agent_mesh.agent.sac.component
-        component_config:
-          # The multi-session manager must be enabled for the EventMeshTool to create sessions.
-          multi_session_request_response:
-            enabled: true
-            # Use the dev broker as the default for any sessions created.
-            default_broker_config:
-              <<: *broker_connection
-          namespace: "test"
-          agent_name: "TestAgent"
-          display_name: "Test Agent"
-          model:
-            model: "mock-model" # Dummy model for testing, not used by the tool.
+    # SamAgentApp configuration - all config goes in app_config
+    app_config:
+      # Required fields for SamAgentAppConfig
+      namespace: "test"
+      agent_name: "TestAgent"
+      model:
+        model: "mock-model" # Dummy model for testing, not used by the tool.
+      
+      # Required agent card configuration
+      agent_card:
+        description: "A test agent for the EventMeshTool."
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text"]
+        skills: []
+      
+      # Required agent card publishing configuration
+      agent_card_publishing:
+        interval_seconds: 10
+      
+      # Required service configurations
+      session_service:
+        type: "memory"
+        default_behavior: "PERSISTENT"
+      
+      artifact_service:
+        type: "memory"
+        artifact_scope: "namespace"
+      
+      # The multi-session manager must be enabled for the EventMeshTool to create sessions.
+      multi_session_request_response:
+        enabled: true
+        # Use the dev broker as the default for any sessions created.
+        default_broker_config:
+          <<: *broker_connection
 
-          # Add required fields for agent validation
-          agent_card:
-            description: "A test agent for the EventMeshTool."
-            skills: []
-          agent_card_publishing:
-            enabled: false
-            interval_seconds: 10 # Dummy value, not used when disabled
+      # Tool configuration
+      tools:
+        - tool_type: python
+          component_module: "sam_event_mesh_tool.tools"
+          class_name: "EventMeshTool"
+          tool_config:
+            # --- Connection & Session Configuration ---
+            # This config is passed to create_request_response_session.
+            event_mesh_config:
+              # Use the shared broker connection config.
+              broker_config:
+                <<: *broker_connection
+              request_expiry_ms: 2000 # Use a short timeout for tests.
+              payload_format: "json"
 
-          tools:
-            - tool_type: python
-              component_module: "sam_event_mesh_tool.tools"
-              class_name: "EventMeshTool"
-              tool_config:
-                # --- Connection & Session Configuration ---
-                # This config is passed to create_request_response_session.
-                event_mesh_config:
-                  # Use the shared broker connection config.
-                  broker_config:
-                    <<: *broker_connection
-                  request_expiry_ms: 2000 # Use a short timeout for tests.
-                  payload_format: "json"
+            # --- Tool Definition for LLM ---
+            tool_name: "EventMeshRequest"
+            description: "Sends a request to the test event mesh."
 
-                # --- Tool Definition for LLM ---
-                tool_name: "EventMeshRequest"
-                description: "Sends a request to the test event mesh."
+            # --- Tool Parameters ---
+            parameters:
+              - name: "request_data"
+                type: "string"
+                required: true
+                description: "The data to send in the request."
+                payload_path: "data" # Maps to {"data": "..."} in the payload
 
-                # --- Tool Parameters ---
-                parameters:
-                  - name: "request_data"
-                    type: "string"
-                    required: true
-                    description: "The data to send in the request."
-                    payload_path: "data" # Maps to {"data": "..."} in the payload
-
-                # --- Per-Request Configuration ---
-                topic: "test/request/tool"
-                wait_for_response: true
+            # --- Per-Request Configuration ---
+            topic: "test/request/tool"
+            wait_for_response: true
