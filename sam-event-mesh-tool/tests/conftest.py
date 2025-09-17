@@ -12,6 +12,7 @@ import pytest
 import queue
 import time
 import functools
+import yaml
 from pathlib import Path
 from typing import Generator, Dict, Any
 
@@ -79,13 +80,21 @@ def responder_service(
         responder_invoke_handler, control_queue=response_control_queue
     )
 
-    # Load the config and inject the handler
-    connector = SolaceAiConnector(config_file=RESPONDER_CONFIG_FILE)
-    responder_flow = connector.get_flow("responder-flow")
-    handler_component = responder_flow.get_component("response_handler")
-    handler_component.component_config["invoke_handler"] = handler
+    # Load the config, inject the handler, and then create the connector
+    with open(RESPONDER_CONFIG_FILE, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
 
-    connector.start()
+    # Find the handler_callback component in the config dict and inject the handler
+    for flow in config.get("flows", []):
+        if flow.get("name") == "responder-flow":
+            for component in flow.get("components", []):
+                if component.get("component_name") == "response_handler":
+                    component["component_config"]["invoke_handler"] = handler
+                    break
+            break
+
+    connector = SolaceAiConnector(config)
+    connector.run()
     yield connector
     connector.stop()
 
@@ -100,8 +109,10 @@ def agent_with_event_mesh_tool(
     This is the System Under Test (SUT).
     """
     # The responder_service fixture is included to ensure it starts first.
-    connector = SolaceAiConnector(config_file=AGENT_CONFIG_FILE)
-    connector.start()
+    with open(AGENT_CONFIG_FILE, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+    connector = SolaceAiConnector(config)
+    connector.run()
 
     # Find the running agent component instance to yield to the test
     agent_app = connector.get_app("test-agent-app")

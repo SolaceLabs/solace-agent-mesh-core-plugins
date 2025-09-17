@@ -26,6 +26,7 @@ dependencies = [
 test = [
     "pytest",
     "pytest-asyncio",
+    "pyyaml",
 ]
 
 [tool.hatch.build.targets.wheel]
