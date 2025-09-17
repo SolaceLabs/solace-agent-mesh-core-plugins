@@ -27,9 +27,13 @@ async def test_simple_request_response(
     expected_response = {"status": "success", "value": "some_data"}
     response_control_queue.put((expected_response, 0))  # (payload, delay_seconds)
 
-    # Act: Find the tool to get its session_id and invoke the request
+    # Wait for the agent to be fully initialized
+    import asyncio
+    await asyncio.sleep(2)  # Give the agent time to initialize
+
+    # Act: Find the EventMeshTool and get its session_id
     event_mesh_tool = None
-    for tool in agent_with_event_mesh_tool.tools:
+    for tool in agent_with_event_mesh_tool.adk_agent.tools:
         if isinstance(tool, EventMeshTool) and tool.tool_name == "EventMeshRequest":
             event_mesh_tool = tool
             break
