@@ -85,11 +85,14 @@ def responder_service(
         config = yaml.safe_load(f)
 
     # Find the handler_callback component in the config dict and inject the handler
-    for flow in config.get("flows", []):
-        if flow.get("name") == "responder-flow":
-            for component in flow.get("components", []):
-                if component.get("component_name") == "response_handler":
-                    component["component_config"]["invoke_handler"] = handler
+    for app in config.get("apps", []):
+        if app.get("name") == "responder-app":
+            for flow in app.get("flows", []):
+                if flow.get("name") == "responder-flow":
+                    for component in flow.get("components", []):
+                        if component.get("component_name") == "response_handler":
+                            component["component_config"]["invoke_handler"] = handler
+                            break
                     break
             break
 

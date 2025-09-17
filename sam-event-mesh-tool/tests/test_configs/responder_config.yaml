@@ -8,33 +8,40 @@ shared_config:
   - broker_connection: &broker_connection
       dev_mode: true
       broker_type: solace # Explicitly use solace dev broker
+      # Dummy values to satisfy validation in dev_mode
+      broker_url: "dev-broker"
+      broker_username: "dev-user"
+      broker_password: "dev-password"
+      broker_vpn: "dev-vpn"
 
-flows:
-  - name: responder-flow
-    components:
-      # 1. Input from the test agent
-      - component_name: test_request_input
-        component_module: broker_input
-        component_config:
-          <<: *broker_connection
-          broker_subscriptions:
-            - topic: test/request/tool # Subscribes to the agent's request topic
-          payload_format: json
+apps:
+  - name: responder-app
+    flows:
+      - name: responder-flow
+        components:
+          # 1. Input from the test agent
+          - component_name: test_request_input
+            component_module: broker_input
+            component_config:
+              <<: *broker_connection
+              broker_subscriptions:
+                - topic: test/request/tool # Subscribes to the agent's request topic
+              payload_format: json
 
-      # 2. Flexible handler to be injected by the test fixture
-      - component_name: response_handler
-        component_module: handler_callback
-        component_config:
-          # The 'invoke_handler' callable will be injected at runtime by the fixture.
-          invoke_handler: null # Placeholder
+          # 2. Flexible handler to be injected by the test fixture
+          - component_name: response_handler
+            component_module: handler_callback
+            component_config:
+              # The 'invoke_handler' callable will be injected at runtime by the fixture.
+              invoke_handler: null # Placeholder
 
-      # 3. Send response back to the agent's dynamic reply-to topic
-      - component_name: test_response_output
-        component_module: broker_output
-        component_config:
-          <<: *broker_connection
-          payload_format: json
-        # Use the output from the handler_callback component.
-        # The handler will return a dict like: {"topic": "...", "payload": {...}}
-        input_selection:
-          source_expression: previous
+          # 3. Send response back to the agent's dynamic reply-to topic
+          - component_name: test_response_output
+            component_module: broker_output
+            component_config:
+              <<: *broker_connection
+              payload_format: json
+            # Use the output from the handler_callback component.
+            # The handler will return a dict like: {"topic": "...", "payload": {...}}
+            input_selection:
+              source_expression: previous

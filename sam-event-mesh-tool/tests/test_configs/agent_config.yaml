@@ -8,6 +8,11 @@ shared_config:
   - broker_connection: &broker_connection
       dev_mode: true
       broker_type: solace # Explicitly use solace dev broker
+      # Dummy values to satisfy validation in dev_mode
+      broker_url: "dev-broker"
+      broker_username: "dev-user"
+      broker_password: "dev-password"
+      broker_vpn: "dev-vpn"
 
 apps:
   - name: test-agent-app
@@ -35,10 +40,9 @@ apps:
             # --- Connection & Session Configuration ---
             # This config is passed to create_request_response_session.
             event_mesh_config:
-              # We can rely on the app's default_broker_config, but being explicit is fine.
+              # Use the shared broker connection config.
               broker_config:
-                dev_mode: true
-                broker_type: solace
+                <<: *broker_connection
               request_expiry_ms: 2000 # Use a short timeout for tests.
               payload_format: "json"
 
