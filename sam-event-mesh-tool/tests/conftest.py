@@ -124,11 +124,14 @@ def agent_with_event_mesh_tool(
     # The SamAgentApp creates a single flow with a single SamAgentComponent
     if agent_app.flows:
         flow = agent_app.flows[0]
-        # Find the SamAgentComponent in the flow's components
+        # Find the SamAgentComponent in the flow's component_groups
         agent_component = None
-        for component in flow.components:
-            if isinstance(component, SamAgentComponent):
-                agent_component = component
+        for component_group in flow.component_groups:
+            for component in component_group:
+                if isinstance(component, SamAgentComponent):
+                    agent_component = component
+                    break
+            if agent_component:
                 break
         
         if not agent_component:
