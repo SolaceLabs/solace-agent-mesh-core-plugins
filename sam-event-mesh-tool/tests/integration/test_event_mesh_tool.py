@@ -58,7 +58,7 @@ async def test_simple_request_response(
     
     mock_agent = MockAgent(agent_with_event_mesh_tool)
     mock_invocation_context = MockInvocationContext(mock_agent)
-    tool_context = ToolContext(_invocation_context=mock_invocation_context)
+    tool_context = ToolContext(invocation_context=mock_invocation_context)
 
     # Call the tool with test parameters
     tool_args = {"request_data": "some test request"}
