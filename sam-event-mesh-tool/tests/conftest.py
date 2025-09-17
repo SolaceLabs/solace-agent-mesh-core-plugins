@@ -119,10 +119,21 @@ def agent_with_event_mesh_tool(
 
     # Find the running agent component instance to yield to the test
     agent_app = connector.get_app("test-agent-app")
-    agent_component = agent_app.get_component_by_type(SamAgentComponent)
-
-    if not agent_component:
-        pytest.fail("Could not find SamAgentComponent in the test agent app.")
+    
+    # In simplified mode, the component is in the first flow
+    if agent_app.flows:
+        flow = agent_app.flows[0]
+        # Find the SamAgentComponent in the flow's components
+        agent_component = None
+        for component in flow.components:
+            if isinstance(component, SamAgentComponent):
+                agent_component = component
+                break
+        
+        if not agent_component:
+            pytest.fail("Could not find SamAgentComponent in the test agent app flow.")
+    else:
+        pytest.fail("No flows found in test agent app.")
 
     yield agent_component
     connector.stop()
