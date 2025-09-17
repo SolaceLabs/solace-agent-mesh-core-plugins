@@ -52,9 +52,14 @@ async def test_simple_request_response(
         def __init__(self, host_component):
             self.host_component = host_component
     
+    class MockSession:
+        def __init__(self):
+            self.state = {}
+    
     class MockInvocationContext:
         def __init__(self, agent):
             self.agent = agent
+            self.session = MockSession()
     
     mock_agent = MockAgent(agent_with_event_mesh_tool)
     mock_invocation_context = MockInvocationContext(mock_agent)
