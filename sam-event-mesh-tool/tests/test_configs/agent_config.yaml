@@ -18,14 +18,14 @@ apps:
   - name: test-agent-app
     app_base_path: .
     app_module: solace_agent_mesh.agent.sac.app
-    # The multi-session manager must be enabled for the EventMeshTool to create sessions.
-    multi_session_request_response:
-      enabled: true
-      # Use the dev broker as the default for any sessions created.
-      default_broker_config:
-        <<: *broker_connection
-
+    
     app_config:
+      # The multi-session manager must be enabled for the EventMeshTool to create sessions.
+      multi_session_request_response:
+        enabled: true
+        # Use the dev broker as the default for any sessions created.
+        default_broker_config:
+          <<: *broker_connection
       namespace: "test"
       agent_name: "TestAgent"
       display_name: "Test Agent"
