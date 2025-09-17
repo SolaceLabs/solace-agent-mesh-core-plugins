@@ -32,6 +32,12 @@ apps:
       model:
         model: "mock-model" # Dummy model for testing, not used by the tool.
 
+      # Add required fields for agent validation
+      agent_card:
+        description: "A test agent for the EventMeshTool."
+        skills: []
+      agent_card_publishing: { enabled: false } # Disable for tests
+
       tools:
         - tool_type: python
           component_module: "sam_event_mesh_tool.tools"
