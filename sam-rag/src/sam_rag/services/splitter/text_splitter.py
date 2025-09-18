@@ -35,8 +35,8 @@ class CharacterTextSplitter(SplitterBase):
                 - strip_whitespace: Whether to strip whitespace from the chunks (default: True).
         """
         super().__init__(config)
-        self.chunk_size = self.config.get("chunk_size", 1000)
-        self.chunk_overlap = self.config.get("chunk_overlap", 200)
+        self.chunk_size = self.config.get("chunk_size", 2048)
+        self.chunk_overlap = self.config.get("chunk_overlap", 800)
         self.separator = self.config.get("separator", "\n")
         self.is_separator_regex = self.config.get("is_separator_regex", False)
         self.keep_separator = self.config.get("keep_separator", True)

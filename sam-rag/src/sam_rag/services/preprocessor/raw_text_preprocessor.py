@@ -8,7 +8,7 @@ from typing import Dict, Any
 from solace_ai_connector.common.log import log
 
 
-class TextPreprocessor:
+class RawTextPreprocessor:
     """
     Utility class for text preprocessing operations.
     """
