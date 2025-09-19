@@ -654,3 +654,224 @@ async def test_session_initialization_and_cleanup(
     assert tool_result_after_cleanup is not None, "Tool should return a result even after cleanup"
     assert tool_result_after_cleanup.get("status") == "error", "Tool should return error status after cleanup"
     assert "not initialized" in tool_result_after_cleanup.get("message", "").lower(), "Error message should indicate session not initialized"
+
+
+async def test_session_failure_handling():
+    """
+    Test 9: Test behavior when session creation fails.
+    
+    This test mocks session creation failure scenarios and verifies that the tool
+    handles session failures gracefully with clear error messages.
+    """
+    from sam_event_mesh_tool.tools import EventMeshTool
+    from unittest.mock import Mock, patch
+    
+    # Create a tool configuration
+    tool_config = {
+        "tool_name": "TestTool",
+        "description": "A test tool",
+        "parameters": [
+            {
+                "name": "test_param",
+                "type": "string",
+                "required": True,
+                "description": "A test parameter",
+                "payload_path": "data.test"
+            }
+        ],
+        "topic": "test/topic",
+        "event_mesh_config": {
+            "broker_config": {
+                "dev_mode": True,
+                "broker_url": "dev-broker",
+                "broker_username": "dev-user",
+                "broker_password": "dev-password",
+                "broker_vpn": "dev-vpn"
+            }
+        }
+    }
+    
+    # Create tool instance
+    tool = EventMeshTool(tool_config)
+    
+    # Create a mock component that will fail session creation
+    mock_component = Mock()
+    mock_component.create_request_response_session.side_effect = Exception("Session creation failed")
+    
+    # Create a mock tool_config_model
+    from pydantic import BaseModel
+    
+    class MockToolConfig(BaseModel):
+        pass
+    
+    mock_tool_config = MockToolConfig()
+    
+    # Test: Call init and expect it to raise an exception
+    with pytest.raises(Exception) as exc_info:
+        await tool.init(mock_component, mock_tool_config)
+    
+    assert "Session creation failed" in str(exc_info.value)
+    
+    # Verify that session_id remains None after failed initialization
+    assert tool.session_id is None, "Session ID should remain None after failed initialization"
+    
+    # Test: Verify tool fails gracefully when used without a session
+    from google.adk.tools import ToolContext
+    
+    class MockAgent:
+        def __init__(self, host_component):
+            self.host_component = host_component
+    
+    class MockSession:
+        def __init__(self):
+            self.state = {}
+    
+    class MockInvocationContext:
+        def __init__(self, agent):
+            self.agent = agent
+            self.session = MockSession()
+    
+    # Create a working mock component for the tool execution test
+    working_mock_component = Mock()
+    mock_agent = MockAgent(working_mock_component)
+    mock_invocation_context = MockInvocationContext(mock_agent)
+    tool_context = ToolContext(invocation_context=mock_invocation_context)
+    
+    # Try to use the tool without a session
+    tool_result = await tool._run_async_impl(
+        args={"test_param": "test_value"}, tool_context=tool_context
+    )
+    
+    assert tool_result is not None, "Tool should return a result even when session is not initialized"
+    assert tool_result.get("status") == "error", "Tool should return error status when session is not initialized"
+    assert "not initialized" in tool_result.get("message", "").lower(), "Error message should indicate session not initialized"
+
+
+async def test_session_isolation():
+    """
+    Test 10: Verify that each tool instance has its own isolated session.
+    
+    This test creates multiple tool instances and verifies they don't interfere
+    with each other, ensuring each tool maintains its own session state.
+    """
+    from sam_event_mesh_tool.tools import EventMeshTool
+    from unittest.mock import Mock
+    
+    # Create two different tool configurations
+    tool_config_1 = {
+        "tool_name": "TestTool1",
+        "description": "First test tool",
+        "parameters": [
+            {
+                "name": "param1",
+                "type": "string",
+                "required": True,
+                "description": "Parameter for tool 1",
+                "payload_path": "data.param1"
+            }
+        ],
+        "topic": "test/topic1",
+        "event_mesh_config": {
+            "broker_config": {
+                "dev_mode": True,
+                "broker_url": "dev-broker-1",
+                "broker_username": "dev-user-1",
+                "broker_password": "dev-password-1",
+                "broker_vpn": "dev-vpn-1"
+            }
+        }
+    }
+    
+    tool_config_2 = {
+        "tool_name": "TestTool2",
+        "description": "Second test tool",
+        "parameters": [
+            {
+                "name": "param2",
+                "type": "string",
+                "required": True,
+                "description": "Parameter for tool 2",
+                "payload_path": "data.param2"
+            }
+        ],
+        "topic": "test/topic2",
+        "event_mesh_config": {
+            "broker_config": {
+                "dev_mode": True,
+                "broker_url": "dev-broker-2",
+                "broker_username": "dev-user-2",
+                "broker_password": "dev-password-2",
+                "broker_vpn": "dev-vpn-2"
+            }
+        }
+    }
+    
+    # Create two tool instances
+    tool1 = EventMeshTool(tool_config_1)
+    tool2 = EventMeshTool(tool_config_2)
+    
+    # Verify tools are different instances
+    assert tool1 is not tool2, "Tool instances should be different objects"
+    assert tool1.tool_name != tool2.tool_name, "Tools should have different names"
+    
+    # Create mock components that return different session IDs
+    mock_component1 = Mock()
+    mock_component1.create_request_response_session.return_value = "session-1"
+    
+    mock_component2 = Mock()
+    mock_component2.create_request_response_session.return_value = "session-2"
+    
+    # Create mock tool_config_models
+    from pydantic import BaseModel
+    
+    class MockToolConfig(BaseModel):
+        pass
+    
+    mock_tool_config = MockToolConfig()
+    
+    # Initialize both tools with their respective components
+    await tool1.init(mock_component1, mock_tool_config)
+    await tool2.init(mock_component2, mock_tool_config)
+    
+    # Verify each tool has its own session ID
+    assert tool1.session_id == "session-1", "Tool 1 should have session-1"
+    assert tool2.session_id == "session-2", "Tool 2 should have session-2"
+    assert tool1.session_id != tool2.session_id, "Tools should have different session IDs"
+    
+    # Verify that each tool called create_request_response_session with its own config
+    mock_component1.create_request_response_session.assert_called_once_with(
+        session_config=tool_config_1["event_mesh_config"]
+    )
+    mock_component2.create_request_response_session.assert_called_once_with(
+        session_config=tool_config_2["event_mesh_config"]
+    )
+    
+    # Test cleanup isolation - cleaning up one tool shouldn't affect the other
+    mock_component1.destroy_request_response_session = Mock()
+    mock_component2.destroy_request_response_session = Mock()
+    
+    # Cleanup tool1
+    await tool1.cleanup(mock_component1, mock_tool_config)
+    
+    # Verify tool1 session was destroyed but tool2 session remains
+    assert tool1.session_id is None, "Tool 1 session should be None after cleanup"
+    assert tool2.session_id == "session-2", "Tool 2 session should remain unchanged"
+    
+    mock_component1.destroy_request_response_session.assert_called_once_with("session-1")
+    mock_component2.destroy_request_response_session.assert_not_called()
+    
+    # Cleanup tool2
+    await tool2.cleanup(mock_component2, mock_tool_config)
+    
+    # Verify tool2 session was also destroyed
+    assert tool2.session_id is None, "Tool 2 session should be None after cleanup"
+    mock_component2.destroy_request_response_session.assert_called_once_with("session-2")
+    
+    # Test that tools have different parameter schemas
+    schema1 = tool1.parameters_schema
+    schema2 = tool2.parameters_schema
+    
+    assert "param1" in schema1.properties, "Tool 1 should have param1 in schema"
+    assert "param2" not in schema1.properties, "Tool 1 should not have param2 in schema"
+    assert "param2" in schema2.properties, "Tool 2 should have param2 in schema"
+    assert "param1" not in schema2.properties, "Tool 2 should not have param1 in schema"

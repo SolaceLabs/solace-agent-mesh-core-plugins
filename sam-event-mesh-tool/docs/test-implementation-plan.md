@@ -356,8 +356,8 @@ This document provides a comprehensive plan for implementing integration tests f
 
 ### Session Management Tests
 - [x] 8. `test_session_initialization_and_cleanup`
-- [ ] 9. `test_session_failure_handling`
-- [ ] 10. `test_session_isolation`
+- [x] 9. `test_session_failure_handling`
+- [x] 10. `test_session_isolation`
 
 ### Request-Response Pattern Tests
 - [ ] 11. `test_fire_and_forget_mode`
