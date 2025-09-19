@@ -38,6 +38,7 @@ def response_control_queue() -> queue.Queue:
 
 # --- Fixture 2: Responder Handler Logic ---
 def responder_invoke_handler(
+    component,
     message: Message,
     data: Dict[str, Any],
     control_queue: queue.Queue,
@@ -54,12 +55,18 @@ def responder_invoke_handler(
             time.sleep(delay_seconds)
 
         # Extract the dynamic reply-to topic from the request's user properties
-        reply_to_topic = get_data_value(message.get_user_properties(), REPLY_TOPIC_KEY)
+        reply_to_topic = get_data_value(
+            message.get_user_properties(), REPLY_TOPIC_KEY, resolve_none_colon=True
+        )
         if not reply_to_topic:
             raise ValueError("Could not find reply-to topic in request message")
 
         # The dictionary returned here becomes the "previous" data for the broker_output
-        return {"topic": reply_to_topic, "payload": response_payload}
+        return {
+            "topic": reply_to_topic,
+            "payload": response_payload,
+            "user_properties": message.get_user_properties(),
+        }
 
     except queue.Empty:
         pytest.fail("Responder did not receive control message from the test.")
@@ -119,7 +126,7 @@ def agent_with_event_mesh_tool(
 
     # Find the running agent component instance to yield to the test
     agent_app = connector.get_app("test-agent-app")
-    
+
     # For SamAgentApp, the component is created automatically and stored in the flows
     # The SamAgentApp creates a single flow with a single SamAgentComponent
     if agent_app.flows:
@@ -133,7 +140,7 @@ def agent_with_event_mesh_tool(
                     break
             if agent_component:
                 break
-        
+
         if not agent_component:
             pytest.fail("Could not find SamAgentComponent in the test agent app flow.")
     else:

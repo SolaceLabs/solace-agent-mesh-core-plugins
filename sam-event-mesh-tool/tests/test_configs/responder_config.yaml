@@ -7,7 +7,7 @@ log:
 shared_config:
   - broker_connection: &broker_connection
       dev_mode: true
-      broker_type: solace # Explicitly use solace dev broker
+      broker_type: "dev-broker" # Explicitly use solace dev broker
       # Dummy values to satisfy validation in dev_mode
       broker_url: "dev-broker"
       broker_username: "dev-user"
@@ -41,6 +41,7 @@ apps:
             component_config:
               <<: *broker_connection
               payload_format: json
+              copy_user_properties: true
             # Use the output from the handler_callback component.
             # The handler will return a dict like: {"topic": "...", "payload": {...}}
             input_selection:

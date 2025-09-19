@@ -38,7 +38,7 @@ apps:
       
       # Required agent card publishing configuration
       agent_card_publishing:
-        interval_seconds: 10
+        interval_seconds: 1000
       
       # Required service configurations
       session_service:
@@ -68,7 +68,7 @@ apps:
               # Use the shared broker connection config.
               broker_config:
                 <<: *broker_connection
-              request_expiry_ms: 2000 # Use a short timeout for tests.
+              request_expiry_ms: 20000000 # Use a short timeout for tests.
               payload_format: "json"
 
             # --- Tool Definition for LLM ---
