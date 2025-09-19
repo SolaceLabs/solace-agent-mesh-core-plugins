@@ -346,83 +346,83 @@ This document provides a comprehensive plan for implementing integration tests f
 ## Implementation Checklist
 
 ### Core Functionality Tests
-- [ ] `test_parameter_mapping_with_nested_payload_paths`
-- [ ] `test_parameter_defaults_and_overrides`
-- [ ] `test_missing_required_parameters`
-- [ ] `test_parameter_type_validation`
-- [ ] `test_dynamic_topic_construction`
-- [ ] `test_topic_template_with_missing_parameter`
-- [ ] `test_topic_template_with_special_characters`
+- [ ] 1. `test_parameter_mapping_with_nested_payload_paths`
+- [ ] 2. `test_parameter_defaults_and_overrides`
+- [ ] 3. `test_missing_required_parameters`
+- [ ] 4. `test_parameter_type_validation`
+- [ ] 5. `test_dynamic_topic_construction`
+- [ ] 6. `test_topic_template_with_missing_parameter`
+- [ ] 7. `test_topic_template_with_special_characters`
 
 ### Session Management Tests
-- [ ] `test_session_initialization_and_cleanup`
-- [ ] `test_session_failure_handling`
-- [ ] `test_session_isolation`
+- [ ] 8. `test_session_initialization_and_cleanup`
+- [ ] 9. `test_session_failure_handling`
+- [ ] 10. `test_session_isolation`
 
 ### Request-Response Pattern Tests
-- [ ] `test_fire_and_forget_mode`
-- [ ] `test_synchronous_mode_blocking_behavior`
-- [ ] `test_request_timeout`
-- [ ] `test_malformed_response_handling`
-- [ ] `test_broker_connection_failure`
-- [ ] `test_response_correlation_failure`
+- [ ] 11. `test_fire_and_forget_mode`
+- [ ] 12. `test_synchronous_mode_blocking_behavior`
+- [ ] 13. `test_request_timeout`
+- [ ] 14. `test_malformed_response_handling`
+- [ ] 15. `test_broker_connection_failure`
+- [ ] 16. `test_response_correlation_failure`
 
 ### Concurrency Tests
-- [ ] `test_concurrent_requests_with_correlation`
-- [ ] `test_multiple_tool_instances_isolation`
-- [ ] `test_high_concurrency_stress`
+- [ ] 17. `test_concurrent_requests_with_correlation`
+- [ ] 18. `test_multiple_tool_instances_isolation`
+- [ ] 19. `test_high_concurrency_stress`
 
 ### Payload Format Tests
-- [ ] `test_json_payload_format`
-- [ ] `test_yaml_payload_format`
-- [ ] `test_text_payload_format`
-- [ ] `test_payload_encoding_options`
+- [ ] 20. `test_json_payload_format`
+- [ ] 21. `test_yaml_payload_format`
+- [ ] 22. `test_text_payload_format`
+- [ ] 23. `test_payload_encoding_options`
 
 ### Edge Cases and Error Conditions
-- [ ] `test_empty_payload`
-- [ ] `test_large_payload_handling`
-- [ ] `test_special_characters_in_parameters`
-- [ ] `test_null_and_undefined_parameter_values`
+- [ ] 24. `test_empty_payload`
+- [ ] 25. `test_large_payload_handling`
+- [ ] 26. `test_special_characters_in_parameters`
+- [ ] 27. `test_null_and_undefined_parameter_values`
 
 ### Integration and Real-world Scenarios
-- [ ] `test_weather_service_simulation`
-- [ ] `test_error_response_from_service`
-- [ ] `test_service_unavailable_scenario`
-- [ ] `test_partial_service_failure`
+- [ ] 28. `test_weather_service_simulation`
+- [ ] 29. `test_error_response_from_service`
+- [ ] 30. `test_service_unavailable_scenario`
+- [ ] 31. `test_partial_service_failure`
 
 ### Configuration Validation Tests
-- [ ] `test_invalid_tool_configuration`
-- [ ] `test_missing_event_mesh_config`
-- [ ] `test_invalid_parameter_definitions`
+- [ ] 32. `test_invalid_tool_configuration`
+- [ ] 33. `test_missing_event_mesh_config`
+- [ ] 34. `test_invalid_parameter_definitions`
 
 ### Performance and Load Tests
-- [ ] `test_high_frequency_requests`
-- [ ] `test_request_response_latency`
-- [ ] `test_memory_usage_under_load`
+- [ ] 35. `test_high_frequency_requests`
+- [ ] 36. `test_request_response_latency`
+- [ ] 37. `test_memory_usage_under_load`
 
 ### Advanced Feature Tests
-- [ ] `test_custom_user_properties`
-- [ ] `test_response_topic_insertion`
-- [ ] `test_custom_reply_topic_configuration`
+- [ ] 38. `test_custom_user_properties`
+- [ ] 39. `test_response_topic_insertion`
+- [ ] 40. `test_custom_reply_topic_configuration`
 
 ### Test Infrastructure
-- [ ] `agent_with_multiple_tools` fixture
-- [ ] `agent_with_yaml_tool` fixture
-- [ ] `agent_with_fire_and_forget_tool` fixture
-- [ ] `slow_responder_service` fixture
-- [ ] `error_responder_service` fixture
-- [ ] `load_test_responder` fixture
-- [ ] `ResponseBuilder` utility class
-- [ ] `TimingHelper` utility class
-- [ ] `PayloadValidator` utility class
+- [ ] 41. `agent_with_multiple_tools` fixture
+- [ ] 42. `agent_with_yaml_tool` fixture
+- [ ] 43. `agent_with_fire_and_forget_tool` fixture
+- [ ] 44. `slow_responder_service` fixture
+- [ ] 45. `error_responder_service` fixture
+- [ ] 46. `load_test_responder` fixture
+- [ ] 47. `ResponseBuilder` utility class
+- [ ] 48. `TimingHelper` utility class
+- [ ] 49. `PayloadValidator` utility class
 
 ### Documentation and Maintenance
-- [ ] Update test documentation
-- [ ] Add test execution instructions
-- [ ] Create CI/CD integration
-- [ ] Performance benchmarking setup
-- [ ] Test coverage reporting
+- [ ] 50. Update test documentation
+- [ ] 51. Add test execution instructions
+- [ ] 52. Create CI/CD integration
+- [ ] 53. Performance benchmarking setup
+- [ ] 54. Test coverage reporting
 
-**Total Tests Planned: 34**
+**Total Tests Planned: 40**
 **Current Tests Implemented: 1**
-**Remaining Tests: 33**
+**Remaining Tests: 39**
