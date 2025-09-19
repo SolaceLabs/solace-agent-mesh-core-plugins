@@ -546,3 +546,111 @@ async def test_topic_template_with_special_characters():
     expected_empty = "logs/info/"
     
     assert result_empty == expected_empty, f"Expected {expected_empty}, got {result_empty}"
+
+
+async def test_session_initialization_and_cleanup(
+    agent_with_event_mesh_tool: SamAgentComponent,
+    response_control_queue: Queue,
+):
+    """
+    Test 8: Test that the tool properly creates and destroys its dedicated session.
+    
+    This test verifies that session_id is set after init and cleared after cleanup,
+    ensuring the session lifecycle is managed correctly.
+    """
+    import asyncio
+    
+    # Wait for the agent to be fully initialized
+    await asyncio.sleep(2)
+    
+    # Find the EventMeshTool instance
+    event_mesh_tool = None
+    for tool in agent_with_event_mesh_tool.adk_agent.tools:
+        if isinstance(tool, EventMeshTool) and tool.tool_name == "EventMeshRequest":
+            event_mesh_tool = tool
+            break
+    
+    assert event_mesh_tool is not None, "EventMeshTool not found in agent component"
+    
+    # Test 1: Verify session was initialized
+    assert event_mesh_tool.session_id is not None, "Session ID should be set after initialization"
+    assert isinstance(event_mesh_tool.session_id, str), "Session ID should be a string"
+    assert len(event_mesh_tool.session_id) > 0, "Session ID should not be empty"
+    
+    # Store the original session ID for verification
+    original_session_id = event_mesh_tool.session_id
+    
+    # Test 2: Verify the session exists in the component's session manager
+    # The session should be listed in the active sessions
+    active_sessions = agent_with_event_mesh_tool.list_request_response_sessions()
+    session_ids = [session["session_id"] for session in active_sessions]
+    assert original_session_id in session_ids, f"Session {original_session_id} should be in active sessions list"
+    
+    # Test 3: Verify session can be used (basic functionality test)
+    # Put a test response in the control queue
+    test_response = {"test": "session_works"}
+    response_control_queue.put((test_response, 0))
+    
+    # Create mock context for tool execution
+    from google.adk.tools import ToolContext
+    
+    class MockAgent:
+        def __init__(self, host_component):
+            self.host_component = host_component
+    
+    class MockSession:
+        def __init__(self):
+            self.state = {}
+    
+    class MockInvocationContext:
+        def __init__(self, agent):
+            self.agent = agent
+            self.session = MockSession()
+    
+    mock_agent = MockAgent(agent_with_event_mesh_tool)
+    mock_invocation_context = MockInvocationContext(mock_agent)
+    tool_context = ToolContext(invocation_context=mock_invocation_context)
+    
+    # Execute the tool to verify the session works
+    tool_args = {"request_data": "session_test"}
+    tool_result = await event_mesh_tool._run_async_impl(
+        args=tool_args, tool_context=tool_context
+    )
+    
+    assert tool_result is not None, "Tool should return a result when session is active"
+    assert tool_result.get("status") == "success", f"Tool should succeed with active session: {tool_result}"
+    assert tool_result.get("payload") == test_response, "Tool should return the expected response"
+    
+    # Test 4: Test cleanup
+    # Create a mock tool_config_model for cleanup
+    from solace_agent_mesh.agent.tools.tool_config_types import AnyToolConfig
+    from pydantic import BaseModel
+    
+    class MockToolConfig(BaseModel):
+        pass
+    
+    mock_tool_config = MockToolConfig()
+    
+    # Call cleanup
+    await event_mesh_tool.cleanup(agent_with_event_mesh_tool, mock_tool_config)
+    
+    # Test 5: Verify session was cleaned up
+    assert event_mesh_tool.session_id is None, "Session ID should be None after cleanup"
+    
+    # Verify the session is no longer in the active sessions list
+    active_sessions_after_cleanup = agent_with_event_mesh_tool.list_request_response_sessions()
+    session_ids_after_cleanup = [session["session_id"] for session in active_sessions_after_cleanup]
+    assert original_session_id not in session_ids_after_cleanup, f"Session {original_session_id} should not be in active sessions after cleanup"
+    
+    # Test 6: Verify tool fails gracefully after cleanup
+    # Put another response in the queue (though it shouldn't be used)
+    response_control_queue.put(({"should": "not_work"}, 0))
+    
+    # Try to use the tool after cleanup
+    tool_result_after_cleanup = await event_mesh_tool._run_async_impl(
+        args={"request_data": "after_cleanup"}, tool_context=tool_context
+    )
+    
+    assert tool_result_after_cleanup is not None, "Tool should return a result even after cleanup"
+    assert tool_result_after_cleanup.get("status") == "error", "Tool should return error status after cleanup"
+    assert "not initialized" in tool_result_after_cleanup.get("message", "").lower(), "Error message should indicate session not initialized"
