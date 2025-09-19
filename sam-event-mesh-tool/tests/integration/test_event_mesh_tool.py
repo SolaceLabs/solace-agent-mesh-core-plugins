@@ -17,6 +17,15 @@ sys.path.append(str(Path(__file__).parent.parent.parent / "src"))
 
 from solace_agent_mesh.agent.sac.component import SamAgentComponent
 from sam_event_mesh_tool.tools import EventMeshTool
+from ..test_utils import (
+    create_mock_tool_context,
+    find_event_mesh_tool,
+    create_basic_tool_config,
+    create_mock_tool_config_model,
+    create_tool_config_with_parameters,
+    create_multi_type_parameters,
+    create_required_optional_parameters,
+)
 
 # Mark all tests in this file as asyncio
 pytestmark = pytest.mark.asyncio
@@ -39,38 +48,14 @@ async def test_simple_request_response(
     await asyncio.sleep(2)  # Give the agent time to initialize
 
     # Act: Find the EventMeshTool
-    event_mesh_tool = None
-    for tool in agent_with_event_mesh_tool.adk_agent.tools:
-        if isinstance(tool, EventMeshTool) and tool.tool_name == "EventMeshRequest":
-            event_mesh_tool = tool
-            break
-
+    event_mesh_tool = find_event_mesh_tool(agent_with_event_mesh_tool)
     assert event_mesh_tool is not None, "EventMeshTool not found in agent component"
     assert (
         event_mesh_tool.session_id is not None
     ), "EventMeshTool session was not initialized"
 
     # Create a mock ToolContext to pass to the tool
-    from google.adk.tools import ToolContext
-    from google.adk.agents.invocation_context import InvocationContext
-
-    # Create a minimal mock invocation context
-    class MockAgent:
-        def __init__(self, host_component):
-            self.host_component = host_component
-
-    class MockSession:
-        def __init__(self):
-            self.state = {}
-
-    class MockInvocationContext:
-        def __init__(self, agent):
-            self.agent = agent
-            self.session = MockSession()
-
-    mock_agent = MockAgent(agent_with_event_mesh_tool)
-    mock_invocation_context = MockInvocationContext(mock_agent)
-    tool_context = ToolContext(invocation_context=mock_invocation_context)
+    tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
 
     # Call the tool with test parameters
     tool_args = {"request_data": "some test request"}
@@ -214,58 +199,13 @@ async def test_missing_required_parameters():
     returns an appropriate error message.
     """
     from sam_event_mesh_tool.tools import EventMeshTool
-    from google.adk.tools import ToolContext
 
     # Create a tool configuration with required parameters
-    tool_config = {
-        "tool_name": "TestTool",
-        "description": "A test tool",
-        "parameters": [
-            {
-                "name": "required_param",
-                "type": "string",
-                "required": True,
-                "description": "A required parameter",
-                "payload_path": "data.required",
-            },
-            {
-                "name": "optional_param",
-                "type": "string",
-                "required": False,
-                "default": "default_value",
-                "payload_path": "data.optional",
-            },
-        ],
-        "topic": "test/topic",
-        "event_mesh_config": {
-            "broker_config": {
-                "dev_mode": True,
-                "broker_url": "dev-broker",
-                "broker_username": "dev-user",
-                "broker_password": "dev-password",
-                "broker_vpn": "dev-vpn",
-            }
-        },
-    }
+    parameters = create_required_optional_parameters()
+    tool_config = create_tool_config_with_parameters(parameters)
 
     # Create tool instance
     tool = EventMeshTool(tool_config)
-
-    # Create mock context
-    class MockAgent:
-        def __init__(self):
-            self.host_component = None
-
-    class MockSession:
-        def __init__(self):
-            self.state = {}
-
-    class MockInvocationContext:
-        def __init__(self):
-            self.agent = MockAgent()
-            self.session = MockSession()
-
-    tool_context = ToolContext(invocation_context=MockInvocationContext())
 
     # Test: Call tool without required parameter
     args_missing_required = {
@@ -306,52 +246,12 @@ async def test_parameter_type_validation():
     from google.genai import types as adk_types
 
     # Create a tool configuration with different parameter types
-    tool_config = {
-        "tool_name": "TypeTestTool",
-        "description": "A tool to test parameter types",
-        "parameters": [
-            {
-                "name": "string_param",
-                "type": "string",
-                "required": True,
-                "description": "A string parameter",
-            },
-            {
-                "name": "integer_param",
-                "type": "integer",
-                "required": True,
-                "description": "An integer parameter",
-            },
-            {
-                "name": "number_param",
-                "type": "number",
-                "required": False,
-                "description": "A number parameter",
-            },
-            {
-                "name": "boolean_param",
-                "type": "boolean",
-                "required": False,
-                "description": "A boolean parameter",
-            },
-            {
-                "name": "unknown_type_param",
-                "type": "unknown_type",
-                "required": False,
-                "description": "A parameter with unknown type (should default to string)",
-            },
-        ],
-        "topic": "test/topic",
-        "event_mesh_config": {
-            "broker_config": {
-                "dev_mode": True,
-                "broker_url": "dev-broker",
-                "broker_username": "dev-user",
-                "broker_password": "dev-password",
-                "broker_vpn": "dev-vpn",
-            }
-        },
-    }
+    parameters = create_multi_type_parameters()
+    tool_config = create_basic_tool_config(
+        tool_name="TypeTestTool",
+        description="A tool to test parameter types",
+        parameters=parameters
+    )
 
     # Create tool instance
     tool = EventMeshTool(tool_config)
@@ -564,12 +464,7 @@ async def test_session_initialization_and_cleanup(
     await asyncio.sleep(2)
     
     # Find the EventMeshTool instance
-    event_mesh_tool = None
-    for tool in agent_with_event_mesh_tool.adk_agent.tools:
-        if isinstance(tool, EventMeshTool) and tool.tool_name == "EventMeshRequest":
-            event_mesh_tool = tool
-            break
-    
+    event_mesh_tool = find_event_mesh_tool(agent_with_event_mesh_tool)
     assert event_mesh_tool is not None, "EventMeshTool not found in agent component"
     
     # Test 1: Verify session was initialized
@@ -592,24 +487,7 @@ async def test_session_initialization_and_cleanup(
     response_control_queue.put((test_response, 0))
     
     # Create mock context for tool execution
-    from google.adk.tools import ToolContext
-    
-    class MockAgent:
-        def __init__(self, host_component):
-            self.host_component = host_component
-    
-    class MockSession:
-        def __init__(self):
-            self.state = {}
-    
-    class MockInvocationContext:
-        def __init__(self, agent):
-            self.agent = agent
-            self.session = MockSession()
-    
-    mock_agent = MockAgent(agent_with_event_mesh_tool)
-    mock_invocation_context = MockInvocationContext(mock_agent)
-    tool_context = ToolContext(invocation_context=mock_invocation_context)
+    tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
     
     # Execute the tool to verify the session works
     tool_args = {"request_data": "session_test"}
@@ -623,13 +501,7 @@ async def test_session_initialization_and_cleanup(
     
     # Test 4: Test cleanup
     # Create a mock tool_config_model for cleanup
-    from solace_agent_mesh.agent.tools.tool_config_types import AnyToolConfig
-    from pydantic import BaseModel
-    
-    class MockToolConfig(BaseModel):
-        pass
-    
-    mock_tool_config = MockToolConfig()
+    mock_tool_config = create_mock_tool_config_model()
     
     # Call cleanup
     await event_mesh_tool.cleanup(agent_with_event_mesh_tool, mock_tool_config)
@@ -667,29 +539,7 @@ async def test_session_failure_handling():
     from unittest.mock import Mock, patch
     
     # Create a tool configuration
-    tool_config = {
-        "tool_name": "TestTool",
-        "description": "A test tool",
-        "parameters": [
-            {
-                "name": "test_param",
-                "type": "string",
-                "required": True,
-                "description": "A test parameter",
-                "payload_path": "data.test"
-            }
-        ],
-        "topic": "test/topic",
-        "event_mesh_config": {
-            "broker_config": {
-                "dev_mode": True,
-                "broker_url": "dev-broker",
-                "broker_username": "dev-user",
-                "broker_password": "dev-password",
-                "broker_vpn": "dev-vpn"
-            }
-        }
-    }
+    tool_config = create_basic_tool_config()
     
     # Create tool instance
     tool = EventMeshTool(tool_config)
@@ -699,12 +549,7 @@ async def test_session_failure_handling():
     mock_component.create_request_response_session.side_effect = Exception("Session creation failed")
     
     # Create a mock tool_config_model
-    from pydantic import BaseModel
-    
-    class MockToolConfig(BaseModel):
-        pass
-    
-    mock_tool_config = MockToolConfig()
+    mock_tool_config = create_mock_tool_config_model()
     
     # Test: Call init and expect it to raise an exception
     with pytest.raises(Exception) as exc_info:
@@ -716,26 +561,9 @@ async def test_session_failure_handling():
     assert tool.session_id is None, "Session ID should remain None after failed initialization"
     
     # Test: Verify tool fails gracefully when used without a session
-    from google.adk.tools import ToolContext
-    
-    class MockAgent:
-        def __init__(self, host_component):
-            self.host_component = host_component
-    
-    class MockSession:
-        def __init__(self):
-            self.state = {}
-    
-    class MockInvocationContext:
-        def __init__(self, agent):
-            self.agent = agent
-            self.session = MockSession()
-    
     # Create a working mock component for the tool execution test
     working_mock_component = Mock()
-    mock_agent = MockAgent(working_mock_component)
-    mock_invocation_context = MockInvocationContext(mock_agent)
-    tool_context = ToolContext(invocation_context=mock_invocation_context)
+    tool_context = create_mock_tool_context(working_mock_component)
     
     # Try to use the tool without a session
     tool_result = await tool._run_async_impl(
@@ -758,10 +586,11 @@ async def test_session_isolation():
     from unittest.mock import Mock
     
     # Create two different tool configurations
-    tool_config_1 = {
-        "tool_name": "TestTool1",
-        "description": "First test tool",
-        "parameters": [
+    tool_config_1 = create_basic_tool_config(
+        tool_name="TestTool1",
+        description="First test tool",
+        topic="test/topic1",
+        parameters=[
             {
                 "name": "param1",
                 "type": "string",
@@ -770,8 +599,7 @@ async def test_session_isolation():
                 "payload_path": "data.param1"
             }
         ],
-        "topic": "test/topic1",
-        "event_mesh_config": {
+        event_mesh_config={
             "broker_config": {
                 "dev_mode": True,
                 "broker_url": "dev-broker-1",
@@ -780,12 +608,13 @@ async def test_session_isolation():
                 "broker_vpn": "dev-vpn-1"
             }
         }
-    }
+    )
     
-    tool_config_2 = {
-        "tool_name": "TestTool2",
-        "description": "Second test tool",
-        "parameters": [
+    tool_config_2 = create_basic_tool_config(
+        tool_name="TestTool2",
+        description="Second test tool",
+        topic="test/topic2",
+        parameters=[
             {
                 "name": "param2",
                 "type": "string",
@@ -794,8 +623,7 @@ async def test_session_isolation():
                 "payload_path": "data.param2"
             }
         ],
-        "topic": "test/topic2",
-        "event_mesh_config": {
+        event_mesh_config={
             "broker_config": {
                 "dev_mode": True,
                 "broker_url": "dev-broker-2",
@@ -804,7 +632,7 @@ async def test_session_isolation():
                 "broker_vpn": "dev-vpn-2"
             }
         }
-    }
+    )
     
     # Create two tool instances
     tool1 = EventMeshTool(tool_config_1)
@@ -822,12 +650,7 @@ async def test_session_isolation():
     mock_component2.create_request_response_session.return_value = "session-2"
     
     # Create mock tool_config_models
-    from pydantic import BaseModel
-    
-    class MockToolConfig(BaseModel):
-        pass
-    
-    mock_tool_config = MockToolConfig()
+    mock_tool_config = create_mock_tool_config_model()
     
     # Initialize both tools with their respective components
     await tool1.init(mock_component1, mock_tool_config)
