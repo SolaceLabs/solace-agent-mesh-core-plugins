@@ -725,9 +725,10 @@ async def test_fire_and_forget_mode(
     event_mesh_tool.tool_config["wait_for_response"] = False
     
     try:
-        # Put a response in the control queue (though it shouldn't be waited for)
+        # Put a response in the control queue but tell the responder not to send a reply
+        # This prevents orphaned response messages in fire-and-forget mode
         test_response = {"async": "response"}
-        response_control_queue.put((test_response, 1))  # 1 second delay
+        response_control_queue.put((test_response, 0, False))  # (payload, delay, should_send_reply)
         
         # Create mock context for tool execution
         tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
@@ -763,6 +764,9 @@ async def test_fire_and_forget_mode(
         # The responder should have consumed the message from the control queue
         # If the queue is empty, it means the message was processed
         assert response_control_queue.empty(), "Responder should have processed the fire-and-forget message"
+        
+        # Note: The responder was instructed not to send a reply (should_send_reply=False)
+        # This prevents orphaned response messages that nobody is waiting for
         
     finally:
         # Restore original configuration

@@ -48,11 +48,24 @@ def responder_invoke_handler(
     It waits for instructions from the control_queue to generate a response.
     """
     try:
-        # Instruction is a tuple: (response_payload, delay_seconds)
-        response_payload, delay_seconds = control_queue.get(timeout=5)
+        # Instruction can be a tuple: (response_payload, delay_seconds) or (response_payload, delay_seconds, should_send_reply)
+        instruction = control_queue.get(timeout=5)
+        
+        # Handle backward compatibility - if only 2 elements, assume should_send_reply=True
+        if len(instruction) == 2:
+            response_payload, delay_seconds = instruction
+            should_send_reply = True
+        elif len(instruction) == 3:
+            response_payload, delay_seconds, should_send_reply = instruction
+        else:
+            raise ValueError(f"Invalid instruction format. Expected 2 or 3 elements, got {len(instruction)}")
 
         if delay_seconds > 0:
             time.sleep(delay_seconds)
+
+        # If we shouldn't send a reply, return None to indicate no response should be sent
+        if not should_send_reply:
+            return None
 
         # Extract the dynamic reply-to topic from the request's user properties
         reply_to_topic = get_data_value(
