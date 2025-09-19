@@ -384,3 +384,165 @@ async def test_parameter_type_validation():
         schema.properties["unknown_type_param"].description
         == "A parameter with unknown type (should default to string)"
     )
+
+
+async def test_dynamic_topic_construction(
+    agent_with_event_mesh_tool: SamAgentComponent,
+    response_control_queue: Queue,
+):
+    """
+    Test 5: Test that topic templates are filled correctly with parameter values.
+    
+    This test configures a topic template with multiple parameter substitutions
+    and verifies the responder receives messages on the expected dynamic topic.
+    """
+    from sam_event_mesh_tool.tools import _fill_topic_template
+    
+    # Test simple parameter substitution
+    template = "weather/request/{{ city }}/{{ unit }}"
+    params = {"city": "ottawa", "unit": "celsius"}
+    
+    result = _fill_topic_template(template, params)
+    expected = "weather/request/ottawa/celsius"
+    
+    assert result == expected, f"Expected {expected}, got {result}"
+    
+    # Test with encoding prefix (should be ignored)
+    template_with_encoding = "weather/request/{{ text://city }}/{{ unit }}"
+    result_with_encoding = _fill_topic_template(template_with_encoding, params)
+    
+    assert result_with_encoding == expected, f"Expected {expected}, got {result_with_encoding}"
+    
+    # Test with mixed static and dynamic parts
+    template_complex = "acme/{{ service }}/v1/{{ action }}/{{ request_id }}"
+    params_complex = {
+        "service": "weather",
+        "action": "get",
+        "request_id": "req-123"
+    }
+    
+    result_complex = _fill_topic_template(template_complex, params_complex)
+    expected_complex = "acme/weather/v1/get/req-123"
+    
+    assert result_complex == expected_complex, f"Expected {expected_complex}, got {result_complex}"
+    
+    # Test with special characters in parameter values
+    template_special = "events/{{ event_type }}/{{ user_id }}"
+    params_special = {
+        "event_type": "user-login",
+        "user_id": "user@example.com"
+    }
+    
+    result_special = _fill_topic_template(template_special, params_special)
+    expected_special = "events/user-login/user@example.com"
+    
+    assert result_special == expected_special, f"Expected {expected_special}, got {result_special}"
+
+
+async def test_topic_template_with_missing_parameter():
+    """
+    Test 6: Test error handling when topic template references undefined parameters.
+    
+    This test verifies that when a topic template references a parameter not 
+    defined in the parameters list, the tool returns a clear error.
+    """
+    from sam_event_mesh_tool.tools import _fill_topic_template
+    import pytest
+    
+    # Test missing parameter
+    template = "weather/request/{{ city }}/{{ missing_param }}"
+    params = {"city": "ottawa"}  # missing_param is not provided
+    
+    with pytest.raises(ValueError) as exc_info:
+        _fill_topic_template(template, params)
+    
+    assert "Missing required parameter 'missing_param'" in str(exc_info.value)
+    
+    # Test completely empty params
+    template_empty = "weather/{{ city }}/{{ unit }}"
+    params_empty = {}
+    
+    with pytest.raises(ValueError) as exc_info:
+        _fill_topic_template(template_empty, params_empty)
+    
+    assert "Missing required parameter 'city'" in str(exc_info.value)
+    
+    # Test with encoding prefix - should still fail for missing param
+    template_encoding = "weather/{{ text://city }}/{{ text://missing_param }}"
+    params_partial = {"city": "ottawa"}
+    
+    with pytest.raises(ValueError) as exc_info:
+        _fill_topic_template(template_encoding, params_partial)
+    
+    assert "Missing required parameter 'missing_param'" in str(exc_info.value)
+
+
+async def test_topic_template_with_special_characters():
+    """
+    Test 7: Test topic construction with special characters in parameter values.
+    
+    This test uses parameters containing slashes, spaces, unicode characters
+    and verifies the topic is constructed correctly.
+    """
+    from sam_event_mesh_tool.tools import _fill_topic_template
+    
+    # Test with slashes in parameter values
+    template = "api/{{ service_path }}/{{ action }}"
+    params_with_slashes = {
+        "service_path": "users/profiles",
+        "action": "get"
+    }
+    
+    result = _fill_topic_template(template, params_with_slashes)
+    expected = "api/users/profiles/get"
+    
+    assert result == expected, f"Expected {expected}, got {result}"
+    
+    # Test with spaces and special characters
+    template_special = "events/{{ event_name }}/{{ user_info }}"
+    params_special = {
+        "event_name": "user login",
+        "user_info": "john.doe@company.com"
+    }
+    
+    result_special = _fill_topic_template(template_special, params_special)
+    expected_special = "events/user login/john.doe@company.com"
+    
+    assert result_special == expected_special, f"Expected {expected_special}, got {result_special}"
+    
+    # Test with unicode characters
+    template_unicode = "messages/{{ language }}/{{ content_type }}"
+    params_unicode = {
+        "language": "français",
+        "content_type": "émojis_🎉"
+    }
+    
+    result_unicode = _fill_topic_template(template_unicode, params_unicode)
+    expected_unicode = "messages/français/émojis_🎉"
+    
+    assert result_unicode == expected_unicode, f"Expected {expected_unicode}, got {result_unicode}"
+    
+    # Test with numbers and boolean values (converted to strings)
+    template_mixed = "data/{{ sensor_id }}/{{ is_active }}/{{ temperature }}"
+    params_mixed = {
+        "sensor_id": 12345,
+        "is_active": True,
+        "temperature": 23.5
+    }
+    
+    result_mixed = _fill_topic_template(template_mixed, params_mixed)
+    expected_mixed = "data/12345/True/23.5"
+    
+    assert result_mixed == expected_mixed, f"Expected {expected_mixed}, got {result_mixed}"
+    
+    # Test with empty string parameter
+    template_empty = "logs/{{ level }}/{{ message }}"
+    params_empty = {
+        "level": "info",
+        "message": ""  # Empty string should be allowed
+    }
+    
+    result_empty = _fill_topic_template(template_empty, params_empty)
+    expected_empty = "logs/info/"
+    
+    assert result_empty == expected_empty, f"Expected {expected_empty}, got {result_empty}"

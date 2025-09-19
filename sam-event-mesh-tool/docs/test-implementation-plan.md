@@ -350,9 +350,9 @@ This document provides a comprehensive plan for implementing integration tests f
 - [x] 2. `test_parameter_defaults_and_overrides`
 - [x] 3. `test_missing_required_parameters`
 - [x] 4. `test_parameter_type_validation`
-- [ ] 5. `test_dynamic_topic_construction`
-- [ ] 6. `test_topic_template_with_missing_parameter`
-- [ ] 7. `test_topic_template_with_special_characters`
+- [x] 5. `test_dynamic_topic_construction`
+- [x] 6. `test_topic_template_with_missing_parameter`
+- [x] 7. `test_topic_template_with_special_characters`
 
 ### Session Management Tests
 - [ ] 8. `test_session_initialization_and_cleanup`
