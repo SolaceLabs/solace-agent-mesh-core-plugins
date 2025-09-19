@@ -16,18 +16,45 @@ from solace_agent_mesh.agent.tools.tool_config_types import AnyToolConfig
 def _build_payload(
     parameters_map: Dict[str, Any], params: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """Build the message payload using parameter values and their payload paths."""
+    """Build the message payload using parameter values and their payload paths.
+    
+    Args:
+        parameters_map: Dictionary mapping parameter names to their configuration
+        params: Dictionary of provided parameter values
+        
+    Returns:
+        Dict containing the structured payload with nested paths
+    """
     payload = {}
-    for name, value in params.items():
-        if name in parameters_map and "payload_path" in parameters_map[name]:
-            path = parameters_map[name]["payload_path"]
-            current = payload
-            parts = path.split(".")
-            for part in parts[:-1]:
-                if part not in current:
-                    current[part] = {}
-                current = current[part]
-            current[parts[-1]] = value
+    
+    # Iterate over all defined parameters, not just provided ones
+    for param_name, param_config in parameters_map.items():
+        # Skip parameters that don't have a payload_path
+        if "payload_path" not in param_config:
+            continue
+            
+        # Determine the value to use
+        value = None
+        if param_name in params:
+            # Use provided value (even if it's falsy like 0, False, "")
+            value = params[param_name]
+        elif "default" in param_config:
+            # Use default value (even if it's falsy like 0, False, "")
+            value = param_config["default"]
+        else:
+            # No value provided and no default - skip this parameter
+            continue
+            
+        # Build the nested structure
+        path = param_config["payload_path"]
+        current = payload
+        parts = path.split(".")
+        for part in parts[:-1]:
+            if part not in current:
+                current[part] = {}
+            current = current[part]
+        current[parts[-1]] = value
+        
     return payload
 
 
@@ -162,15 +189,18 @@ class EventMeshTool(DynamicTool):
             wait_for_response = self.tool_config.get("wait_for_response", True)
 
             parameters_map = {param["name"]: param for param in config_params}
-            defaulted_params = {
-                param["name"]: param.get("default")
-                for param in config_params
-                if "default" in param
-            }
-            defaulted_params.update(args)
-
-            topic = _fill_topic_template(topic_template, defaulted_params)
-            payload = _build_payload(parameters_map, defaulted_params)
+            
+            # Create a combined params dict for topic template (includes defaults)
+            topic_params = {}
+            for param in config_params:
+                param_name = param["name"]
+                if param_name in args:
+                    topic_params[param_name] = args[param_name]
+                elif "default" in param:
+                    topic_params[param_name] = param["default"]
+            
+            topic = _fill_topic_template(topic_template, topic_params)
+            payload = _build_payload(parameters_map, args)
             message = Message(payload=payload, topic=topic)
 
             response = await host_component.do_broker_request_response_async(
