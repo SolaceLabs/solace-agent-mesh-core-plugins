@@ -8,7 +8,6 @@ in-memory integration environment with a client agent and a responder service.
 import pytest
 from queue import Queue
 
-from solace_ai_connector.common.message import Message
 from solace_agent_mesh.agent.sac.component import SamAgentComponent
 from sam_event_mesh_tool.tools import EventMeshTool
 
@@ -29,6 +28,7 @@ async def test_simple_request_response(
 
     # Wait for the agent to be fully initialized
     import asyncio
+
     await asyncio.sleep(2)  # Give the agent time to initialize
 
     # Act: Find the EventMeshTool
@@ -46,21 +46,21 @@ async def test_simple_request_response(
     # Create a mock ToolContext to pass to the tool
     from google.adk.tools import ToolContext
     from google.adk.agents.invocation_context import InvocationContext
-    
+
     # Create a minimal mock invocation context
     class MockAgent:
         def __init__(self, host_component):
             self.host_component = host_component
-    
+
     class MockSession:
         def __init__(self):
             self.state = {}
-    
+
     class MockInvocationContext:
         def __init__(self, agent):
             self.agent = agent
             self.session = MockSession()
-    
+
     mock_agent = MockAgent(agent_with_event_mesh_tool)
     mock_invocation_context = MockInvocationContext(mock_agent)
     tool_context = ToolContext(invocation_context=mock_invocation_context)
@@ -68,12 +68,13 @@ async def test_simple_request_response(
     # Call the tool with test parameters
     tool_args = {"request_data": "some test request"}
     tool_result = await event_mesh_tool._run_async_impl(
-        args=tool_args,
-        tool_context=tool_context
+        args=tool_args, tool_context=tool_context
     )
 
     # Assert: Check that the tool executed successfully and returned the expected response
     assert tool_result is not None, "Tool did not return a result"
     assert tool_result.get("status") == "success", f"Tool failed: {tool_result}"
     assert "payload" in tool_result, "Tool result missing payload"
-    assert tool_result["payload"] == expected_response, f"Expected {expected_response}, got {tool_result['payload']}"
+    assert (
+        tool_result["payload"] == expected_response
+    ), f"Expected {expected_response}, got {tool_result['payload']}"
