@@ -538,6 +538,30 @@ async def test_session_initialization_and_cleanup(
         "not initialized" in tool_result_after_cleanup.get("message", "").lower()
     ), "Error message should indicate session not initialized"
 
+    # Test 7: Restore the tool's session for subsequent tests (test isolation)
+    # This ensures other tests in the same session can still use the tool
+    await event_mesh_tool.init(agent_with_event_mesh_tool, mock_tool_config)
+    
+    # Verify the tool is working again
+    assert event_mesh_tool.session_id is not None, "Session ID should be restored after re-initialization"
+    
+    # Verify the restored session is in the active sessions list
+    restored_active_sessions = agent_with_event_mesh_tool.list_request_response_sessions()
+    restored_session_ids = [session["session_id"] for session in restored_active_sessions]
+    assert event_mesh_tool.session_id in restored_session_ids, "Restored session should be in active sessions list"
+    
+    # Test that the restored tool works by sending a test request
+    test_response_restored = {"restored": "session_works"}
+    response_control_queue.put((test_response_restored, 0))
+    
+    tool_result_restored = await event_mesh_tool._run_async_impl(
+        args={"request_data": "restored_session_test"}, tool_context=tool_context
+    )
+    
+    assert tool_result_restored is not None, "Tool should work after session restoration"
+    assert tool_result_restored.get("status") == "success", "Tool should succeed with restored session"
+    assert tool_result_restored.get("payload") == test_response_restored, "Tool should return expected response with restored session"
+
 
 async def test_session_failure_handling():
     """
