@@ -88,7 +88,7 @@ async def test_parameter_mapping_with_nested_payload_paths():
     'location.city' and 'customer.address.zipcode' and verifies the outgoing 
     payload has the correct nested structure.
     """
-    from sam_event_mesh_tool.tools import _build_payload
+    from sam_event_mesh_tool.tools import _build_payload_and_resolve_params
     
     # Define parameters with nested payload paths
     parameters_map = {
@@ -123,8 +123,8 @@ async def test_parameter_mapping_with_nested_payload_paths():
         "request_id": "test-123"
     }
     
-    # Act: Build the payload
-    payload = _build_payload(parameters_map, params)
+    # Act: Build the payload and resolve params
+    payload, resolved_params = _build_payload_and_resolve_params(parameters_map, params)
     
     # Assert: Verify the nested structure is correct
     expected_payload = {
@@ -157,7 +157,7 @@ async def test_parameter_defaults_and_overrides():
     This test verifies that parameters with defaults are used when not provided,
     and that explicit values override defaults.
     """
-    from sam_event_mesh_tool.tools import _build_payload
+    from sam_event_mesh_tool.tools import _build_payload_and_resolve_params
     
     # Define parameters with defaults
     parameters_map = {
@@ -180,7 +180,7 @@ async def test_parameter_defaults_and_overrides():
     
     # Test 1: Use all defaults (empty params)
     params_empty = {}
-    payload_defaults = _build_payload(parameters_map, params_empty)
+    payload_defaults, resolved_defaults = _build_payload_and_resolve_params(parameters_map, params_empty)
     
     expected_defaults = {
         "location": {
@@ -200,7 +200,7 @@ async def test_parameter_defaults_and_overrides():
         "timeout": 60
         # unit should use default
     }
-    payload_partial = _build_payload(parameters_map, params_partial)
+    payload_partial, resolved_partial = _build_payload_and_resolve_params(parameters_map, params_partial)
     
     expected_partial = {
         "location": {
@@ -220,7 +220,7 @@ async def test_parameter_defaults_and_overrides():
         "unit": "fahrenheit",
         "timeout": 120
     }
-    payload_all = _build_payload(parameters_map, params_all)
+    payload_all, resolved_all = _build_payload_and_resolve_params(parameters_map, params_all)
     
     expected_all = {
         "location": {
