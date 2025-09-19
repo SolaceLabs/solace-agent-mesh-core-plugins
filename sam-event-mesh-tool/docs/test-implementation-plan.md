@@ -360,9 +360,9 @@ This document provides a comprehensive plan for implementing integration tests f
 - [x] 10. `test_session_isolation`
 
 ### Request-Response Pattern Tests
-- [ ] 11. `test_fire_and_forget_mode`
-- [ ] 12. `test_synchronous_mode_blocking_behavior`
-- [ ] 13. `test_request_timeout`
+- [x] 11. `test_fire_and_forget_mode`
+- [x] 12. `test_synchronous_mode_blocking_behavior`
+- [x] 13. `test_request_timeout`
 - [ ] 14. `test_malformed_response_handling`
 - [ ] 15. `test_broker_connection_failure`
 - [ ] 16. `test_response_correlation_failure`

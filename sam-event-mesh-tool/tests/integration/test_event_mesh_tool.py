@@ -698,3 +698,231 @@ async def test_session_isolation():
     assert "param2" not in schema1.properties, "Tool 1 should not have param2 in schema"
     assert "param2" in schema2.properties, "Tool 2 should have param2 in schema"
     assert "param1" not in schema2.properties, "Tool 2 should not have param1 in schema"
+
+
+async def test_fire_and_forget_mode(
+    agent_with_event_mesh_tool: SamAgentComponent,
+    response_control_queue: Queue,
+):
+    """
+    Test 11: Test wait_for_response=false returns immediately without waiting.
+    
+    This test configures a tool with wait_for_response: false and verifies that
+    the tool returns immediately with success status while the message is still sent.
+    """
+    import asyncio
+    import time
+    
+    # Wait for the agent to be fully initialized
+    await asyncio.sleep(2)
+    
+    # Find the EventMeshTool instance
+    event_mesh_tool = find_event_mesh_tool(agent_with_event_mesh_tool)
+    assert event_mesh_tool is not None, "EventMeshTool not found in agent component"
+    
+    # Temporarily modify the tool config to set wait_for_response to False
+    original_wait_for_response = event_mesh_tool.tool_config.get("wait_for_response", True)
+    event_mesh_tool.tool_config["wait_for_response"] = False
+    
+    try:
+        # Put a response in the control queue (though it shouldn't be waited for)
+        test_response = {"async": "response"}
+        response_control_queue.put((test_response, 1))  # 1 second delay
+        
+        # Create mock context for tool execution
+        tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
+        
+        # Record start time
+        start_time = time.time()
+        
+        # Execute the tool - this should return immediately
+        tool_args = {"request_data": "fire_and_forget_test"}
+        tool_result = await event_mesh_tool._run_async_impl(
+            args=tool_args, tool_context=tool_context
+        )
+        
+        # Record end time
+        end_time = time.time()
+        execution_time = end_time - start_time
+        
+        # Assert: Tool should return immediately (much less than the 1 second delay)
+        assert execution_time < 0.5, f"Tool should return immediately, but took {execution_time} seconds"
+        
+        # Assert: Tool should return success status for fire-and-forget
+        assert tool_result is not None, "Tool should return a result for fire-and-forget"
+        assert tool_result.get("status") == "success", f"Tool should return success status: {tool_result}"
+        assert "asynchronously" in tool_result.get("message", "").lower(), "Message should indicate asynchronous operation"
+        
+        # Assert: No payload should be returned since we didn't wait
+        assert "payload" not in tool_result, "Fire-and-forget should not return a payload"
+        
+        # Verify the message was still sent by checking if the responder received it
+        # Give a moment for the message to be processed
+        await asyncio.sleep(0.1)
+        
+        # The responder should have consumed the message from the control queue
+        # If the queue is empty, it means the message was processed
+        assert response_control_queue.empty(), "Responder should have processed the fire-and-forget message"
+        
+    finally:
+        # Restore original configuration
+        event_mesh_tool.tool_config["wait_for_response"] = original_wait_for_response
+
+
+async def test_synchronous_mode_blocking_behavior(
+    agent_with_event_mesh_tool: SamAgentComponent,
+    response_control_queue: Queue,
+):
+    """
+    Test 12: Verify that synchronous mode properly blocks until response received.
+    
+    This test sends a request with a delay in the responder and verifies that
+    the tool call duration matches the responder delay.
+    """
+    import asyncio
+    import time
+    
+    # Wait for the agent to be fully initialized
+    await asyncio.sleep(2)
+    
+    # Find the EventMeshTool instance
+    event_mesh_tool = find_event_mesh_tool(agent_with_event_mesh_tool)
+    assert event_mesh_tool is not None, "EventMeshTool not found in agent component"
+    
+    # Ensure the tool is configured for synchronous mode
+    original_wait_for_response = event_mesh_tool.tool_config.get("wait_for_response", True)
+    event_mesh_tool.tool_config["wait_for_response"] = True
+    
+    try:
+        # Configure responder to delay for 2 seconds
+        delay_seconds = 2
+        test_response = {"delayed": "response", "delay_was": delay_seconds}
+        response_control_queue.put((test_response, delay_seconds))
+        
+        # Create mock context for tool execution
+        tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
+        
+        # Record start time
+        start_time = time.time()
+        
+        # Execute the tool - this should block until response is received
+        tool_args = {"request_data": "blocking_test"}
+        tool_result = await event_mesh_tool._run_async_impl(
+            args=tool_args, tool_context=tool_context
+        )
+        
+        # Record end time
+        end_time = time.time()
+        execution_time = end_time - start_time
+        
+        # Assert: Tool should have blocked for approximately the delay time
+        # Allow some tolerance for processing time (±0.5 seconds)
+        assert execution_time >= (delay_seconds - 0.5), f"Tool should have blocked for at least {delay_seconds - 0.5} seconds, but only took {execution_time} seconds"
+        assert execution_time <= (delay_seconds + 1.0), f"Tool should not have taken more than {delay_seconds + 1.0} seconds, but took {execution_time} seconds"
+        
+        # Assert: Tool should return the delayed response
+        assert tool_result is not None, "Tool should return a result after blocking"
+        assert tool_result.get("status") == "success", f"Tool should return success status: {tool_result}"
+        assert "payload" in tool_result, "Synchronous mode should return a payload"
+        assert tool_result["payload"] == test_response, f"Expected {test_response}, got {tool_result['payload']}"
+        
+    finally:
+        # Restore original configuration
+        event_mesh_tool.tool_config["wait_for_response"] = original_wait_for_response
+
+
+async def test_request_timeout(
+    agent_with_event_mesh_tool: SamAgentComponent,
+    response_control_queue: Queue,
+):
+    """
+    Test 13: Test that requests timeout properly when no response is received.
+    
+    This test doesn't put anything on the control queue to simulate timeout
+    and verifies that the tool raises TimeoutError or returns timeout status.
+    """
+    import asyncio
+    import time
+    
+    # Wait for the agent to be fully initialized
+    await asyncio.sleep(2)
+    
+    # Find the EventMeshTool instance
+    event_mesh_tool = find_event_mesh_tool(agent_with_event_mesh_tool)
+    assert event_mesh_tool is not None, "EventMeshTool not found in agent component"
+    
+    # Temporarily modify the tool's session config to use a very short timeout
+    # We need to access the session and modify its timeout
+    original_session_id = event_mesh_tool.session_id
+    
+    # Create a new session with a short timeout for this test
+    short_timeout_config = {
+        "broker_config": {
+            "dev_mode": True,
+            "broker_url": "dev-broker",
+            "broker_username": "dev-user",
+            "broker_password": "dev-password",
+            "broker_vpn": "dev-vpn"
+        },
+        "request_expiry_ms": 2000  # 2 second timeout
+    }
+    
+    # Create a new session with short timeout
+    test_session_id = agent_with_event_mesh_tool.create_request_response_session(
+        session_config=short_timeout_config
+    )
+    
+    # Temporarily replace the tool's session ID
+    event_mesh_tool.session_id = test_session_id
+    
+    try:
+        # DO NOT put anything on the response_control_queue
+        # This will cause the responder to block indefinitely, triggering a timeout
+        
+        # Create mock context for tool execution
+        tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
+        
+        # Record start time
+        start_time = time.time()
+        
+        # Execute the tool - this should timeout
+        tool_args = {"request_data": "timeout_test"}
+        tool_result = await event_mesh_tool._run_async_impl(
+            args=tool_args, tool_context=tool_context
+        )
+        
+        # Record end time
+        end_time = time.time()
+        execution_time = end_time - start_time
+        
+        # Assert: Tool should have timed out after approximately 2 seconds
+        # Allow some tolerance for processing time (±1 second)
+        assert execution_time >= 1.5, f"Tool should have taken at least 1.5 seconds to timeout, but only took {execution_time} seconds"
+        assert execution_time <= 4.0, f"Tool should have timed out within 4 seconds, but took {execution_time} seconds"
+        
+        # Assert: Tool should return an error indicating timeout or no response
+        assert tool_result is not None, "Tool should return a result even on timeout"
+        assert tool_result.get("status") == "error", f"Tool should return error status on timeout: {tool_result}"
+        
+        # The error message should indicate timeout or no response
+        error_message = tool_result.get("message", "").lower()
+        assert any(keyword in error_message for keyword in ["timeout", "no response", "failed"]), \
+            f"Error message should indicate timeout or no response: {tool_result}"
+        
+        # Assert: No payload should be returned on timeout
+        assert "payload" not in tool_result or tool_result.get("payload") is None, \
+            "Timeout should not return a payload"
+        
+    finally:
+        # Clean up the test session
+        agent_with_event_mesh_tool.destroy_request_response_session(test_session_id)
+        
+        # Restore original session ID
+        event_mesh_tool.session_id = original_session_id
+        
+        # Clear any remaining items from the control queue to avoid affecting other tests
+        while not response_control_queue.empty():
+            try:
+                response_control_queue.get_nowait()
+            except:
+                break
