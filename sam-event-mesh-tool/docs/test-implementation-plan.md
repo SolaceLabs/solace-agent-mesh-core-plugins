@@ -368,7 +368,7 @@ This document provides a comprehensive plan for implementing integration tests f
 - [x] 16. `test_response_correlation_failure`
 
 ### Concurrency Tests
-- [ ] 17. `test_concurrent_requests_with_correlation`
+- [x] 17. `test_concurrent_requests_with_correlation`
 - [ ] 18. `test_multiple_tool_instances_isolation`
 - [ ] 19. `test_high_concurrency_stress`
 
