@@ -78,3 +78,73 @@ async def test_simple_request_response(
     assert (
         tool_result["payload"] == expected_response
     ), f"Expected {expected_response}, got {tool_result['payload']}"
+
+
+async def test_parameter_mapping_with_nested_payload_paths():
+    """
+    Test 1: Verify that parameters are correctly mapped to nested payload paths using dot notation.
+    
+    This test creates a tool with parameters that use nested payload paths like 
+    'location.city' and 'customer.address.zipcode' and verifies the outgoing 
+    payload has the correct nested structure.
+    """
+    from sam_event_mesh_tool.tools import _build_payload
+    
+    # Define parameters with nested payload paths
+    parameters_map = {
+        "city": {
+            "name": "city",
+            "payload_path": "location.city"
+        },
+        "zipcode": {
+            "name": "zipcode", 
+            "payload_path": "customer.address.zipcode"
+        },
+        "temperature": {
+            "name": "temperature",
+            "payload_path": "weather.current.temperature"
+        },
+        "unit": {
+            "name": "unit",
+            "payload_path": "weather.unit"
+        },
+        "request_id": {
+            "name": "request_id",
+            # No payload_path - this parameter won't be in the payload
+        }
+    }
+    
+    # Test parameters
+    params = {
+        "city": "Ottawa",
+        "zipcode": "K1A 0A6", 
+        "temperature": 25,
+        "unit": "celsius",
+        "request_id": "test-123"
+    }
+    
+    # Act: Build the payload
+    payload = _build_payload(parameters_map, params)
+    
+    # Assert: Verify the nested structure is correct
+    expected_payload = {
+        "location": {
+            "city": "Ottawa"
+        },
+        "customer": {
+            "address": {
+                "zipcode": "K1A 0A6"
+            }
+        },
+        "weather": {
+            "current": {
+                "temperature": 25
+            },
+            "unit": "celsius"
+        }
+    }
+    
+    assert payload == expected_payload, f"Expected {expected_payload}, got {payload}"
+    
+    # Verify that request_id is not in the payload since it has no payload_path
+    assert "request_id" not in payload, "request_id should not be in payload when no payload_path is specified"
