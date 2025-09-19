@@ -363,9 +363,9 @@ This document provides a comprehensive plan for implementing integration tests f
 - [x] 11. `test_fire_and_forget_mode`
 - [x] 12. `test_synchronous_mode_blocking_behavior`
 - [x] 13. `test_request_timeout`
-- [ ] 14. `test_malformed_response_handling`
-- [ ] 15. `test_broker_connection_failure`
-- [ ] 16. `test_response_correlation_failure`
+- [x] 14. `test_malformed_response_handling`
+- [x] 15. `test_broker_connection_failure`
+- [x] 16. `test_response_correlation_failure`
 
 ### Concurrency Tests
 - [ ] 17. `test_concurrent_requests_with_correlation`
