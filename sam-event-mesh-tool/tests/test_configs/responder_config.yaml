@@ -31,6 +31,7 @@ apps:
           # 2. Flexible handler to be injected by the test fixture
           - component_name: response_handler
             component_module: handler_callback
+            num_instances: 5  # Create multiple concurrent handler instances for concurrency testing
             component_config:
               # The 'invoke_handler' callable will be injected at runtime by the fixture.
               invoke_handler: null # Placeholder
