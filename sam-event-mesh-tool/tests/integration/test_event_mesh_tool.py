@@ -2669,35 +2669,37 @@ async def test_invalid_parameter_definitions():
     """
     Test 34: Test validation of parameter definitions in config.
 
-    This test defines parameters with invalid structures (e.g., missing 'name')
-    and verifies that the schema generation handles it gracefully.
+    This test defines parameters with invalid structures (e.g., not a dict,
+    or missing 'name') and verifies that accessing the schema raises a
+    ValueError with a clear error message.
     """
     from sam_event_mesh_tool.tools import EventMeshTool
+    import pytest
 
-    # Create a tool configuration with malformed parameters
-    tool_config = create_basic_tool_config(
-        parameters=[
-            {"name": "valid_param", "type": "string"},  # Valid
-            {"type": "string", "description": "This one is missing a name"},  # Invalid
-            {"name": "another_valid", "type": "integer"},  # Valid
-            "just_a_string",  # Invalid
-            {},  # Invalid
-        ]
+    # Test 1: Parameter is not a dictionary
+    config_not_dict = create_basic_tool_config(parameters=["just_a_string"])
+    tool_not_dict = EventMeshTool(config_not_dict)
+    with pytest.raises(ValueError) as exc_info:
+        _ = tool_not_dict.parameters_schema
+    assert "not a valid dictionary" in str(exc_info.value)
+    assert "index 0" in str(exc_info.value)
+
+    # Test 2: Parameter is a dictionary but missing the 'name' key
+    config_no_name = create_basic_tool_config(
+        parameters=[{"type": "string", "description": "missing name"}]
     )
+    tool_no_name = EventMeshTool(config_no_name)
+    with pytest.raises(ValueError) as exc_info:
+        _ = tool_no_name.parameters_schema
+    assert "missing the required 'name' key" in str(exc_info.value)
+    assert "index 0" in str(exc_info.value)
 
-    # Create tool instance
-    tool = EventMeshTool(tool_config)
-
-    # Get the generated schema
-    schema = tool.parameters_schema
-
-    # Assert: The schema should only contain the valid parameters
-    assert len(schema.properties) == 2, "Should only have 2 valid properties"
-    assert "valid_param" in schema.properties
-    assert "another_valid" in schema.properties
-
-    # Assert that invalid parameters were skipped
-    assert "This one is missing a name" not in str(schema.properties)
+    # Test 3: 'parameters' key is not a list
+    config_not_list = create_basic_tool_config(parameters={"not": "a list"})
+    tool_not_list = EventMeshTool(config_not_list)
+    with pytest.raises(ValueError) as exc_info:
+        _ = tool_not_list.parameters_schema
+    assert "'parameters' must be a list" in str(exc_info.value)
 
 
 async def test_response_correlation_failure(

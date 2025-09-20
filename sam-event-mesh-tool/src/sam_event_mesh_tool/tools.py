@@ -134,6 +134,12 @@ class EventMeshTool(DynamicTool):
         required = []
         config_params = self.tool_config.get("parameters", [])
 
+        if not isinstance(config_params, list):
+            raise ValueError(
+                f"Configuration error in tool '{self.tool_name}': "
+                f"'parameters' must be a list, but found type '{type(config_params).__name__}'."
+            )
+
         type_map = {
             "string": adk_types.Type.STRING,
             "integer": adk_types.Type.INTEGER,
@@ -141,10 +147,19 @@ class EventMeshTool(DynamicTool):
             "boolean": adk_types.Type.BOOLEAN,
         }
 
-        for param in config_params:
+        for i, param in enumerate(config_params):
+            if not isinstance(param, dict):
+                raise ValueError(
+                    f"Configuration error in tool '{self.tool_name}': "
+                    f"Parameter at index {i} is not a valid dictionary. Found: '{param}'"
+                )
+
             param_name = param.get("name")
             if not param_name:
-                continue
+                raise ValueError(
+                    f"Configuration error in tool '{self.tool_name}': "
+                    f"Parameter at index {i} is missing the required 'name' key."
+                )
 
             param_type_str = param.get("type", "string").lower()
             adk_type = type_map.get(param_type_str, adk_types.Type.STRING)
