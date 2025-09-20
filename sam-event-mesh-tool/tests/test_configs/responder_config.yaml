@@ -25,7 +25,7 @@ apps:
             component_config:
               <<: *broker_connection
               broker_subscriptions:
-                - topic: test/request/tool # Subscribes to the agent's request topic
+                - topic: "*/request/>" # Subscribes to all request topics
               payload_format: json
 
           # 2. Flexible handler to be injected by the test fixture
