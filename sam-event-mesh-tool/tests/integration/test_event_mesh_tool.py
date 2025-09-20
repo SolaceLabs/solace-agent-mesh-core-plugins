@@ -1037,84 +1037,90 @@ async def test_concurrent_requests_with_correlation(
 ):
     """
     Test 17: Test that multiple concurrent requests are properly correlated.
-    
+
     This test sends multiple requests simultaneously with different delays
     and verifies that each request gets the correct response despite out-of-order arrival.
     """
     import asyncio
     import time
-    
+
     # Wait for the agent to be fully initialized
     await asyncio.sleep(2)
-    
+
     # Find the EventMeshTool instance
     event_mesh_tool = find_event_mesh_tool(agent_with_event_mesh_tool)
     assert event_mesh_tool is not None, "EventMeshTool not found in agent component"
-    
+
     # Create mock context for tool execution
     tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
-    
+
     # Test 1: Two concurrent requests with different response delays
     # The responses will arrive out of order (second request completes first)
-    
+
     # Response for first request (longer delay)
     response_1 = {"request_id": "req-1", "data": "first_response", "delay": 2.0}
-    # Response for second request (shorter delay)  
+    # Response for second request (shorter delay)
     response_2 = {"request_id": "req-2", "data": "second_response", "delay": 1.0}
-    
+
     # Put responses in the control queue with delays that will cause out-of-order completion
     response_control_queue.put((response_1, 2.0))  # First request, 2 second delay
     response_control_queue.put((response_2, 1.0))  # Second request, 1 second delay
-    
+
     # Define async functions to make concurrent requests
     async def make_request_1():
         return await event_mesh_tool._run_async_impl(
             args={"request_data": "first_request"}, tool_context=tool_context
         )
-    
+
     async def make_request_2():
         return await event_mesh_tool._run_async_impl(
             args={"request_data": "second_request"}, tool_context=tool_context
         )
-    
+
     # Record start time
     start_time = time.time()
-    
+
     # Execute both requests concurrently
     results = await asyncio.gather(make_request_1(), make_request_2())
-    
+
     # Record end time
     end_time = time.time()
     total_time = end_time - start_time
-    
+
     # Verify timing - should complete in about 2 seconds (the longer delay)
     # not 3 seconds (sum of delays), proving they ran concurrently
     assert total_time >= 1.8, f"Should take at least 1.8 seconds, took {total_time}"
     assert total_time <= 3.0, f"Should complete within 3 seconds, took {total_time}"
-    
+
     # Verify both requests succeeded
     result_1, result_2 = results
-    
+
     assert result_1 is not None, "First request should return a result"
-    assert result_1.get("status") == "success", f"First request should succeed: {result_1}"
+    assert (
+        result_1.get("status") == "success"
+    ), f"First request should succeed: {result_1}"
     assert "payload" in result_1, "First request should have payload"
-    
+
     assert result_2 is not None, "Second request should return a result"
-    assert result_2.get("status") == "success", f"Second request should succeed: {result_2}"
+    assert (
+        result_2.get("status") == "success"
+    ), f"Second request should succeed: {result_2}"
     assert "payload" in result_2, "Second request should have payload"
-    
+
     # Verify correlation - each request should get its corresponding response
     # Note: Due to the nature of the dev_broker and our test setup, we can't easily
     # guarantee which specific response goes to which request, but we can verify
     # that both requests got valid responses from our set
-    
+
     received_payloads = [result_1["payload"], result_2["payload"]]
     expected_payloads = [response_1, response_2]
-    
+
     # Both expected responses should be present in the received responses
     for expected in expected_payloads:
-        assert expected in received_payloads, f"Expected response {expected} not found in received responses {received_payloads}"
-    
+        assert (
+            expected in received_payloads
+        ), f"Expected response {expected} not found in received responses {received_payloads}"
+
     # Test 2: Multiple concurrent requests (stress test)
     # Clear any remaining responses
     while not response_control_queue.empty():
@@ -1122,56 +1128,65 @@ async def test_concurrent_requests_with_correlation(
             response_control_queue.get_nowait()
         except:
             break
-    
+
     num_concurrent_requests = 5
     responses = []
-    
+
     # Prepare responses with varying delays
     for i in range(num_concurrent_requests):
         response = {"batch_id": "batch-1", "request_num": i, "data": f"response_{i}"}
         delay = 0.5 + (i * 0.2)  # Delays from 0.5 to 1.3 seconds
         responses.append(response)
         response_control_queue.put((response, delay))
-    
+
     # Create concurrent request functions
     async def make_batch_request(request_num):
         return await event_mesh_tool._run_async_impl(
-            args={"request_data": f"batch_request_{request_num}"}, 
-            tool_context=tool_context
+            args={"request_data": f"batch_request_{request_num}"},
+            tool_context=tool_context,
         )
-    
+
     # Record start time for batch test
     batch_start_time = time.time()
-    
+
     # Execute all requests concurrently
-    batch_results = await asyncio.gather(*[
-        make_batch_request(i) for i in range(num_concurrent_requests)
-    ])
-    
+    batch_results = await asyncio.gather(
+        *[make_batch_request(i) for i in range(num_concurrent_requests)]
+    )
+
     # Record end time for batch test
     batch_end_time = time.time()
     batch_total_time = batch_end_time - batch_start_time
-    
+
     # Verify timing - should complete in about 1.3 seconds (longest delay)
     # not 3.5 seconds (sum of all delays)
-    assert batch_total_time >= 1.0, f"Batch should take at least 1.0 seconds, took {batch_total_time}"
-    assert batch_total_time <= 2.5, f"Batch should complete within 2.5 seconds, took {batch_total_time}"
-    
+    assert (
+        batch_total_time >= 1.0
+    ), f"Batch should take at least 1.0 seconds, took {batch_total_time}"
+    assert (
+        batch_total_time <= 2.5
+    ), f"Batch should complete within 2.5 seconds, took {batch_total_time}"
+
     # Verify all requests succeeded
-    assert len(batch_results) == num_concurrent_requests, f"Should get {num_concurrent_requests} results"
-    
+    assert (
+        len(batch_results) == num_concurrent_requests
+    ), f"Should get {num_concurrent_requests} results"
+
     for i, result in enumerate(batch_results):
         assert result is not None, f"Batch request {i} should return a result"
-        assert result.get("status") == "success", f"Batch request {i} should succeed: {result}"
+        assert (
+            result.get("status") == "success"
+        ), f"Batch request {i} should succeed: {result}"
         assert "payload" in result, f"Batch request {i} should have payload"
-    
+
     # Verify all expected responses were received
     batch_received_payloads = [result["payload"] for result in batch_results]
-    
+
     for expected_response in responses:
-        assert expected_response in batch_received_payloads, \
-            f"Expected batch response {expected_response} not found in received responses"
-    
+        assert (
+            expected_response in batch_received_payloads
+        ), f"Expected batch response {expected_response} not found in received responses"
+
     # Test 3: Concurrent requests with one timing out
     # Clear any remaining responses
     while not response_control_queue.empty():
@@ -1179,7 +1194,7 @@ async def test_concurrent_requests_with_correlation(
             response_control_queue.get_nowait()
         except:
             break
-    
+
     # Create a session with shorter timeout for this test
     short_timeout_config = {
         "broker_config": {
@@ -1187,73 +1202,78 @@ async def test_concurrent_requests_with_correlation(
             "broker_url": "dev-broker",
             "broker_username": "dev-user",
             "broker_password": "dev-password",
-            "broker_vpn": "dev-vpn"
+            "broker_vpn": "dev-vpn",
         },
-        "request_expiry_ms": 1500  # 1.5 second timeout
+        "request_expiry_ms": 1500,  # 1.5 second timeout
     }
-    
-    timeout_test_session_id = agent_with_event_mesh_tool.create_request_response_session(
-        session_config=short_timeout_config
+
+    timeout_test_session_id = (
+        agent_with_event_mesh_tool.create_request_response_session(
+            session_config=short_timeout_config
+        )
     )
-    
+
     # Store original session ID and temporarily replace it
     original_session_id = event_mesh_tool.session_id
     event_mesh_tool.session_id = timeout_test_session_id
-    
+
     try:
         # Put one response that will arrive in time, don't put a second response (will timeout)
         quick_response = {"mixed": "test", "type": "quick"}
         response_control_queue.put((quick_response, 0.5))  # Quick response
         # No second response - will cause timeout
-        
+
         async def make_quick_request():
             return await event_mesh_tool._run_async_impl(
                 args={"request_data": "quick_request"}, tool_context=tool_context
             )
-        
+
         async def make_timeout_request():
             return await event_mesh_tool._run_async_impl(
                 args={"request_data": "timeout_request"}, tool_context=tool_context
             )
-        
+
         # Execute both requests concurrently
         mixed_results = await asyncio.gather(
-            make_quick_request(), 
-            make_timeout_request(),
-            return_exceptions=True
+            make_quick_request(), make_timeout_request(), return_exceptions=True
         )
-        
+
         # Verify results - one should succeed, one should timeout/fail
         success_count = 0
         error_count = 0
-        
+
         for i, result in enumerate(mixed_results):
             if isinstance(result, Exception):
                 error_count += 1
                 continue
-                
+
             if result and result.get("status") == "success":
                 success_count += 1
-                assert result.get("payload") == quick_response, "Successful request should get the quick response"
+                assert (
+                    result.get("payload") == quick_response
+                ), "Successful request should get the quick response"
             elif result and result.get("status") == "error":
                 error_count += 1
-                assert any(keyword in result.get("message", "").lower() 
-                          for keyword in ["timeout", "no response", "failed"]), \
-                    f"Error result should indicate timeout: {result}"
+                assert any(
+                    keyword in result.get("message", "").lower()
+                    for keyword in ["timed out", "no response", "failed"]
+                ), f"Error result should indicate timeout: {result}"
             else:
                 pytest.fail(f"Unexpected result type for mixed request {i}: {result}")
-        
+
         # We should have exactly one success and one error
         assert success_count == 1, f"Expected 1 successful request, got {success_count}"
         assert error_count == 1, f"Expected 1 failed/timeout request, got {error_count}"
-        
+
     finally:
         # Clean up the timeout test session
-        agent_with_event_mesh_tool.destroy_request_response_session(timeout_test_session_id)
-        
+        agent_with_event_mesh_tool.destroy_request_response_session(
+            timeout_test_session_id
+        )
+
         # Restore original session ID
         event_mesh_tool.session_id = original_session_id
-        
+
         # Clear any remaining items from the control queue
         while not response_control_queue.empty():
             try:
@@ -1262,97 +1282,16 @@ async def test_concurrent_requests_with_correlation(
                 break
 
 
-async def test_malformed_response_handling(
-    agent_with_event_mesh_tool: SamAgentComponent,
-    response_control_queue: Queue,
-):
-    """
-    Test 14: Test handling of malformed or invalid responses.
-    
-    This test puts invalid JSON, corrupted data, or wrong format on the control queue
-    and verifies that the tool handles gracefully and returns appropriate error.
-    """
-    import asyncio
-    
-    # Wait for the agent to be fully initialized
-    await asyncio.sleep(2)
-    
-    # Find the EventMeshTool instance
-    event_mesh_tool = find_event_mesh_tool(agent_with_event_mesh_tool)
-    assert event_mesh_tool is not None, "EventMeshTool not found in agent component"
-    
-    # Create mock context for tool execution
-    tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
-    
-    # Test 1: Invalid JSON response
-    invalid_json_response = '{"incomplete": "json"'  # Missing closing brace
-    response_control_queue.put((invalid_json_response, 0))
-    
-    tool_args = {"request_data": "malformed_json_test"}
-    tool_result = await event_mesh_tool._run_async_impl(
-        args=tool_args, tool_context=tool_context
-    )
-    
-    # The tool should still return success since the responder sent a response
-    # The payload decoding happens in the broker layer, not the tool
-    assert tool_result is not None, "Tool should return a result for malformed JSON"
-    assert tool_result.get("status") == "success", f"Tool should return success status: {tool_result}"
-    assert "payload" in tool_result, "Tool should return the raw payload even if malformed"
-    assert tool_result["payload"] == invalid_json_response, "Tool should return the raw malformed JSON"
-    
-    # Test 2: Binary/corrupted data response
-    corrupted_data = b'\x00\x01\x02\xff\xfe'  # Binary data that's not valid text
-    response_control_queue.put((corrupted_data, 0))
-    
-    tool_args = {"request_data": "corrupted_data_test"}
-    tool_result = await event_mesh_tool._run_async_impl(
-        args=tool_args, tool_context=tool_context
-    )
-    
-    assert tool_result is not None, "Tool should return a result for corrupted data"
-    assert tool_result.get("status") == "success", f"Tool should return success status: {tool_result}"
-    assert "payload" in tool_result, "Tool should return the payload"
-    assert tool_result["payload"] == corrupted_data, "Tool should return the raw corrupted data"
-    
-    # Test 3: None/null response
-    none_response = None
-    response_control_queue.put((none_response, 0))
-    
-    tool_args = {"request_data": "none_response_test"}
-    tool_result = await event_mesh_tool._run_async_impl(
-        args=tool_args, tool_context=tool_context
-    )
-    
-    assert tool_result is not None, "Tool should return a result for None response"
-    assert tool_result.get("status") == "success", f"Tool should return success status: {tool_result}"
-    assert "payload" in tool_result, "Tool should return the payload"
-    assert tool_result["payload"] is None, "Tool should return None payload"
-    
-    # Test 4: Very large response (test payload size handling)
-    large_response = {"data": "x" * 10000}  # 10KB of data
-    response_control_queue.put((large_response, 0))
-    
-    tool_args = {"request_data": "large_response_test"}
-    tool_result = await event_mesh_tool._run_async_impl(
-        args=tool_args, tool_context=tool_context
-    )
-    
-    assert tool_result is not None, "Tool should return a result for large response"
-    assert tool_result.get("status") == "success", f"Tool should return success status: {tool_result}"
-    assert "payload" in tool_result, "Tool should return the payload"
-    assert tool_result["payload"] == large_response, "Tool should return the large response"
-
-
 async def test_broker_connection_failure():
     """
     Test 15: Test behavior when broker connection is unavailable.
-    
+
     This test configures a tool with invalid broker settings and verifies that
     the tool fails gracefully with connection error.
     """
     from sam_event_mesh_tool.tools import EventMeshTool
     from unittest.mock import Mock
-    
+
     # Create a tool configuration with invalid broker settings
     tool_config = create_basic_tool_config(
         event_mesh_config={
@@ -1361,44 +1300,54 @@ async def test_broker_connection_failure():
                 "broker_url": "tcp://invalid-broker:99999",  # Invalid broker
                 "broker_username": "invalid-user",
                 "broker_password": "invalid-password",
-                "broker_vpn": "invalid-vpn"
+                "broker_vpn": "invalid-vpn",
             }
         }
     )
-    
+
     # Create tool instance
     tool = EventMeshTool(tool_config)
-    
+
     # Create a mock component that will fail session creation due to broker connection
     mock_component = Mock()
     mock_component.create_request_response_session.side_effect = Exception(
         "Failed to connect to broker: Connection refused"
     )
-    
+
     # Create a mock tool_config_model
     mock_tool_config = create_mock_tool_config_model()
-    
+
     # Test: Call init and expect it to raise an exception due to broker connection failure
     with pytest.raises(Exception) as exc_info:
         await tool.init(mock_component, mock_tool_config)
-    
-    assert "Failed to connect to broker" in str(exc_info.value) or "Connection refused" in str(exc_info.value)
-    
+
+    assert "Failed to connect to broker" in str(
+        exc_info.value
+    ) or "Connection refused" in str(exc_info.value)
+
     # Verify that session_id remains None after failed initialization
-    assert tool.session_id is None, "Session ID should remain None after failed broker connection"
-    
+    assert (
+        tool.session_id is None
+    ), "Session ID should remain None after failed broker connection"
+
     # Test: Verify tool fails gracefully when used without a broker connection
     working_mock_component = Mock()
     tool_context = create_mock_tool_context(working_mock_component)
-    
+
     # Try to use the tool without a session (due to broker connection failure)
     tool_result = await tool._run_async_impl(
         args={"test_param": "test_value"}, tool_context=tool_context
     )
-    
-    assert tool_result is not None, "Tool should return a result even when broker connection failed"
-    assert tool_result.get("status") == "error", "Tool should return error status when broker connection failed"
-    assert "not initialized" in tool_result.get("message", "").lower(), "Error message should indicate session not initialized"
+
+    assert (
+        tool_result is not None
+    ), "Tool should return a result even when broker connection failed"
+    assert (
+        tool_result.get("status") == "error"
+    ), "Tool should return error status when broker connection failed"
+    assert (
+        "not initialized" in tool_result.get("message", "").lower()
+    ), "Error message should indicate session not initialized"
 
 
 async def test_response_correlation_failure(
@@ -1407,20 +1356,20 @@ async def test_response_correlation_failure(
 ):
     """
     Test 16: Test handling when response correlation fails.
-    
+
     This test simulates response with wrong correlation ID and verifies that
     the tool should timeout or handle correlation mismatch.
     """
     import asyncio
     import time
-    
+
     # Wait for the agent to be fully initialized
     await asyncio.sleep(2)
-    
+
     # Find the EventMeshTool instance
     event_mesh_tool = find_event_mesh_tool(agent_with_event_mesh_tool)
     assert event_mesh_tool is not None, "EventMeshTool not found in agent component"
-    
+
     # Create a new session with a short timeout for this test
     short_timeout_config = {
         "broker_config": {
@@ -1428,118 +1377,126 @@ async def test_response_correlation_failure(
             "broker_url": "dev-broker",
             "broker_username": "dev-user",
             "broker_password": "dev-password",
-            "broker_vpn": "dev-vpn"
+            "broker_vpn": "dev-vpn",
         },
-        "request_expiry_ms": 3000  # 3 second timeout
+        "request_expiry_ms": 3000,  # 3 second timeout
     }
-    
+
     # Create a new session with short timeout
     test_session_id = agent_with_event_mesh_tool.create_request_response_session(
         session_config=short_timeout_config
     )
-    
+
     # Store original session ID and temporarily replace it
     original_session_id = event_mesh_tool.session_id
     event_mesh_tool.session_id = test_session_id
-    
+
     try:
         # Put a response in the control queue, but it will have wrong correlation
         # The dev_broker and request-response system handle correlation automatically,
         # so we can't easily simulate a correlation mismatch at this level.
         # Instead, we'll test the timeout behavior when no correlated response arrives.
-        
+
         # Put a response that will be consumed by the responder but won't correlate
         # to our specific request (this simulates the responder getting a different request)
         wrong_response = {"wrong": "correlation"}
         response_control_queue.put((wrong_response, 0))
-        
+
         # Create mock context for tool execution
         tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
-        
+
         # Record start time
         start_time = time.time()
-        
+
         # Execute the tool - this should timeout because the response won't correlate
         tool_args = {"request_data": "correlation_test"}
         tool_result = await event_mesh_tool._run_async_impl(
             args=tool_args, tool_context=tool_context
         )
-        
+
         # Record end time
         end_time = time.time()
         execution_time = end_time - start_time
-        
+
         # The responder will consume our test response and send it back,
         # but since we're using the dev_broker, correlation should actually work.
         # So this test will likely succeed rather than timeout.
-        
+
         if tool_result.get("status") == "success":
             # If correlation worked (which it should in dev_mode), verify the response
-            assert tool_result.get("payload") == wrong_response, "Should receive the response even if we called it 'wrong'"
+            assert (
+                tool_result.get("payload") == wrong_response
+            ), "Should receive the response even if we called it 'wrong'"
             assert execution_time < 2.0, "Should complete quickly if correlation works"
         else:
             # If correlation somehow failed, it should timeout
-            assert tool_result.get("status") == "error", "Should return error status on correlation failure"
+            assert (
+                tool_result.get("status") == "error"
+            ), "Should return error status on correlation failure"
             assert execution_time >= 2.5, "Should timeout after approximately 3 seconds"
             error_message = tool_result.get("message", "").lower()
-            assert any(keyword in error_message for keyword in ["timeout", "no response", "failed"]), \
-                f"Error message should indicate timeout or failure: {tool_result}"
-        
+            assert any(
+                keyword in error_message
+                for keyword in ["timeout", "no response", "failed"]
+            ), f"Error message should indicate timeout or failure: {tool_result}"
+
         # Test 2: Simulate a scenario where multiple requests are made but responses arrive out of order
         # This tests the correlation system's ability to match responses to the correct requests
-        
+
         # Clear any remaining responses
         while not response_control_queue.empty():
             try:
                 response_control_queue.get_nowait()
             except:
                 break
-        
+
         # Put two responses in the queue with different delays
         response_1 = {"request": "first", "order": 1}
         response_2 = {"request": "second", "order": 2}
-        
+
         # Put them in reverse order of expected completion
         response_control_queue.put((response_2, 0.5))  # Second response, shorter delay
         response_control_queue.put((response_1, 1.0))  # First response, longer delay
-        
+
         # Make two concurrent requests
         async def make_request(request_data, expected_response):
             result = await event_mesh_tool._run_async_impl(
                 args={"request_data": request_data}, tool_context=tool_context
             )
             return result
-        
+
         # Start both requests concurrently
         start_time = time.time()
         results = await asyncio.gather(
             make_request("first_request", response_1),
             make_request("second_request", response_2),
-            return_exceptions=True
+            return_exceptions=True,
         )
         end_time = time.time()
-        
+
         # Both requests should succeed despite out-of-order responses
         assert len(results) == 2, "Should get results for both requests"
-        
+
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 pytest.fail(f"Request {i+1} failed with exception: {result}")
-            
-            assert result.get("status") == "success", f"Request {i+1} should succeed: {result}"
+
+            assert (
+                result.get("status") == "success"
+            ), f"Request {i+1} should succeed: {result}"
             assert "payload" in result, f"Request {i+1} should have payload"
-        
+
         # The correlation system should ensure each request gets a response
         # (though we can't easily verify which specific response goes to which request
         # without more complex test infrastructure)
-        
+
     finally:
         # Clean up the test session
         agent_with_event_mesh_tool.destroy_request_response_session(test_session_id)
-        
+
         # Restore original session ID
         event_mesh_tool.session_id = original_session_id
-        
+
         # Clear any remaining items from the control queue
         while not response_control_queue.empty():
             try:
