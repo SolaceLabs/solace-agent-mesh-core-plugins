@@ -401,9 +401,9 @@ This document provides a comprehensive plan for implementing integration tests f
 - [ ] 37. `test_memory_usage_under_load`
 
 ### Advanced Feature Tests
-- [ ] 38. `test_custom_user_properties`
-- [ ] 39. `test_response_topic_insertion`
-- [ ] 40. `test_custom_reply_topic_configuration`
+- [x] 38. `test_custom_user_properties`
+- [x] 39. `test_response_topic_insertion`
+- [x] 40. `test_custom_reply_topic_configuration`
 
 ### Test Infrastructure
 - [ ] 41. `agent_with_multiple_tools` fixture

@@ -2669,6 +2669,137 @@ async def test_missing_event_mesh_config():
     assert "'broker_config' is a required block" in str(exc_info.value)
 
 
+async def test_custom_user_properties_config():
+    """
+    Test 38: Test that custom user property keys are passed to the session config.
+
+    This is a unit test that verifies the tool correctly configures its session
+    when custom keys for user properties are provided.
+    """
+    from sam_event_mesh_tool.tools import EventMeshTool
+    from unittest.mock import Mock
+
+    # Create a tool configuration with custom user property keys
+    tool_config = create_basic_tool_config(
+        event_mesh_config={
+            "broker_config": {
+                "dev_mode": True,
+                "broker_url": "dev-broker",
+                "broker_username": "dev-user",
+                "broker_password": "dev-password",
+                "broker_vpn": "dev-vpn",
+            },
+            "user_properties_reply_topic_key": "myCustomReplyTopicKey",
+            "user_properties_reply_metadata_key": "myCustomMetadataKey",
+        }
+    )
+
+    tool = EventMeshTool(tool_config)
+    mock_component = Mock()
+    mock_component.create_request_response_session.return_value = "session-id"
+    mock_tool_config_model = create_mock_tool_config_model()
+
+    # Act
+    await tool.init(mock_component, mock_tool_config_model)
+
+    # Assert
+    mock_component.create_request_response_session.assert_called_once()
+    call_args, call_kwargs = mock_component.create_request_response_session.call_args
+    session_config = call_kwargs.get("session_config", {})
+
+    assert (
+        session_config.get("user_properties_reply_topic_key") == "myCustomReplyTopicKey"
+    )
+    assert (
+        session_config.get("user_properties_reply_metadata_key")
+        == "myCustomMetadataKey"
+    )
+
+
+async def test_response_topic_insertion_config():
+    """
+    Test 39: Test that the response_topic_insertion_expression is passed to the session config.
+
+    This is a unit test that verifies the tool correctly configures its session
+    when a response topic insertion expression is provided.
+    """
+    from sam_event_mesh_tool.tools import EventMeshTool
+    from unittest.mock import Mock
+
+    # Create a tool configuration with a response topic insertion expression
+    tool_config = create_basic_tool_config(
+        event_mesh_config={
+            "broker_config": {
+                "dev_mode": True,
+                "broker_url": "dev-broker",
+                "broker_username": "dev-user",
+                "broker_password": "dev-password",
+                "broker_vpn": "dev-vpn",
+            },
+            "response_topic_insertion_expression": "payload.replyTo",
+        }
+    )
+
+    tool = EventMeshTool(tool_config)
+    mock_component = Mock()
+    mock_component.create_request_response_session.return_value = "session-id"
+    mock_tool_config_model = create_mock_tool_config_model()
+
+    # Act
+    await tool.init(mock_component, mock_tool_config_model)
+
+    # Assert
+    mock_component.create_request_response_session.assert_called_once()
+    call_args, call_kwargs = mock_component.create_request_response_session.call_args
+    session_config = call_kwargs.get("session_config", {})
+
+    assert (
+        session_config.get("response_topic_insertion_expression") == "payload.replyTo"
+    )
+
+
+async def test_custom_reply_topic_configuration():
+    """
+    Test 40: Test that custom reply topic and queue prefixes are passed to the session config.
+
+    This is a unit test that verifies the tool correctly configures its session
+    with custom prefixes for reply topics and queues.
+    """
+    from sam_event_mesh_tool.tools import EventMeshTool
+    from unittest.mock import Mock
+
+    # Create a tool configuration with custom prefixes
+    tool_config = create_basic_tool_config(
+        event_mesh_config={
+            "broker_config": {
+                "dev_mode": True,
+                "broker_url": "dev-broker",
+                "broker_username": "dev-user",
+                "broker_password": "dev-password",
+                "broker_vpn": "dev-vpn",
+            },
+            "response_topic_prefix": "my/custom/reply/topic/",
+            "response_queue_prefix": "my-custom-reply-queue-",
+        }
+    )
+
+    tool = EventMeshTool(tool_config)
+    mock_component = Mock()
+    mock_component.create_request_response_session.return_value = "session-id"
+    mock_tool_config_model = create_mock_tool_config_model()
+
+    # Act
+    await tool.init(mock_component, mock_tool_config_model)
+
+    # Assert
+    mock_component.create_request_response_session.assert_called_once()
+    call_args, call_kwargs = mock_component.create_request_response_session.call_args
+    session_config = call_kwargs.get("session_config", {})
+
+    assert session_config.get("response_topic_prefix") == "my/custom/reply/topic/"
+    assert session_config.get("response_queue_prefix") == "my-custom-reply-queue-"
+
+
 async def test_invalid_parameter_definitions():
     """
     Test 34: Test validation of parameter definitions in config.
