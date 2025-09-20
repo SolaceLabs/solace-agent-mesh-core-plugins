@@ -369,7 +369,7 @@ This document provides a comprehensive plan for implementing integration tests f
 
 ### Concurrency Tests
 - [x] 17. `test_concurrent_requests_with_correlation`
-- [ ] 18. `test_multiple_tool_instances_isolation`
+- [x] 18. `test_multiple_tool_instances_isolation`
 - [ ] 19. `test_high_concurrency_stress`
 
 ### Payload Format Tests
