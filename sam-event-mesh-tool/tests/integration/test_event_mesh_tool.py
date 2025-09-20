@@ -2632,7 +2632,7 @@ async def test_missing_event_mesh_config():
     Test 33: Test behavior when event_mesh_config is missing or invalid.
 
     This test configures the tool without the required event_mesh_config
-    and verifies that it fails initialization with a clear error.
+    and verifies that it fails initialization with a clear ValueError.
     """
     from sam_event_mesh_tool.tools import EventMeshTool
     from unittest.mock import Mock
@@ -2646,23 +2646,19 @@ async def test_missing_event_mesh_config():
     mock_component = Mock()
     mock_tool_config_model = create_mock_tool_config_model()
 
-    with pytest.raises(KeyError) as exc_info:
+    with pytest.raises(ValueError) as exc_info:
         await tool_no_emc.init(mock_component, mock_tool_config_model)
-    assert "event_mesh_config" in str(exc_info.value)
+    assert "'event_mesh_config' is a required block" in str(exc_info.value)
 
     # Test 2: Missing broker_config inside event_mesh_config
     config_no_broker = create_basic_tool_config(
         event_mesh_config={"request_expiry_ms": 5000}
     )
     tool_no_broker = EventMeshTool(config_no_broker)
-    mock_component.create_request_response_session.side_effect = ValueError(
-        "Invalid 'default_broker_config' for multi_session_request_response"
-    )
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(ValueError) as exc_info:
         await tool_no_broker.init(mock_component, mock_tool_config_model)
-    # The error comes from the session controller, which expects broker_config
-    assert "broker_config" in str(exc_info.value).lower()
+    assert "'broker_config' is a required block" in str(exc_info.value)
 
 
 async def test_invalid_parameter_definitions():

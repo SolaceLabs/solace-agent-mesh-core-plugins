@@ -93,7 +93,20 @@ class EventMeshTool(DynamicTool):
         """Initializes the dedicated request-response session for this tool instance."""
         log_identifier = f"[EventMeshTool:{self.tool_name}:init]"
         log.info(f"{log_identifier} Initializing event mesh session.")
-        event_mesh_config = self.tool_config.get("event_mesh_config", {})
+
+        # Fail fast if configuration is missing
+        if "event_mesh_config" not in self.tool_config:
+            raise ValueError(
+                f"Configuration error in tool '{self.tool_name}': "
+                "'event_mesh_config' is a required block."
+            )
+        event_mesh_config = self.tool_config["event_mesh_config"]
+        if "broker_config" not in event_mesh_config:
+            raise ValueError(
+                f"Configuration error in tool '{self.tool_name}': "
+                "'broker_config' is a required block inside 'event_mesh_config'."
+            )
+
         try:
             self.session_id = component.create_request_response_session(
                 session_config=event_mesh_config
