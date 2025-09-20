@@ -11,12 +11,12 @@ from queue import Queue
 # Add path to the source code for imports
 import sys
 from pathlib import Path
+from solace_ai_connector.common.message import Message
 
 sys.path.append(str(Path(__file__).parent.parent.parent / "src"))
 
 
 from solace_agent_mesh.agent.sac.component import SamAgentComponent
-from sam_event_mesh_tool.tools import EventMeshTool
 from ..test_utils import (
     create_mock_tool_context,
     find_event_mesh_tool,
@@ -1285,7 +1285,7 @@ async def test_concurrent_requests_with_correlation(
 async def test_multiple_tool_instances_isolation():
     """
     Test 18: Test that multiple EventMeshTool instances don't interfere with each other.
-    
+
     This test would require configuring an agent with multiple tools and using them concurrently.
     Since our current test setup only has one tool configured, we'll create a comprehensive
     unit test that simulates multiple tool instances and verifies their isolation.
@@ -1293,7 +1293,7 @@ async def test_multiple_tool_instances_isolation():
     from sam_event_mesh_tool.tools import EventMeshTool
     from unittest.mock import Mock
     import asyncio
-    
+
     # Create three different tool configurations to simulate multiple tools in an agent
     tool_config_weather = create_basic_tool_config(
         tool_name="GetWeather",
@@ -1305,7 +1305,7 @@ async def test_multiple_tool_instances_isolation():
                 "type": "string",
                 "required": True,
                 "description": "The city to get weather for",
-                "payload_path": "location.city"
+                "payload_path": "location.city",
             }
         ],
         event_mesh_config={
@@ -1314,13 +1314,13 @@ async def test_multiple_tool_instances_isolation():
                 "broker_url": "weather-broker",
                 "broker_username": "weather-user",
                 "broker_password": "weather-pass",
-                "broker_vpn": "weather-vpn"
+                "broker_vpn": "weather-vpn",
             },
             "request_expiry_ms": 5000,
-            "payload_format": "json"
-        }
+            "payload_format": "json",
+        },
     )
-    
+
     tool_config_crm = create_basic_tool_config(
         tool_name="UpdateCRM",
         description="Updates CRM records",
@@ -1331,15 +1331,15 @@ async def test_multiple_tool_instances_isolation():
                 "type": "string",
                 "required": True,
                 "description": "The customer ID to update",
-                "payload_path": "customer.id"
+                "payload_path": "customer.id",
             },
             {
                 "name": "status",
                 "type": "string",
                 "required": False,
                 "default": "active",
-                "payload_path": "customer.status"
-            }
+                "payload_path": "customer.status",
+            },
         ],
         event_mesh_config={
             "broker_config": {
@@ -1347,13 +1347,13 @@ async def test_multiple_tool_instances_isolation():
                 "broker_url": "crm-broker",
                 "broker_username": "crm-user",
                 "broker_password": "crm-pass",
-                "broker_vpn": "crm-vpn"
+                "broker_vpn": "crm-vpn",
             },
             "request_expiry_ms": 10000,
-            "payload_format": "yaml"
-        }
+            "payload_format": "yaml",
+        },
     )
-    
+
     tool_config_inventory = create_basic_tool_config(
         tool_name="CheckInventory",
         description="Checks product inventory",
@@ -1364,15 +1364,15 @@ async def test_multiple_tool_instances_isolation():
                 "type": "string",
                 "required": True,
                 "description": "The product ID to check",
-                "payload_path": "product.id"
+                "payload_path": "product.id",
             },
             {
                 "name": "warehouse",
                 "type": "string",
                 "required": False,
                 "default": "main",
-                "payload_path": "warehouse.location"
-            }
+                "payload_path": "warehouse.location",
+            },
         ],
         event_mesh_config={
             "broker_config": {
@@ -1380,72 +1380,112 @@ async def test_multiple_tool_instances_isolation():
                 "broker_url": "inventory-broker",
                 "broker_username": "inventory-user",
                 "broker_password": "inventory-pass",
-                "broker_vpn": "inventory-vpn"
+                "broker_vpn": "inventory-vpn",
             },
             "request_expiry_ms": 15000,
-            "payload_format": "text"
-        }
+            "payload_format": "text",
+        },
     )
-    
+
     # Create three tool instances
     weather_tool = EventMeshTool(tool_config_weather)
     crm_tool = EventMeshTool(tool_config_crm)
     inventory_tool = EventMeshTool(tool_config_inventory)
-    
+
     # Verify tools are different instances with different configurations
-    assert weather_tool is not crm_tool, "Weather and CRM tools should be different instances"
-    assert weather_tool is not inventory_tool, "Weather and Inventory tools should be different instances"
-    assert crm_tool is not inventory_tool, "CRM and Inventory tools should be different instances"
-    
+    assert (
+        weather_tool is not crm_tool
+    ), "Weather and CRM tools should be different instances"
+    assert (
+        weather_tool is not inventory_tool
+    ), "Weather and Inventory tools should be different instances"
+    assert (
+        crm_tool is not inventory_tool
+    ), "CRM and Inventory tools should be different instances"
+
     # Verify each tool has its own unique configuration
-    assert weather_tool.tool_name == "GetWeather", "Weather tool should have correct name"
+    assert (
+        weather_tool.tool_name == "GetWeather"
+    ), "Weather tool should have correct name"
     assert crm_tool.tool_name == "UpdateCRM", "CRM tool should have correct name"
-    assert inventory_tool.tool_name == "CheckInventory", "Inventory tool should have correct name"
-    
+    assert (
+        inventory_tool.tool_name == "CheckInventory"
+    ), "Inventory tool should have correct name"
+
     # Verify parameter schemas are different
     weather_schema = weather_tool.parameters_schema
     crm_schema = crm_tool.parameters_schema
     inventory_schema = inventory_tool.parameters_schema
-    
-    assert "city" in weather_schema.properties, "Weather tool should have city parameter"
-    assert "city" not in crm_schema.properties, "CRM tool should not have city parameter"
-    assert "city" not in inventory_schema.properties, "Inventory tool should not have city parameter"
-    
-    assert "customer_id" in crm_schema.properties, "CRM tool should have customer_id parameter"
-    assert "customer_id" not in weather_schema.properties, "Weather tool should not have customer_id parameter"
-    assert "customer_id" not in inventory_schema.properties, "Inventory tool should not have customer_id parameter"
-    
-    assert "product_id" in inventory_schema.properties, "Inventory tool should have product_id parameter"
-    assert "product_id" not in weather_schema.properties, "Weather tool should not have product_id parameter"
-    assert "product_id" not in crm_schema.properties, "CRM tool should not have product_id parameter"
-    
+
+    assert (
+        "city" in weather_schema.properties
+    ), "Weather tool should have city parameter"
+    assert (
+        "city" not in crm_schema.properties
+    ), "CRM tool should not have city parameter"
+    assert (
+        "city" not in inventory_schema.properties
+    ), "Inventory tool should not have city parameter"
+
+    assert (
+        "customer_id" in crm_schema.properties
+    ), "CRM tool should have customer_id parameter"
+    assert (
+        "customer_id" not in weather_schema.properties
+    ), "Weather tool should not have customer_id parameter"
+    assert (
+        "customer_id" not in inventory_schema.properties
+    ), "Inventory tool should not have customer_id parameter"
+
+    assert (
+        "product_id" in inventory_schema.properties
+    ), "Inventory tool should have product_id parameter"
+    assert (
+        "product_id" not in weather_schema.properties
+    ), "Weather tool should not have product_id parameter"
+    assert (
+        "product_id" not in crm_schema.properties
+    ), "CRM tool should not have product_id parameter"
+
     # Create mock components that return different session IDs for each tool
     mock_component_weather = Mock()
-    mock_component_weather.create_request_response_session.return_value = "weather-session-123"
-    
+    mock_component_weather.create_request_response_session.return_value = (
+        "weather-session-123"
+    )
+
     mock_component_crm = Mock()
     mock_component_crm.create_request_response_session.return_value = "crm-session-456"
-    
+
     mock_component_inventory = Mock()
-    mock_component_inventory.create_request_response_session.return_value = "inventory-session-789"
-    
+    mock_component_inventory.create_request_response_session.return_value = (
+        "inventory-session-789"
+    )
+
     # Create mock tool config model
     mock_tool_config = create_mock_tool_config_model()
-    
+
     # Initialize all tools with their respective components
     await weather_tool.init(mock_component_weather, mock_tool_config)
     await crm_tool.init(mock_component_crm, mock_tool_config)
     await inventory_tool.init(mock_component_inventory, mock_tool_config)
-    
+
     # Verify each tool has its own unique session ID
-    assert weather_tool.session_id == "weather-session-123", "Weather tool should have weather session"
+    assert (
+        weather_tool.session_id == "weather-session-123"
+    ), "Weather tool should have weather session"
     assert crm_tool.session_id == "crm-session-456", "CRM tool should have CRM session"
-    assert inventory_tool.session_id == "inventory-session-789", "Inventory tool should have inventory session"
-    
+    assert (
+        inventory_tool.session_id == "inventory-session-789"
+    ), "Inventory tool should have inventory session"
+
     # Verify all session IDs are different
-    session_ids = {weather_tool.session_id, crm_tool.session_id, inventory_tool.session_id}
+    session_ids = {
+        weather_tool.session_id,
+        crm_tool.session_id,
+        inventory_tool.session_id,
+    }
     assert len(session_ids) == 3, "All tools should have unique session IDs"
-    
+
     # Verify each tool called create_request_response_session with its own config
     mock_component_weather.create_request_response_session.assert_called_once_with(
         session_config=tool_config_weather["event_mesh_config"]
@@ -1456,127 +1496,165 @@ async def test_multiple_tool_instances_isolation():
     mock_component_inventory.create_request_response_session.assert_called_once_with(
         session_config=tool_config_inventory["event_mesh_config"]
     )
-    
+
     # Test concurrent execution isolation
     # Create mock tool contexts for each tool
     weather_context = create_mock_tool_context(mock_component_weather)
     crm_context = create_mock_tool_context(mock_component_crm)
     inventory_context = create_mock_tool_context(mock_component_inventory)
-    
+
     # Mock the do_broker_request_response_async method for each component
     async def mock_weather_response(message, **kwargs):
         # Simulate weather service response
         weather_response = Message(payload={"temperature": 25, "condition": "sunny"})
         return weather_response
-    
+
     async def mock_crm_response(message, **kwargs):
         # Simulate CRM service response
         crm_response = Message(payload={"customer_id": "12345", "status": "updated"})
         return crm_response
-    
+
     async def mock_inventory_response(message, **kwargs):
         # Simulate inventory service response
         inventory_response = Message(payload={"product_id": "ABC123", "quantity": 50})
         return inventory_response
-    
+
     mock_component_weather.do_broker_request_response_async = mock_weather_response
     mock_component_crm.do_broker_request_response_async = mock_crm_response
     mock_component_inventory.do_broker_request_response_async = mock_inventory_response
-    
+
     # Execute all tools concurrently with different parameters
     async def call_weather_tool():
         return await weather_tool._run_async_impl(
             args={"city": "Ottawa"}, tool_context=weather_context
         )
-    
+
     async def call_crm_tool():
         return await crm_tool._run_async_impl(
             args={"customer_id": "12345", "status": "premium"}, tool_context=crm_context
         )
-    
+
     async def call_inventory_tool():
         return await inventory_tool._run_async_impl(
-            args={"product_id": "ABC123", "warehouse": "east"}, tool_context=inventory_context
+            args={"product_id": "ABC123", "warehouse": "east"},
+            tool_context=inventory_context,
         )
-    
+
     # Execute all tools concurrently
     results = await asyncio.gather(
         call_weather_tool(),
-        call_crm_tool(), 
+        call_crm_tool(),
         call_inventory_tool(),
-        return_exceptions=True
+        return_exceptions=True,
     )
-    
+
     # Verify all tools executed successfully
     weather_result, crm_result, inventory_result = results
-    
+
     for i, result in enumerate(results):
         if isinstance(result, Exception):
             pytest.fail(f"Tool {i+1} failed with exception: {result}")
-    
+
     # Verify each tool got its expected response
     assert weather_result.get("status") == "success", "Weather tool should succeed"
-    assert weather_result.get("payload") == {"temperature": 25, "condition": "sunny"}, "Weather tool should get weather response"
-    
+    assert weather_result.get("payload") == {
+        "temperature": 25,
+        "condition": "sunny",
+    }, "Weather tool should get weather response"
+
     assert crm_result.get("status") == "success", "CRM tool should succeed"
-    assert crm_result.get("payload") == {"customer_id": "12345", "status": "updated"}, "CRM tool should get CRM response"
-    
+    assert crm_result.get("payload") == {
+        "customer_id": "12345",
+        "status": "updated",
+    }, "CRM tool should get CRM response"
+
     assert inventory_result.get("status") == "success", "Inventory tool should succeed"
-    assert inventory_result.get("payload") == {"product_id": "ABC123", "quantity": 50}, "Inventory tool should get inventory response"
-    
+    assert inventory_result.get("payload") == {
+        "product_id": "ABC123",
+        "quantity": 50,
+    }, "Inventory tool should get inventory response"
+
     # Test cleanup isolation - cleaning up one tool shouldn't affect others
     mock_component_weather.destroy_request_response_session = Mock()
     mock_component_crm.destroy_request_response_session = Mock()
     mock_component_inventory.destroy_request_response_session = Mock()
-    
+
     # Cleanup weather tool only
     await weather_tool.cleanup(mock_component_weather, mock_tool_config)
-    
+
     # Verify only weather tool session was destroyed
-    assert weather_tool.session_id is None, "Weather tool session should be None after cleanup"
-    assert crm_tool.session_id == "crm-session-456", "CRM tool session should remain unchanged"
-    assert inventory_tool.session_id == "inventory-session-789", "Inventory tool session should remain unchanged"
-    
-    mock_component_weather.destroy_request_response_session.assert_called_once_with("weather-session-123")
+    assert (
+        weather_tool.session_id is None
+    ), "Weather tool session should be None after cleanup"
+    assert (
+        crm_tool.session_id == "crm-session-456"
+    ), "CRM tool session should remain unchanged"
+    assert (
+        inventory_tool.session_id == "inventory-session-789"
+    ), "Inventory tool session should remain unchanged"
+
+    mock_component_weather.destroy_request_response_session.assert_called_once_with(
+        "weather-session-123"
+    )
     mock_component_crm.destroy_request_response_session.assert_not_called()
     mock_component_inventory.destroy_request_response_session.assert_not_called()
-    
+
     # Cleanup remaining tools
     await crm_tool.cleanup(mock_component_crm, mock_tool_config)
     await inventory_tool.cleanup(mock_component_inventory, mock_tool_config)
-    
+
     # Verify all tools are now cleaned up
     assert weather_tool.session_id is None, "Weather tool should remain None"
     assert crm_tool.session_id is None, "CRM tool should be None after cleanup"
-    assert inventory_tool.session_id is None, "Inventory tool should be None after cleanup"
-    
-    mock_component_crm.destroy_request_response_session.assert_called_once_with("crm-session-456")
-    mock_component_inventory.destroy_request_response_session.assert_called_once_with("inventory-session-789")
-    
+    assert (
+        inventory_tool.session_id is None
+    ), "Inventory tool should be None after cleanup"
+
+    mock_component_crm.destroy_request_response_session.assert_called_once_with(
+        "crm-session-456"
+    )
+    mock_component_inventory.destroy_request_response_session.assert_called_once_with(
+        "inventory-session-789"
+    )
+
     # Test that tools maintain different configurations even after operations
     # Verify topic templates are still different
     from sam_event_mesh_tool.tools import _fill_topic_template
-    
-    weather_topic = _fill_topic_template("weather/request/{{ city }}", {"city": "Toronto"})
-    crm_topic = _fill_topic_template("crm/update/{{ customer_id }}", {"customer_id": "67890"})
-    
-    assert weather_topic == "weather/request/Toronto", "Weather tool should generate weather topics"
+
+    weather_topic = _fill_topic_template(
+        "weather/request/{{ city }}", {"city": "Toronto"}
+    )
+    crm_topic = _fill_topic_template(
+        "crm/update/{{ customer_id }}", {"customer_id": "67890"}
+    )
+
+    assert (
+        weather_topic == "weather/request/Toronto"
+    ), "Weather tool should generate weather topics"
     assert crm_topic == "crm/update/67890", "CRM tool should generate CRM topics"
     assert weather_topic != crm_topic, "Tools should generate different topics"
-    
+
     # Verify payload building is still different
     from sam_event_mesh_tool.tools import _build_payload_and_resolve_params
-    
-    weather_params_map = {param["name"]: param for param in tool_config_weather["parameters"]}
+
+    weather_params_map = {
+        param["name"]: param for param in tool_config_weather["parameters"]
+    }
     crm_params_map = {param["name"]: param for param in tool_config_crm["parameters"]}
-    
-    weather_payload, _ = _build_payload_and_resolve_params(weather_params_map, {"city": "Vancouver"})
-    crm_payload, _ = _build_payload_and_resolve_params(crm_params_map, {"customer_id": "99999", "status": "inactive"})
-    
+
+    weather_payload, _ = _build_payload_and_resolve_params(
+        weather_params_map, {"city": "Vancouver"}
+    )
+    crm_payload, _ = _build_payload_and_resolve_params(
+        crm_params_map, {"customer_id": "99999", "status": "inactive"}
+    )
+
     expected_weather_payload = {"location": {"city": "Vancouver"}}
     expected_crm_payload = {"customer": {"id": "99999", "status": "inactive"}}
-    
-    assert weather_payload == expected_weather_payload, "Weather tool should build weather payloads"
+
+    assert (
+        weather_payload == expected_weather_payload
+    ), "Weather tool should build weather payloads"
     assert crm_payload == expected_crm_payload, "CRM tool should build CRM payloads"
     assert weather_payload != crm_payload, "Tools should build different payloads"
 
