@@ -1511,10 +1511,14 @@ async def test_concurrent_requests_with_correlation(
     event_mesh_tool.session_id = timeout_test_session_id
 
     try:
-        # Put one response that will arrive in time, don't put a second response (will timeout)
+        # Arrange: Put one instruction for a quick response, and one instruction
+        # to process the request but not send a reply. This simulates a timeout
+        # without leaving a handler thread blocked.
         quick_response = {"mixed": "test", "type": "quick"}
-        response_control_queue.put((quick_response, 0.5))  # Quick response
-        # No second response - will cause timeout
+        response_control_queue.put((quick_response, 0.5, True))  # This one replies
+        response_control_queue.put(
+            (None, 0, False)
+        )  # This one is consumed but does not reply
 
         async def make_quick_request():
             return await event_mesh_tool._run_async_impl(
