@@ -971,8 +971,9 @@ async def test_request_timeout(
     event_mesh_tool.session_id = test_session_id
 
     try:
-        # DO NOT put anything on the response_control_queue
-        # This will cause the responder to block indefinitely, triggering a timeout
+        # Arrange: Instruct the responder to consume the message but not reply.
+        # This correctly simulates a timeout without leaving a handler thread blocked.
+        response_control_queue.put((None, 0, False))
 
         # Create mock context for tool execution
         tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
