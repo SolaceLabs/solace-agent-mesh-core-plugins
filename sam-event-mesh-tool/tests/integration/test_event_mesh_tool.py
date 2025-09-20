@@ -1177,6 +1177,152 @@ async def test_text_payload_format():
     ), "payload_format should be 'text' in the session config"
 
 
+async def test_json_payload_format(
+    agent_with_event_mesh_tool: SamAgentComponent,
+    response_control_queue: Queue,
+):
+    """
+    Test 20: Test JSON payload encoding and response decoding.
+
+    This test verifies that when payload_format: "json" is set, the tool
+    correctly handles complex Python objects for both request and response.
+    """
+    import asyncio
+
+    # Wait for the agent to be fully initialized
+    await asyncio.sleep(2)
+
+    # Find the EventMeshTool instance (which is configured for JSON by default)
+    event_mesh_tool = find_event_mesh_tool(agent_with_event_mesh_tool)
+    assert event_mesh_tool is not None, "EventMeshTool not found in agent component"
+    assert (
+        event_mesh_tool.tool_config["event_mesh_config"]["payload_format"] == "json"
+    ), "Test requires tool to be configured with payload_format: json"
+
+    # Arrange: Prepare a complex dictionary to be sent back by the responder
+    expected_response = {
+        "status": "success",
+        "data": {
+            "user_id": 123,
+            "items": ["apple", "banana", "cherry"],
+            "metadata": {"source": "test", "timestamp": "2025-01-01T12:00:00Z"},
+        },
+        "is_valid": True,
+    }
+    response_control_queue.put((expected_response, 0))
+
+    # Create a mock ToolContext to pass to the tool
+    tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
+
+    # Act: Call the tool with a parameter that will be part of the request payload
+    tool_args = {"request_data": {"query": "get_user_data", "user_id": 123}}
+    tool_result = await event_mesh_tool._run_async_impl(
+        args=tool_args, tool_context=tool_context
+    )
+
+    # Assert: Check that the tool returned the complex dictionary correctly
+    assert tool_result is not None, "Tool did not return a result"
+    assert tool_result.get("status") == "success", f"Tool failed: {tool_result}"
+    assert "payload" in tool_result, "Tool result missing payload"
+    assert (
+        tool_result["payload"] == expected_response
+    ), f"Expected complex JSON object {expected_response}, got {tool_result['payload']}"
+
+
+async def test_yaml_payload_format():
+    """
+    Test 21: Test YAML payload format handling.
+
+    This is a unit test that verifies the tool correctly configures its session
+    when payload_format is set to 'yaml'.
+    """
+    from sam_event_mesh_tool.tools import EventMeshTool
+    from unittest.mock import Mock
+
+    # Create a tool configuration with payload_format: "yaml"
+    tool_config = create_basic_tool_config(
+        event_mesh_config={
+            "broker_config": {
+                "dev_mode": True,
+                "broker_url": "dev-broker",
+                "broker_username": "dev-user",
+                "broker_password": "dev-password",
+                "broker_vpn": "dev-vpn",
+            },
+            "payload_format": "yaml",
+        }
+    )
+
+    # Create tool instance
+    tool = EventMeshTool(tool_config)
+
+    # Create a mock component
+    mock_component = Mock()
+    mock_component.create_request_response_session.return_value = "yaml-session-id"
+
+    # Create a mock tool_config_model
+    mock_tool_config = create_mock_tool_config_model()
+
+    # Act: Initialize the tool
+    await tool.init(mock_component, mock_tool_config)
+
+    # Assert: Verify that create_request_response_session was called with the correct config
+    mock_component.create_request_response_session.assert_called_once()
+    call_args, call_kwargs = mock_component.create_request_response_session.call_args
+    session_config = call_kwargs.get("session_config", {})
+
+    assert (
+        session_config.get("payload_format") == "yaml"
+    ), "payload_format should be 'yaml' in the session config"
+
+
+async def test_text_payload_format():
+    """
+    Test 22: Test plain text payload format.
+
+    This is a unit test that verifies the tool correctly configures its session
+    when payload_format is set to 'text'.
+    """
+    from sam_event_mesh_tool.tools import EventMeshTool
+    from unittest.mock import Mock
+
+    # Create a tool configuration with payload_format: "text"
+    tool_config = create_basic_tool_config(
+        event_mesh_config={
+            "broker_config": {
+                "dev_mode": True,
+                "broker_url": "dev-broker",
+                "broker_username": "dev-user",
+                "broker_password": "dev-password",
+                "broker_vpn": "dev-vpn",
+            },
+            "payload_format": "text",
+        }
+    )
+
+    # Create tool instance
+    tool = EventMeshTool(tool_config)
+
+    # Create a mock component
+    mock_component = Mock()
+    mock_component.create_request_response_session.return_value = "text-session-id"
+
+    # Create a mock tool_config_model
+    mock_tool_config = create_mock_tool_config_model()
+
+    # Act: Initialize the tool
+    await tool.init(mock_component, mock_tool_config)
+
+    # Assert: Verify that create_request_response_session was called with the correct config
+    mock_component.create_request_response_session.assert_called_once()
+    call_args, call_kwargs = mock_component.create_request_response_session.call_args
+    session_config = call_kwargs.get("session_config", {})
+
+    assert (
+        session_config.get("payload_format") == "text"
+    ), "payload_format should be 'text' in the session config"
+
+
 async def test_concurrent_requests_with_correlation(
     agent_with_event_mesh_tool: SamAgentComponent,
     response_control_queue: Queue,
@@ -1439,6 +1585,7 @@ async def test_multiple_tool_instances_isolation():
     from sam_event_mesh_tool.tools import EventMeshTool
     from unittest.mock import Mock
     import asyncio
+    from solace_ai_connector.common.message import Message
     from solace_ai_connector.common.message import Message
 
     # Create three different tool configurations to simulate multiple tools in an agent
@@ -1804,6 +1951,273 @@ async def test_multiple_tool_instances_isolation():
     ), "Weather tool should build weather payloads"
     assert crm_payload == expected_crm_payload, "CRM tool should build CRM payloads"
     assert weather_payload != crm_payload, "Tools should build different payloads"
+
+
+async def test_payload_encoding_options():
+    """
+    Test 23: Test different payload encoding options (utf-8, base64).
+
+    This is a unit test that verifies the tool correctly configures its session
+    when a specific payload_encoding is set.
+    """
+    from sam_event_mesh_tool.tools import EventMeshTool
+    from unittest.mock import Mock
+
+    # Create a tool configuration with payload_encoding: "base64"
+    tool_config = create_basic_tool_config(
+        event_mesh_config={
+            "broker_config": {
+                "dev_mode": True,
+                "broker_url": "dev-broker",
+                "broker_username": "dev-user",
+                "broker_password": "dev-password",
+                "broker_vpn": "dev-vpn",
+            },
+            "payload_encoding": "base64",
+        }
+    )
+
+    # Create tool instance
+    tool = EventMeshTool(tool_config)
+
+    # Create a mock component
+    mock_component = Mock()
+    mock_component.create_request_response_session.return_value = "base64-session-id"
+
+    # Create a mock tool_config_model
+    mock_tool_config = create_mock_tool_config_model()
+
+    # Act: Initialize the tool
+    await tool.init(mock_component, mock_tool_config)
+
+    # Assert: Verify that create_request_response_session was called with the correct config
+    mock_component.create_request_response_session.assert_called_once()
+    call_args, call_kwargs = mock_component.create_request_response_session.call_args
+    session_config = call_kwargs.get("session_config", {})
+
+    assert (
+        session_config.get("payload_encoding") == "base64"
+    ), "payload_encoding should be 'base64' in the session config"
+
+
+async def test_empty_payload(
+    agent_with_event_mesh_tool: SamAgentComponent,
+    response_control_queue: Queue,
+):
+    """
+    Test 24: Test tool behavior with empty or minimal payloads.
+
+    This test calls the tool with no parameters, relying on defaults to create
+    an empty or minimal payload, and verifies it is handled gracefully.
+    """
+    import asyncio
+
+    # Wait for the agent to be fully initialized
+    await asyncio.sleep(2)
+
+    # Find the EventMeshTool instance
+    event_mesh_tool = find_event_mesh_tool(agent_with_event_mesh_tool)
+    assert event_mesh_tool is not None, "EventMeshTool not found in agent component"
+
+    # Temporarily modify the tool config to have only optional parameters
+    original_parameters = event_mesh_tool.tool_config["parameters"]
+    event_mesh_tool.tool_config["parameters"] = [
+        {
+            "name": "optional_data",
+            "type": "string",
+            "required": False,
+            "payload_path": "data",
+        }
+    ]
+
+    try:
+        # Arrange: The responder will send back what it receives
+        # We expect an empty payload from the tool
+        expected_response = {"received_payload": {}}
+        response_control_queue.put((expected_response, 0))
+
+        # Create a mock ToolContext
+        tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
+
+        # Act: Call the tool with no arguments
+        tool_result = await event_mesh_tool._run_async_impl(
+            args={}, tool_context=tool_context
+        )
+
+        # Assert: Check that the tool executed successfully
+        assert tool_result is not None, "Tool did not return a result"
+        assert tool_result.get("status") == "success", f"Tool failed: {tool_result}"
+        assert "payload" in tool_result, "Tool result missing payload"
+        assert (
+            tool_result["payload"] == expected_response
+        ), f"Expected {expected_response}, got {tool_result['payload']}"
+
+    finally:
+        # Restore original configuration
+        event_mesh_tool.tool_config["parameters"] = original_parameters
+
+
+async def test_large_payload_handling(
+    agent_with_event_mesh_tool: SamAgentComponent,
+    response_control_queue: Queue,
+):
+    """
+    Test 25: Test handling of large request/response payloads.
+
+    This test sends a large payload and verifies that the tool can handle it
+    without errors.
+    """
+    import asyncio
+
+    # Wait for the agent to be fully initialized
+    await asyncio.sleep(2)
+
+    # Find the EventMeshTool instance
+    event_mesh_tool = find_event_mesh_tool(agent_with_event_mesh_tool)
+    assert event_mesh_tool is not None, "EventMeshTool not found in agent component"
+
+    # Arrange: Prepare a large payload for the request and response
+    large_string = "x" * 20000  # ~20KB string
+    large_request_payload = {"data": large_string}
+    large_response_payload = {"status": "received", "data_length": len(large_string)}
+
+    response_control_queue.put((large_response_payload, 0))
+
+    # Create a mock ToolContext
+    tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
+
+    # Act: Call the tool with the large payload
+    tool_args = {"request_data": large_request_payload}
+    tool_result = await event_mesh_tool._run_async_impl(
+        args=tool_args, tool_context=tool_context
+    )
+
+    # Assert: Check that the tool executed successfully
+    assert tool_result is not None, "Tool did not return a result"
+    assert tool_result.get("status") == "success", f"Tool failed: {tool_result}"
+    assert "payload" in tool_result, "Tool result missing payload"
+    assert (
+        tool_result["payload"] == large_response_payload
+    ), f"Expected {large_response_payload}, got {tool_result['payload']}"
+
+
+async def test_special_characters_in_parameters(
+    agent_with_event_mesh_tool: SamAgentComponent,
+    response_control_queue: Queue,
+):
+    """
+    Test 26: Test parameter values with special characters, unicode, etc.
+
+    This test verifies that special characters in parameters are handled correctly
+    throughout the request-response cycle.
+    """
+    import asyncio
+
+    # Wait for the agent to be fully initialized
+    await asyncio.sleep(2)
+
+    # Find the EventMeshTool instance
+    event_mesh_tool = find_event_mesh_tool(agent_with_event_mesh_tool)
+    assert event_mesh_tool is not None, "EventMeshTool not found in agent component"
+
+    # Arrange: Prepare a payload with special characters
+    special_chars_payload = {
+        "message": "Hello, world! !@#$%^&*()_+`-=[]\\{}|;':\",./<>?",
+        "unicode": "你好, 世界! Привет, мир! Γειά σου, κόσμε! 🎉",
+        "json_string": '{"key": "value with \\"quotes\\" and \\\\slashes\\\\"}',
+    }
+
+    # The responder will echo back the received payload
+    response_control_queue.put((special_chars_payload, 0))
+
+    # Create a mock ToolContext
+    tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
+
+    # Act: Call the tool with the special characters payload
+    tool_args = {"request_data": special_chars_payload}
+    tool_result = await event_mesh_tool._run_async_impl(
+        args=tool_args, tool_context=tool_context
+    )
+
+    # Assert: Check that the special characters are preserved
+    assert tool_result is not None, "Tool did not return a result"
+    assert tool_result.get("status") == "success", f"Tool failed: {tool_result}"
+    assert "payload" in tool_result, "Tool result missing payload"
+    assert (
+        tool_result["payload"] == special_chars_payload
+    ), "Special characters were not preserved correctly in the response"
+
+
+async def test_null_and_undefined_parameter_values():
+    """
+    Test 27: Test handling of null, undefined, or empty parameter values.
+
+    This test verifies how the payload is constructed when parameters are
+    explicitly set to None, are empty strings, or are not provided at all.
+    """
+    from sam_event_mesh_tool.tools import _build_payload_and_resolve_params
+
+    # Define parameters with various optional and default settings
+    parameters_map = {
+        "required_with_none": {
+            "name": "required_with_none",
+            "payload_path": "data.required_with_none",
+        },
+        "optional_with_none": {
+            "name": "optional_with_none",
+            "payload_path": "data.optional_with_none",
+        },
+        "optional_with_empty_string": {
+            "name": "optional_with_empty_string",
+            "payload_path": "data.optional_with_empty_string",
+        },
+        "optional_not_provided": {
+            "name": "optional_not_provided",
+            "payload_path": "data.optional_not_provided",
+        },
+        "default_to_none": {
+            "name": "default_to_none",
+            "payload_path": "data.default_to_none",
+            "default": None,
+        },
+        "default_to_empty_string": {
+            "name": "default_to_empty_string",
+            "payload_path": "data.default_to_empty_string",
+            "default": "",
+        },
+    }
+
+    # Act: Provide a mix of None, empty string, and undefined parameters
+    params = {
+        "required_with_none": None,
+        "optional_with_none": None,
+        "optional_with_empty_string": "",
+        # "optional_not_provided" is not provided
+        # "default_to_none" is not provided, should use default
+        # "default_to_empty_string" is not provided, should use default
+    }
+
+    payload, resolved_params = _build_payload_and_resolve_params(parameters_map, params)
+
+    # Assert: Check the resulting payload
+    expected_payload = {
+        "data": {
+            "required_with_none": None,
+            "optional_with_none": None,
+            "optional_with_empty_string": "",
+            "default_to_none": None,
+            "default_to_empty_string": "",
+        }
+    }
+
+    assert (
+        payload == expected_payload
+    ), f"Payload with null/empty values did not match. Expected {expected_payload}, got {payload}"
+
+    # Assert that the parameter that was not provided and had no default is not in the payload
+    assert (
+        "optional_not_provided" not in payload.get("data", {})
+    ), "'optional_not_provided' should not be in the payload"
 
 
 async def test_broker_connection_failure():

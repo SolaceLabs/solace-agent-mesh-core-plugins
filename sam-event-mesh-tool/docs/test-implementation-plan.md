@@ -376,13 +376,13 @@ This document provides a comprehensive plan for implementing integration tests f
 - [x] 20. `test_json_payload_format`
 - [x] 21. `test_yaml_payload_format`
 - [x] 22. `test_text_payload_format`
-- [ ] 23. `test_payload_encoding_options`
+- [x] 23. `test_payload_encoding_options`
 
 ### Edge Cases and Error Conditions
-- [ ] 24. `test_empty_payload`
-- [ ] 25. `test_large_payload_handling`
-- [ ] 26. `test_special_characters_in_parameters`
-- [ ] 27. `test_null_and_undefined_parameter_values`
+- [x] 24. `test_empty_payload`
+- [x] 25. `test_large_payload_handling`
+- [x] 26. `test_special_characters_in_parameters`
+- [x] 27. `test_null_and_undefined_parameter_values`
 
 ### Integration and Real-world Scenarios
 - [ ] 28. `test_weather_service_simulation`
