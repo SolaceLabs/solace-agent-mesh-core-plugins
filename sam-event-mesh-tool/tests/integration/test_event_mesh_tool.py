@@ -2387,8 +2387,9 @@ async def test_service_unavailable_scenario(
     event_mesh_tool.session_id = test_session_id
 
     try:
-        # Arrange: Do NOT put anything on the response_control_queue.
-        # This simulates the service being down and never responding.
+        # Arrange: Instruct the responder to consume the message but not reply.
+        # This simulates a service that is "down" without leaving a handler thread blocked.
+        response_control_queue.put((None, 0, False))
 
         # Create mock context for tool execution
         tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
@@ -2453,13 +2454,15 @@ async def test_partial_service_failure(
     event_mesh_tool.session_id = test_session_id
 
     try:
-        # Arrange: Put responses for two successful requests on the queue.
-        # The third request will not have a response, causing it to time out.
+        # Arrange: Put instructions for all three requests on the queue.
+        # Two will succeed, and one will be instructed not to reply, simulating a timeout.
         response_1 = {"request": "req-1", "status": "ok"}
         response_3 = {"request": "req-3", "status": "ok"}
-        response_control_queue.put((response_1, 0.5))
-        response_control_queue.put((response_3, 1.0))
-        # No response for request 2
+        response_control_queue.put((response_1, 0.5, True))
+        response_control_queue.put((response_3, 1.0, True))
+        response_control_queue.put(
+            (None, 0, False)
+        )  # For the request that will time out
 
         # Create mock context for tool execution
         tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
