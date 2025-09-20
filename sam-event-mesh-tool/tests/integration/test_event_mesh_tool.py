@@ -2581,6 +2581,125 @@ async def test_broker_connection_failure():
     ), "Error message should indicate session not initialized"
 
 
+async def test_invalid_tool_configuration():
+    """
+    Test 32: Test validation of tool configuration parameters.
+
+    This test provides various invalid configurations and verifies that the
+    tool handles them gracefully, typically by raising an error or failing
+    to generate a valid schema.
+    """
+    from sam_event_mesh_tool.tools import EventMeshTool
+    import pytest
+
+    # Test 1: Missing tool_name
+    config_no_name = create_basic_tool_config()
+    del config_no_name["tool_name"]
+    tool_no_name = EventMeshTool(config_no_name)
+    assert tool_no_name.tool_name == "unnamed_event_mesh_tool"
+
+    # Test 2: Missing description
+    config_no_desc = create_basic_tool_config()
+    del config_no_desc["description"]
+    tool_no_desc = EventMeshTool(config_no_desc)
+    assert tool_no_desc.tool_description == ""
+
+    # Test 3: Missing topic - should fail during execution
+    config_no_topic = create_basic_tool_config()
+    del config_no_topic["topic"]
+    tool_no_topic = EventMeshTool(config_no_topic)
+    # This should raise an error when used, as the template is empty
+    # We mock the component to isolate the error to the tool's logic
+    mock_component = pytest.Mock()
+    mock_component.do_broker_request_response_async.return_value = None
+    tool_no_topic.session_id = "fake-session"  # Pretend it's initialized
+    tool_context = create_mock_tool_context(mock_component)
+    result = await tool_no_topic._run_async_impl(args={}, tool_context=tool_context)
+    assert result["status"] == "error"
+    assert "Missing required parameter" in result["message"]
+
+    # Test 4: Parameters is not a list
+    config_bad_params = create_basic_tool_config(parameters="not_a_list")
+    tool_bad_params = EventMeshTool(config_bad_params)
+    # Accessing the schema should not fail, but should be empty
+    schema = tool_bad_params.parameters_schema
+    assert schema.properties == {}
+    assert schema.required == []
+
+
+async def test_missing_event_mesh_config():
+    """
+    Test 33: Test behavior when event_mesh_config is missing or invalid.
+
+    This test configures the tool without the required event_mesh_config
+    and verifies that it fails initialization with a clear error.
+    """
+    from sam_event_mesh_tool.tools import EventMeshTool
+    from unittest.mock import Mock
+    import pytest
+
+    # Test 1: Missing event_mesh_config entirely
+    config_no_emc = create_basic_tool_config()
+    del config_no_emc["event_mesh_config"]
+    tool_no_emc = EventMeshTool(config_no_emc)
+
+    mock_component = Mock()
+    mock_tool_config_model = create_mock_tool_config_model()
+
+    with pytest.raises(KeyError) as exc_info:
+        await tool_no_emc.init(mock_component, mock_tool_config_model)
+    assert "event_mesh_config" in str(exc_info.value)
+
+    # Test 2: Missing broker_config inside event_mesh_config
+    config_no_broker = create_basic_tool_config(
+        event_mesh_config={"request_expiry_ms": 5000}
+    )
+    tool_no_broker = EventMeshTool(config_no_broker)
+    mock_component.create_request_response_session.side_effect = ValueError(
+        "Invalid 'default_broker_config' for multi_session_request_response"
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        await tool_no_broker.init(mock_component, mock_tool_config_model)
+    # The error comes from the session controller, which expects broker_config
+    assert "broker_config" in str(exc_info.value).lower()
+
+
+async def test_invalid_parameter_definitions():
+    """
+    Test 34: Test validation of parameter definitions in config.
+
+    This test defines parameters with invalid structures (e.g., missing 'name')
+    and verifies that the schema generation handles it gracefully.
+    """
+    from sam_event_mesh_tool.tools import EventMeshTool
+
+    # Create a tool configuration with malformed parameters
+    tool_config = create_basic_tool_config(
+        parameters=[
+            {"name": "valid_param", "type": "string"},  # Valid
+            {"type": "string", "description": "This one is missing a name"},  # Invalid
+            {"name": "another_valid", "type": "integer"},  # Valid
+            "just_a_string",  # Invalid
+            {},  # Invalid
+        ]
+    )
+
+    # Create tool instance
+    tool = EventMeshTool(tool_config)
+
+    # Get the generated schema
+    schema = tool.parameters_schema
+
+    # Assert: The schema should only contain the valid parameters
+    assert len(schema.properties) == 2, "Should only have 2 valid properties"
+    assert "valid_param" in schema.properties
+    assert "another_valid" in schema.properties
+
+    # Assert that invalid parameters were skipped
+    assert "This one is missing a name" not in str(schema.properties)
+
+
 async def test_response_correlation_failure(
     agent_with_event_mesh_tool: SamAgentComponent,
     response_control_queue: Queue,

@@ -391,9 +391,9 @@ This document provides a comprehensive plan for implementing integration tests f
 - [x] 31. `test_partial_service_failure`
 
 ### Configuration Validation Tests
-- [ ] 32. `test_invalid_tool_configuration`
-- [ ] 33. `test_missing_event_mesh_config`
-- [ ] 34. `test_invalid_parameter_definitions`
+- [x] 32. `test_invalid_tool_configuration`
+- [x] 33. `test_missing_event_mesh_config`
+- [x] 34. `test_invalid_parameter_definitions`
 
 ### Performance and Load Tests
 - [ ] 35. `test_high_frequency_requests`
