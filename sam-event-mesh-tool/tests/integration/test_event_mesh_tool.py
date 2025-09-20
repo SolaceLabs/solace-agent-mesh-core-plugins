@@ -1031,6 +1031,152 @@ async def test_request_timeout(
                 break
 
 
+async def test_json_payload_format(
+    agent_with_event_mesh_tool: SamAgentComponent,
+    response_control_queue: Queue,
+):
+    """
+    Test 20: Test JSON payload encoding and response decoding.
+
+    This test verifies that when payload_format: "json" is set, the tool
+    correctly handles complex Python objects for both request and response.
+    """
+    import asyncio
+
+    # Wait for the agent to be fully initialized
+    await asyncio.sleep(2)
+
+    # Find the EventMeshTool instance (which is configured for JSON by default)
+    event_mesh_tool = find_event_mesh_tool(agent_with_event_mesh_tool)
+    assert event_mesh_tool is not None, "EventMeshTool not found in agent component"
+    assert (
+        event_mesh_tool.tool_config["event_mesh_config"]["payload_format"] == "json"
+    ), "Test requires tool to be configured with payload_format: json"
+
+    # Arrange: Prepare a complex dictionary to be sent back by the responder
+    expected_response = {
+        "status": "success",
+        "data": {
+            "user_id": 123,
+            "items": ["apple", "banana", "cherry"],
+            "metadata": {"source": "test", "timestamp": "2025-01-01T12:00:00Z"},
+        },
+        "is_valid": True,
+    }
+    response_control_queue.put((expected_response, 0))
+
+    # Create a mock ToolContext to pass to the tool
+    tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
+
+    # Act: Call the tool with a parameter that will be part of the request payload
+    tool_args = {"request_data": {"query": "get_user_data", "user_id": 123}}
+    tool_result = await event_mesh_tool._run_async_impl(
+        args=tool_args, tool_context=tool_context
+    )
+
+    # Assert: Check that the tool returned the complex dictionary correctly
+    assert tool_result is not None, "Tool did not return a result"
+    assert tool_result.get("status") == "success", f"Tool failed: {tool_result}"
+    assert "payload" in tool_result, "Tool result missing payload"
+    assert (
+        tool_result["payload"] == expected_response
+    ), f"Expected complex JSON object {expected_response}, got {tool_result['payload']}"
+
+
+async def test_yaml_payload_format():
+    """
+    Test 21: Test YAML payload format handling.
+
+    This is a unit test that verifies the tool correctly configures its session
+    when payload_format is set to 'yaml'.
+    """
+    from sam_event_mesh_tool.tools import EventMeshTool
+    from unittest.mock import Mock
+
+    # Create a tool configuration with payload_format: "yaml"
+    tool_config = create_basic_tool_config(
+        event_mesh_config={
+            "broker_config": {
+                "dev_mode": True,
+                "broker_url": "dev-broker",
+                "broker_username": "dev-user",
+                "broker_password": "dev-password",
+                "broker_vpn": "dev-vpn",
+            },
+            "payload_format": "yaml",
+        }
+    )
+
+    # Create tool instance
+    tool = EventMeshTool(tool_config)
+
+    # Create a mock component
+    mock_component = Mock()
+    mock_component.create_request_response_session.return_value = "yaml-session-id"
+
+    # Create a mock tool_config_model
+    mock_tool_config = create_mock_tool_config_model()
+
+    # Act: Initialize the tool
+    await tool.init(mock_component, mock_tool_config)
+
+    # Assert: Verify that create_request_response_session was called with the correct config
+    mock_component.create_request_response_session.assert_called_once()
+    call_args, call_kwargs = mock_component.create_request_response_session.call_args
+    session_config = call_kwargs.get("session_config", {})
+
+    assert (
+        session_config.get("payload_format") == "yaml"
+    ), "payload_format should be 'yaml' in the session config"
+
+
+async def test_text_payload_format():
+    """
+    Test 22: Test plain text payload format.
+
+    This is a unit test that verifies the tool correctly configures its session
+    when payload_format is set to 'text'.
+    """
+    from sam_event_mesh_tool.tools import EventMeshTool
+    from unittest.mock import Mock
+
+    # Create a tool configuration with payload_format: "text"
+    tool_config = create_basic_tool_config(
+        event_mesh_config={
+            "broker_config": {
+                "dev_mode": True,
+                "broker_url": "dev-broker",
+                "broker_username": "dev-user",
+                "broker_password": "dev-password",
+                "broker_vpn": "dev-vpn",
+            },
+            "payload_format": "text",
+        }
+    )
+
+    # Create tool instance
+    tool = EventMeshTool(tool_config)
+
+    # Create a mock component
+    mock_component = Mock()
+    mock_component.create_request_response_session.return_value = "text-session-id"
+
+    # Create a mock tool_config_model
+    mock_tool_config = create_mock_tool_config_model()
+
+    # Act: Initialize the tool
+    await tool.init(mock_component, mock_tool_config)
+
+    # Assert: Verify that create_request_response_session was called with the correct config
+    mock_component.create_request_response_session.assert_called_once()
+    call_args, call_kwargs = mock_component.create_request_response_session.call_args
+    session_config = call_kwargs.get("session_config", {})
+
+    assert (
+        session_config.get("payload_format") == "text"
+    ), "payload_format should be 'text' in the session config"
+
+
 async def test_concurrent_requests_with_correlation(
     agent_with_event_mesh_tool: SamAgentComponent,
     response_control_queue: Queue,
@@ -1293,6 +1439,7 @@ async def test_multiple_tool_instances_isolation():
     from sam_event_mesh_tool.tools import EventMeshTool
     from unittest.mock import Mock
     import asyncio
+    from solace_ai_connector.common.message import Message
 
     # Create three different tool configurations to simulate multiple tools in an agent
     tool_config_weather = create_basic_tool_config(

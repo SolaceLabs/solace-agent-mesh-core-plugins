@@ -373,9 +373,9 @@ This document provides a comprehensive plan for implementing integration tests f
 - [ ] 19. `test_high_concurrency_stress`
 
 ### Payload Format Tests
-- [ ] 20. `test_json_payload_format`
-- [ ] 21. `test_yaml_payload_format`
-- [ ] 22. `test_text_payload_format`
+- [x] 20. `test_json_payload_format`
+- [x] 21. `test_yaml_payload_format`
+- [x] 22. `test_text_payload_format`
 - [ ] 23. `test_payload_encoding_options`
 
 ### Edge Cases and Error Conditions
