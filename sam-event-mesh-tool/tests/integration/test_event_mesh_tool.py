@@ -5,6 +5,7 @@ These tests use the fixtures defined in conftest.py to create a live,
 in-memory integration environment with a client agent and a responder service.
 """
 
+from unittest.mock import Mock
 import pytest
 from queue import Queue
 
@@ -2215,8 +2216,8 @@ async def test_null_and_undefined_parameter_values():
     ), f"Payload with null/empty values did not match. Expected {expected_payload}, got {payload}"
 
     # Assert that the parameter that was not provided and had no default is not in the payload
-    assert (
-        "optional_not_provided" not in payload.get("data", {})
+    assert "optional_not_provided" not in payload.get(
+        "data", {}
     ), "'optional_not_provided' should not be in the payload"
 
 
@@ -2610,7 +2611,7 @@ async def test_invalid_tool_configuration():
     tool_no_topic = EventMeshTool(config_no_topic)
     # This should raise an error when used, as the template is empty
     # We mock the component to isolate the error to the tool's logic
-    mock_component = pytest.Mock()
+    mock_component = Mock()
     mock_component.do_broker_request_response_async.return_value = None
     tool_no_topic.session_id = "fake-session"  # Pretend it's initialized
     tool_context = create_mock_tool_context(mock_component)
