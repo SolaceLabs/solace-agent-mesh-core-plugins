@@ -1,6 +1,4 @@
 import re
-import yaml
-import json
 from typing import Any, Dict, Optional
 
 from google.adk.tools import ToolContext
@@ -17,11 +15,11 @@ def _build_payload_and_resolve_params(
     parameters_map: Dict[str, Any], params: Dict[str, Any]
 ) -> tuple[Dict[str, Any], Dict[str, Any]]:
     """Build the message payload and resolve all parameters with defaults applied.
-    
+
     Args:
         parameters_map: Dictionary mapping parameter names to their configuration
         params: Dictionary of provided parameter values
-        
+
     Returns:
         Tuple of (payload, resolved_params) where:
         - payload: Dict containing the structured payload with nested paths
@@ -29,7 +27,7 @@ def _build_payload_and_resolve_params(
     """
     payload = {}
     resolved_params = {}
-    
+
     # Iterate over all defined parameters, not just provided ones
     for param_name, param_config in parameters_map.items():
         # Determine the value to use
@@ -43,10 +41,10 @@ def _build_payload_and_resolve_params(
         else:
             # No value provided and no default - skip this parameter entirely
             continue
-            
+
         # Add to resolved params (used for topic template and debugging)
         resolved_params[param_name] = value
-        
+
         # Only add to payload if parameter has a payload_path
         if "payload_path" in param_config:
             # Build the nested structure
@@ -58,7 +56,7 @@ def _build_payload_and_resolve_params(
                     current[part] = {}
                 current = current[part]
             current[parts[-1]] = value
-        
+
     return payload, resolved_params
 
 
@@ -68,7 +66,7 @@ def _fill_topic_template(template: str, params: Dict[str, Any]) -> str:
     def replace_param(match):
         param_expr = match.group(1).strip()
         if "://" in param_expr:
-            _, param = param_expr.split("//")
+            _, param = param_expr.split("//", 1)
             param = param.strip()
         else:
             param = param_expr
@@ -221,9 +219,11 @@ class EventMeshTool(DynamicTool):
             wait_for_response = self.tool_config.get("wait_for_response", True)
 
             parameters_map = {param["name"]: param for param in config_params}
-            
+
             # Build payload and resolve all parameters (including defaults) in one place
-            payload, resolved_params = _build_payload_and_resolve_params(parameters_map, args)
+            payload, resolved_params = _build_payload_and_resolve_params(
+                parameters_map, args
+            )
             topic = _fill_topic_template(topic_template, resolved_params)
 
             if not topic:
