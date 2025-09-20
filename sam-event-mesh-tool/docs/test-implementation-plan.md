@@ -385,10 +385,10 @@ This document provides a comprehensive plan for implementing integration tests f
 - [x] 27. `test_null_and_undefined_parameter_values`
 
 ### Integration and Real-world Scenarios
-- [ ] 28. `test_weather_service_simulation`
-- [ ] 29. `test_error_response_from_service`
-- [ ] 30. `test_service_unavailable_scenario`
-- [ ] 31. `test_partial_service_failure`
+- [x] 28. `test_weather_service_simulation`
+- [x] 29. `test_error_response_from_service`
+- [x] 30. `test_service_unavailable_scenario`
+- [x] 31. `test_partial_service_failure`
 
 ### Configuration Validation Tests
 - [ ] 32. `test_invalid_tool_configuration`

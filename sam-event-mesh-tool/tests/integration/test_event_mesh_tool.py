@@ -2220,6 +2220,299 @@ async def test_null_and_undefined_parameter_values():
     ), "'optional_not_provided' should not be in the payload"
 
 
+async def test_weather_service_simulation(
+    agent_with_event_mesh_tool: SamAgentComponent,
+    response_control_queue: Queue,
+):
+    """
+    Test 28: Test a realistic weather service request-response workflow.
+
+    This test simulates a complete weather API interaction with realistic data
+    and verifies the end-to-end workflow works as expected.
+    """
+    import asyncio
+
+    # Wait for the agent to be fully initialized
+    await asyncio.sleep(2)
+
+    # Find the EventMeshTool instance
+    event_mesh_tool = find_event_mesh_tool(agent_with_event_mesh_tool)
+    assert event_mesh_tool is not None, "EventMeshTool not found in agent component"
+
+    # Temporarily modify the tool config to simulate a weather tool
+    original_config = event_mesh_tool.tool_config.copy()
+    weather_tool_config = {
+        "tool_name": "GetWeather",
+        "description": "Gets weather for a city.",
+        "parameters": [
+            {
+                "name": "city",
+                "type": "string",
+                "required": True,
+                "payload_path": "location.city",
+            },
+            {
+                "name": "unit",
+                "type": "string",
+                "required": False,
+                "default": "celsius",
+                "payload_path": "unit",
+            },
+        ],
+        "topic": "weather/request/{{ city }}",
+        "event_mesh_config": original_config["event_mesh_config"],
+    }
+    event_mesh_tool.tool_config = weather_tool_config
+
+    try:
+        # Arrange: The responder will send back a realistic weather response
+        weather_response = {
+            "city": "Ottawa",
+            "temperature": 22,
+            "unit": "celsius",
+            "condition": "Partly Cloudy",
+            "humidity": 65,
+        }
+        response_control_queue.put((weather_response, 0))
+
+        # Create a mock ToolContext
+        tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
+
+        # Act: Call the tool with weather request parameters
+        tool_args = {"city": "Ottawa", "unit": "celsius"}
+        tool_result = await event_mesh_tool._run_async_impl(
+            args=tool_args, tool_context=tool_context
+        )
+
+        # Assert: Check that the tool executed successfully
+        assert tool_result is not None, "Tool did not return a result"
+        assert tool_result.get("status") == "success", f"Tool failed: {tool_result}"
+        assert "payload" in tool_result, "Tool result missing payload"
+        assert (
+            tool_result["payload"] == weather_response
+        ), f"Expected {weather_response}, got {tool_result['payload']}"
+
+    finally:
+        # Restore original configuration
+        event_mesh_tool.tool_config = original_config
+
+
+async def test_error_response_from_service(
+    agent_with_event_mesh_tool: SamAgentComponent,
+    response_control_queue: Queue,
+):
+    """
+    Test 29: Test handling when the backend service returns an error response.
+
+    This test verifies that the tool correctly propagates an error payload
+    from the simulated backend service.
+    """
+    import asyncio
+
+    # Wait for the agent to be fully initialized
+    await asyncio.sleep(2)
+
+    # Find the EventMeshTool instance
+    event_mesh_tool = find_event_mesh_tool(agent_with_event_mesh_tool)
+    assert event_mesh_tool is not None, "EventMeshTool not found in agent component"
+
+    # Arrange: The responder will send back a payload indicating a server-side error
+    error_response = {
+        "error_code": 500,
+        "error_message": "Internal Server Error",
+        "details": "The weather service is currently unavailable.",
+    }
+    response_control_queue.put((error_response, 0))
+
+    # Create a mock ToolContext
+    tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
+
+    # Act: Call the tool
+    tool_args = {"request_data": "some_request"}
+    tool_result = await event_mesh_tool._run_async_impl(
+        args=tool_args, tool_context=tool_context
+    )
+
+    # Assert: The tool call itself is successful because a response was received.
+    # The payload of the response contains the error details from the service.
+    assert tool_result is not None, "Tool did not return a result"
+    assert (
+        tool_result.get("status") == "success"
+    ), f"Tool call should be successful even with service error: {tool_result}"
+    assert "payload" in tool_result, "Tool result missing payload"
+    assert (
+        tool_result["payload"] == error_response
+    ), f"Expected error payload {error_response}, got {tool_result['payload']}"
+
+
+async def test_service_unavailable_scenario(
+    agent_with_event_mesh_tool: SamAgentComponent,
+    response_control_queue: Queue,
+):
+    """
+    Test 30: Test behavior when backend service is completely unavailable.
+
+    This test simulates a service being unavailable by not providing a response,
+    which should cause the tool to time out.
+    """
+    import asyncio
+
+    # Wait for the agent to be fully initialized
+    await asyncio.sleep(2)
+
+    # Find the EventMeshTool instance
+    event_mesh_tool = find_event_mesh_tool(agent_with_event_mesh_tool)
+    assert event_mesh_tool is not None, "EventMeshTool not found in agent component"
+
+    # Create a new session with a short timeout for this test
+    short_timeout_config = {
+        "broker_config": {
+            "dev_mode": True,
+            "broker_url": "dev-broker",
+            "broker_username": "dev-user",
+            "broker_password": "dev-password",
+            "broker_vpn": "dev-vpn",
+        },
+        "request_expiry_ms": 1500,  # 1.5 second timeout
+    }
+    test_session_id = agent_with_event_mesh_tool.create_request_response_session(
+        session_config=short_timeout_config
+    )
+    original_session_id = event_mesh_tool.session_id
+    event_mesh_tool.session_id = test_session_id
+
+    try:
+        # Arrange: Do NOT put anything on the response_control_queue.
+        # This simulates the service being down and never responding.
+
+        # Create mock context for tool execution
+        tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
+
+        # Act: Execute the tool, which should time out
+        tool_args = {"request_data": "service_unavailable_test"}
+        tool_result = await event_mesh_tool._run_async_impl(
+            args=tool_args, tool_context=tool_context
+        )
+
+        # Assert: The tool should return an error indicating a timeout.
+        assert tool_result is not None, "Tool should return a result on timeout"
+        assert (
+            tool_result.get("status") == "error"
+        ), f"Tool should return error status on timeout: {tool_result}"
+        error_message = tool_result.get("message", "").lower()
+        assert any(
+            keyword in error_message
+            for keyword in ["timeout", "timed out", "no response"]
+        ), f"Error message should indicate timeout: {tool_result}"
+
+    finally:
+        # Clean up the test session
+        agent_with_event_mesh_tool.destroy_request_response_session(test_session_id)
+        event_mesh_tool.session_id = original_session_id
+
+
+async def test_partial_service_failure(
+    agent_with_event_mesh_tool: SamAgentComponent,
+    response_control_queue: Queue,
+):
+    """
+    Test 31: Test handling of intermittent service failures.
+
+    This test sends multiple concurrent requests, where one will time out,
+    and verifies that the other requests are still handled correctly.
+    """
+    import asyncio
+
+    # Wait for the agent to be fully initialized
+    await asyncio.sleep(2)
+
+    # Find the EventMeshTool instance
+    event_mesh_tool = find_event_mesh_tool(agent_with_event_mesh_tool)
+    assert event_mesh_tool is not None, "EventMeshTool not found in agent component"
+
+    # Create a new session with a short timeout for this test
+    short_timeout_config = {
+        "broker_config": {
+            "dev_mode": True,
+            "broker_url": "dev-broker",
+            "broker_username": "dev-user",
+            "broker_password": "dev-password",
+            "broker_vpn": "dev-vpn",
+        },
+        "request_expiry_ms": 2000,  # 2 second timeout
+    }
+    test_session_id = agent_with_event_mesh_tool.create_request_response_session(
+        session_config=short_timeout_config
+    )
+    original_session_id = event_mesh_tool.session_id
+    event_mesh_tool.session_id = test_session_id
+
+    try:
+        # Arrange: Put responses for two successful requests on the queue.
+        # The third request will not have a response, causing it to time out.
+        response_1 = {"request": "req-1", "status": "ok"}
+        response_3 = {"request": "req-3", "status": "ok"}
+        response_control_queue.put((response_1, 0.5))
+        response_control_queue.put((response_3, 1.0))
+        # No response for request 2
+
+        # Create mock context for tool execution
+        tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
+
+        # Act: Define and run three concurrent requests
+        async def make_request(request_data):
+            return await event_mesh_tool._run_async_impl(
+                args={"request_data": request_data}, tool_context=tool_context
+            )
+
+        results = await asyncio.gather(
+            make_request("req-1"),
+            make_request("req-2"),  # This one will time out
+            make_request("req-3"),
+            return_exceptions=True,
+        )
+
+        # Assert: Check the results
+        assert len(results) == 3, "Should get results for all three requests"
+
+        success_results = []
+        error_results = []
+        for res in results:
+            if isinstance(res, Exception):
+                pytest.fail(f"A request failed with an unexpected exception: {res}")
+            if res.get("status") == "success":
+                success_results.append(res)
+            else:
+                error_results.append(res)
+
+        assert len(success_results) == 2, "Should have two successful requests"
+        assert len(error_results) == 1, "Should have one failed/timeout request"
+
+        # Verify the successful payloads
+        received_payloads = [res["payload"] for res in success_results]
+        assert response_1 in received_payloads
+        assert response_3 in received_payloads
+
+        # Verify the error payload
+        error_result = error_results[0]
+        error_message = error_result.get("message", "").lower()
+        assert any(
+            keyword in error_message
+            for keyword in ["timeout", "timed out", "no response"]
+        ), f"Error message for failed request should indicate timeout: {error_result}"
+
+    finally:
+        # Clean up the test session
+        agent_with_event_mesh_tool.destroy_request_response_session(test_session_id)
+        event_mesh_tool.session_id = original_session_id
+        # Clear any remaining items from the control queue
+        while not response_control_queue.empty():
+            try:
+                response_control_queue.get_nowait()
+            except:
+                break
+
+
 async def test_broker_connection_failure():
     """
     Test 15: Test behavior when broker connection is unavailable.
