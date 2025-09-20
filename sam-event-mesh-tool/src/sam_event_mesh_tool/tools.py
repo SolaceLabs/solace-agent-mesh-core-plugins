@@ -212,6 +212,16 @@ class EventMeshTool(DynamicTool):
             # Build payload and resolve all parameters (including defaults) in one place
             payload, resolved_params = _build_payload_and_resolve_params(parameters_map, args)
             topic = _fill_topic_template(topic_template, resolved_params)
+
+            if not topic:
+                log.error(
+                    f"{log_identifier} Topic is empty after template resolution. Check 'topic' configuration."
+                )
+                return {
+                    "status": "error",
+                    "message": "Configuration error: Resulting topic is empty. Please define a 'topic' in the tool's configuration.",
+                }
+
             message = Message(payload=payload, topic=topic)
 
             response = await host_component.do_broker_request_response_async(

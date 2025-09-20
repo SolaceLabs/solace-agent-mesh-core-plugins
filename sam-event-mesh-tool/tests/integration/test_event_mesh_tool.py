@@ -2605,27 +2605,26 @@ async def test_invalid_tool_configuration():
     tool_no_desc = EventMeshTool(config_no_desc)
     assert tool_no_desc.tool_description == ""
 
-    # Test 3: Missing topic - should fail during execution
+    # Test 3: Missing topic - should fail during execution with a clear error
     config_no_topic = create_basic_tool_config()
     del config_no_topic["topic"]
     tool_no_topic = EventMeshTool(config_no_topic)
-    # This should raise an error when used, as the template is empty
-    # We mock the component to isolate the error to the tool's logic
-    mock_component = Mock()
-    mock_component.do_broker_request_response_async.return_value = None
     tool_no_topic.session_id = "fake-session"  # Pretend it's initialized
+
+    # We don't need a full mock component, just a dummy one for the context
+    mock_component = Mock()
     tool_context = create_mock_tool_context(mock_component)
+
     result = await tool_no_topic._run_async_impl(args={}, tool_context=tool_context)
     assert result["status"] == "error"
-    assert "Missing required parameter" in result["message"]
+    assert "topic is empty" in result["message"]
 
-    # Test 4: Parameters is not a list
+    # Test 4: Parameters is not a list - should fail fast
     config_bad_params = create_basic_tool_config(parameters="not_a_list")
     tool_bad_params = EventMeshTool(config_bad_params)
-    # Accessing the schema should not fail, but should be empty
-    schema = tool_bad_params.parameters_schema
-    assert schema.properties == {}
-    assert schema.required == []
+    with pytest.raises(ValueError) as exc_info:
+        _ = tool_bad_params.parameters_schema
+    assert "'parameters' must be a list" in str(exc_info.value)
 
 
 async def test_missing_event_mesh_config():
