@@ -49,8 +49,12 @@ def responder_invoke_handler(
     """
     try:
         # Instruction can be a tuple: (response_payload, delay_seconds) or (response_payload, delay_seconds, should_send_reply)
-        instruction = control_queue.get(timeout=5)
-        
+        try:
+            instruction = control_queue.get(timeout=5)
+        except queue.Empty:
+            pytest.fail("Responder did not receive control message from the test.")
+            return {}  # Should not be reached
+
         # Handle backward compatibility - if only 2 elements, assume should_send_reply=True
         if len(instruction) == 2:
             response_payload, delay_seconds = instruction
@@ -58,13 +62,16 @@ def responder_invoke_handler(
         elif len(instruction) == 3:
             response_payload, delay_seconds, should_send_reply = instruction
         else:
-            raise ValueError(f"Invalid instruction format. Expected 2 or 3 elements, got {len(instruction)}")
+            raise ValueError(
+                f"Invalid instruction format. Expected 2 or 3 elements, got {len(instruction)}"
+            )
 
         if delay_seconds > 0:
             time.sleep(delay_seconds)
 
         # If we shouldn't send a reply, return None to indicate no response should be sent
         if not should_send_reply:
+            component.discard_current_message()
             return None
 
         # Extract the dynamic reply-to topic from the request's user properties
@@ -112,7 +119,6 @@ def responder_service(
                     for component in flow.get("components", []):
                         if component.get("component_name") == "response_handler":
                             component["component_config"]["invoke_handler"] = handler
-                            break
                     break
             break
 

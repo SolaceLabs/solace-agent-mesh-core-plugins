@@ -7,7 +7,6 @@ log:
 shared_config:
   - broker_connection: &broker_connection
       dev_mode: true
-      broker_type: solace # Explicitly use solace dev broker
       # Dummy values to satisfy validation in dev_mode
       broker_url: "dev-broker"
       broker_username: "dev-user"
@@ -68,7 +67,7 @@ apps:
               # Use the shared broker connection config.
               broker_config:
                 <<: *broker_connection
-              request_expiry_ms: 20000000 # Use a short timeout for tests.
+              request_expiry_ms: 5000 # Use a short timeout for tests.
               payload_format: "json"
 
             # --- Tool Definition for LLM ---
