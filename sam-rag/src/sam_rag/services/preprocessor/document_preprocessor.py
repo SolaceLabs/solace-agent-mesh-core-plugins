@@ -5,7 +5,7 @@ Document preprocessors for various file formats.
 import os
 from typing import Dict, Any, List
 from sam_rag.services.preprocessor.preprocessor_base import PreprocessorBase, PreprocessedOutput
-from sam_rag.services.preprocessor.text_preprocessor import TextPreprocessor
+from sam_rag.services.preprocessor.raw_text_preprocessor import RawTextPreprocessor
 import csv
 from solace_ai_connector.common.log import log as logger
 
@@ -33,7 +33,20 @@ def filter_config(config: Dict[str, Any], key: str) -> Dict[str, Any]:
         return file_config.get("params", {})
 
     # If no specific config found, try to use default preprocessor
-    default_preprocessor = config.get("default_preprocessor", {})
+    default_config = {
+            "params": {
+                "lowercase": "true",
+                "normalize_whitespace": "true",
+                "remove_stopwords": "false",
+                "remove_punctuation": "false",
+                "remove_numbers": "false",
+                "remove_non_ascii": "false",
+                "remove_urls": "true",
+                "remove_emails": "false",
+                "remove_html_tags": "false"
+            }
+    }
+    default_preprocessor = config.get("default_preprocessor", default_config)
     return default_preprocessor.get("params", {})
 
 
@@ -116,7 +129,7 @@ class TextFilePreprocessor(PreprocessorBase):
             )  # Assuming "text" is the generic config key
             # If specific config for md, json, etc. is needed, filter_config might need adjustment
             # or use file_type as key: filter_config(self.config, metadata["file_type"])
-            self.text_preprocessor = TextPreprocessor(text_config)
+            self.text_preprocessor = RawTextPreprocessor(text_config)
             processed_text = self.text_preprocessor.preprocess(text_content)
 
             return {"text_content": processed_text, "metadata": metadata}
@@ -190,7 +203,7 @@ class PDFPreprocessor(PreprocessorBase):
         # Apply text preprocessing
         try:
             pdf_config = filter_config(self.config, "pdf")
-            text_preprocessor = TextPreprocessor(pdf_config)
+            text_preprocessor = RawTextPreprocessor(pdf_config)
             processed_text = text_preprocessor.preprocess(
                 extraction_result["text_content"]
             )
@@ -623,7 +636,7 @@ class DocxPreprocessor(PreprocessorBase):
             doc_config = filter_config(
                 self.config, "doc"
             )  # Assuming "doc" covers .docx as well
-            self.text_preprocessor = TextPreprocessor(doc_config)
+            self.text_preprocessor = RawTextPreprocessor(doc_config)
 
             doc = docx.Document(file_path)
 
@@ -720,7 +733,7 @@ class HTMLPreprocessor(PreprocessorBase):
             from bs4 import BeautifulSoup
 
             html_config = filter_config(self.config, "html")
-            self.text_preprocessor = TextPreprocessor(html_config)
+            self.text_preprocessor = RawTextPreprocessor(html_config)
 
             with open(file_path, "r", encoding="utf-8") as file:
                 soup = BeautifulSoup(file.read(), "html.parser")
@@ -839,7 +852,7 @@ class ExcelPreprocessor(PreprocessorBase):
             import pandas as pd
 
             xls_config = filter_config(self.config, "xls")  # or "excel"
-            self.text_preprocessor = TextPreprocessor(xls_config)
+            self.text_preprocessor = RawTextPreprocessor(xls_config)
 
             # Read all sheets
             excel_file = pd.ExcelFile(file_path)
@@ -921,7 +934,7 @@ class ODTPreprocessor(PreprocessorBase):
             from datetime import datetime  # For date parsing
 
             odt_config = filter_config(self.config, "odt")
-            self.text_preprocessor = TextPreprocessor(odt_config)
+            self.text_preprocessor = RawTextPreprocessor(odt_config)
 
             textdoc = load(file_path)
 
@@ -1042,12 +1055,12 @@ class CSVFilePreprocessor(PreprocessorBase):
                     file.seek(0)
                     text_content = file.read()
 
-            # CSV content is typically not further preprocessed by TextPreprocessor in the same way
+            # CSV content is typically not further preprocessed by RawTextPreprocessor in the same way
             # unless specific cleaning (like removing extra spaces in data) is desired.
             # For now, we return the raw text content.
-            # If TextPreprocessor is needed:
+            # If RawTextPreprocessor is needed:
             # csv_config = filter_config(self.config, "csv") # or "text"
-            # self.text_preprocessor = TextPreprocessor(csv_config)
+            # self.text_preprocessor = RawTextPreprocessor(csv_config)
             # processed_text = self.text_preprocessor.preprocess(text_content)
             # return {"text_content": processed_text, "metadata": metadata}
 
