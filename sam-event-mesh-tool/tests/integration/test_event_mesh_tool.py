@@ -108,7 +108,10 @@ async def test_parameter_mapping_with_nested_payload_paths():
     }
 
     # Act: Build the payload and resolve params
-    payload, resolved_params = _build_payload_and_resolve_params(parameters_map, params)
+    tool_context = create_mock_tool_context(Mock())
+    payload, resolved_params = _build_payload_and_resolve_params(
+        parameters_map, params, tool_context
+    )
 
     # Assert: Verify the nested structure is correct
     expected_payload = {
@@ -143,8 +146,9 @@ async def test_parameter_defaults_and_overrides():
 
     # Test 1: Use all defaults (empty params)
     params_empty = {}
+    tool_context = create_mock_tool_context(Mock())
     payload_defaults, resolved_defaults = _build_payload_and_resolve_params(
-        parameters_map, params_empty
+        parameters_map, params_empty, tool_context
     )
 
     expected_defaults = {
@@ -163,8 +167,9 @@ async def test_parameter_defaults_and_overrides():
         "timeout": 60,
         # unit should use default
     }
+    tool_context = create_mock_tool_context(Mock())
     payload_partial, resolved_partial = _build_payload_and_resolve_params(
-        parameters_map, params_partial
+        parameters_map, params_partial, tool_context
     )
 
     expected_partial = {
@@ -179,8 +184,9 @@ async def test_parameter_defaults_and_overrides():
 
     # Test 3: Override all defaults
     params_all = {"city": "Montreal", "unit": "fahrenheit", "timeout": 120}
+    tool_context = create_mock_tool_context(Mock())
     payload_all, resolved_all = _build_payload_and_resolve_params(
-        parameters_map, params_all
+        parameters_map, params_all, tool_context
     )
 
     expected_all = {
@@ -1942,11 +1948,14 @@ async def test_multiple_tool_instances_isolation():
     }
     crm_params_map = {param["name"]: param for param in tool_config_crm["parameters"]}
 
+    tool_context = create_mock_tool_context(Mock())  # Create one mock context for both
     weather_payload, _ = _build_payload_and_resolve_params(
-        weather_params_map, {"city": "Vancouver"}
+        weather_params_map, {"city": "Vancouver"}, tool_context
     )
     crm_payload, _ = _build_payload_and_resolve_params(
-        crm_params_map, {"customer_id": "99999", "status": "inactive"}
+        crm_params_map,
+        {"customer_id": "99999", "status": "inactive"},
+        tool_context,
     )
 
     expected_weather_payload = {"location": {"city": "Vancouver"}}
@@ -2202,8 +2211,10 @@ async def test_null_and_undefined_parameter_values():
         # "default_to_none" is not provided, should use default
         # "default_to_empty_string" is not provided, should use default
     }
-
-    payload, resolved_params = _build_payload_and_resolve_params(parameters_map, params)
+    tool_context = create_mock_tool_context(Mock())
+    payload, resolved_params = _build_payload_and_resolve_params(
+        parameters_map, params, tool_context
+    )
 
     # Assert: Check the resulting payload
     expected_payload = {
@@ -2835,6 +2846,151 @@ async def test_invalid_parameter_definitions():
     with pytest.raises(ValueError) as exc_info:
         _ = tool_not_list.parameters_schema
     assert "'parameters' must be a list" in str(exc_info.value)
+
+
+async def test_context_expression_basic_sourcing(
+    agent_with_event_mesh_tool: SamAgentComponent,
+):
+    """
+    Tests that a parameter with a context_expression correctly sources its value.
+    """
+    from sam_event_mesh_tool.tools import _build_payload_and_resolve_params
+
+    # Arrange
+    parameters_map = {
+        "user_id": {
+            "name": "user_id",
+            "context_expression": "user_id",
+            "payload_path": "meta.user",
+        }
+    }
+    llm_params = {}
+    tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
+    tool_context.state["a2a_context"] = {"user_id": "test-user-123"}
+
+    # Act
+    payload, resolved_params = _build_payload_and_resolve_params(
+        parameters_map, llm_params, tool_context
+    )
+
+    # Assert
+    expected_payload = {"meta": {"user": "test-user-123"}}
+    assert payload == expected_payload
+    assert resolved_params.get("user_id") == "test-user-123"
+
+
+async def test_context_expression_nested_path(
+    agent_with_event_mesh_tool: SamAgentComponent,
+):
+    """
+    Tests that a context_expression can source values from a nested path.
+    """
+    from sam_event_mesh_tool.tools import _build_payload_and_resolve_params
+
+    # Arrange
+    parameters_map = {
+        "job_title": {
+            "name": "job_title",
+            "context_expression": "a2a_user_config.user_profile.job_title",
+            "payload_path": "user.title",
+        }
+    }
+    llm_params = {}
+    tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
+    tool_context.state["a2a_context"] = {
+        "a2a_user_config": {"user_profile": {"job_title": "Solutions Architect"}}
+    }
+
+    # Act
+    payload, resolved_params = _build_payload_and_resolve_params(
+        parameters_map, llm_params, tool_context
+    )
+
+    # Assert
+    expected_payload = {"user": {"title": "Solutions Architect"}}
+    assert payload == expected_payload
+    assert resolved_params.get("job_title") == "Solutions Architect"
+
+
+async def test_context_expression_with_llm_and_defaults(
+    agent_with_event_mesh_tool: SamAgentComponent,
+):
+    """
+    Tests that parameters are correctly sourced from context, LLM args, and defaults.
+    """
+    from sam_event_mesh_tool.tools import _build_payload_and_resolve_params
+
+    # Arrange
+    parameters_map = {
+        "summary": {
+            "name": "summary",
+            "payload_path": "ticket.summary",
+        },
+        "user_id": {
+            "name": "user_id",
+            "context_expression": "user_id",
+            "payload_path": "ticket.user",
+        },
+        "priority": {
+            "name": "priority",
+            "default": "medium",
+            "payload_path": "ticket.priority",
+        },
+    }
+    llm_params = {"summary": "The system is down."}
+    tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
+    tool_context.state["a2a_context"] = {"user_id": "test-user-456"}
+
+    # Act
+    payload, resolved_params = _build_payload_and_resolve_params(
+        parameters_map, llm_params, tool_context
+    )
+
+    # Assert
+    expected_payload = {
+        "ticket": {
+            "summary": "The system is down.",
+            "user": "test-user-456",
+            "priority": "medium",
+        }
+    }
+    assert payload == expected_payload
+    assert resolved_params.get("summary") == "The system is down."
+    assert resolved_params.get("user_id") == "test-user-456"
+    assert resolved_params.get("priority") == "medium"
+
+
+async def test_context_expression_missing_path(
+    agent_with_event_mesh_tool: SamAgentComponent,
+):
+    """
+    Tests that a missing context_expression path results in a null value.
+    """
+    from sam_event_mesh_tool.tools import _build_payload_and_resolve_params
+
+    # Arrange
+    parameters_map = {
+        "region": {
+            "name": "region",
+            "context_expression": "a2a_user_config.location.region",  # This path does not exist
+            "payload_path": "meta.region",
+        }
+    }
+    llm_params = {}
+    tool_context = create_mock_tool_context(agent_with_event_mesh_tool)
+    tool_context.state["a2a_context"] = {
+        "user_id": "some-user"
+    }  # Context exists but path doesn't
+
+    # Act
+    payload, resolved_params = _build_payload_and_resolve_params(
+        parameters_map, llm_params, tool_context
+    )
+
+    # Assert
+    expected_payload = {"meta": {"region": None}}
+    assert payload == expected_payload
+    assert resolved_params.get("region") is None
 
 
 async def test_response_correlation_failure(
