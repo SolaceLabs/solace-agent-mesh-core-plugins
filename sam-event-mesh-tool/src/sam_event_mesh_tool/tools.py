@@ -85,12 +85,10 @@ class EventMeshTool(DynamicTool):
         super().__init__(tool_config)
         self.session_id: Optional[str] = None
 
-    async def init(
-        self, component: "SamAgentComponent", tool_config_model: "AnyToolConfig"
-    ):
+    async def init(self, component: "SamAgentComponent", tool_config: "AnyToolConfig"):
         """Initializes the dedicated request-response session for this tool instance."""
         log_identifier = f"[EventMeshTool:{self.tool_name}:init]"
-        log.info(f"{log_identifier} Initializing event mesh session.")
+        log.info("%s Initializing event mesh session.", log_identifier)
 
         # Fail fast if configuration is missing
         if "event_mesh_config" not in self.tool_config:
@@ -109,24 +107,23 @@ class EventMeshTool(DynamicTool):
             self.session_id = component.create_request_response_session(
                 session_config=event_mesh_config
             )
-            log.info(f"{log_identifier} Session created with ID: {self.session_id}")
+            log.info("%s Session created with ID: %s", log_identifier, self.session_id)
         except Exception as e:
             log.error(
-                f"{log_identifier} Failed to create request/response session: {e}",
-                exc_info=True,
+                "%s Failed to create request/response session: %s", log_identifier, e
             )
             raise
 
     async def cleanup(
-        self, component: "SamAgentComponent", tool_config_model: "AnyToolConfig"
+        self, component: "SamAgentComponent", tool_config: "AnyToolConfig"
     ):
         """Destroys the dedicated request-response session for this tool instance."""
         log_identifier = f"[EventMeshTool:{self.tool_name}:cleanup]"
         if self.session_id:
-            log.info(f"{log_identifier} Destroying session ID: {self.session_id}")
+            log.info("%s Destroying session ID: %s", log_identifier, self.session_id)
             component.destroy_request_response_session(self.session_id)
             self.session_id = None
-            log.info(f"{log_identifier} Session destroyed.")
+            log.info("%s Session destroyed.", log_identifier)
 
     @property
     def tool_name(self) -> str:
@@ -247,7 +244,9 @@ class EventMeshTool(DynamicTool):
                 return {"status": "success", "message": "Request sent asynchronously."}
 
             if response is None:
-                log.warning(f"{log_identifier} Received None response without timeout.")
+                log.warning(
+                    "%s Received None response without timeout.", log_identifier
+                )
                 return {
                     "status": "error",
                     "message": "Request failed. No response received.",
