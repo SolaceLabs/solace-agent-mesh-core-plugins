@@ -42,7 +42,7 @@ shared_config:
     # Default artifact service configuration
     artifact_service: &default_artifact_service
       type: "filesystem"
-      base_path: "/tmp/a2a_rag_agent_artifacts"
+      base_path: "/tmp/samv2"
       artifact_scope: "app"
 
 apps:
