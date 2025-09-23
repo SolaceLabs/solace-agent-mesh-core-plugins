@@ -39,7 +39,7 @@ def _build_payload_and_resolve_params(
         if "context_expression" in param_config:
             # Source value from context
             expr = param_config["context_expression"]
-            value = get_data_value(a2a_context, expr)
+            value = get_data_value(a2a_context, expr, True)
         elif param_name in params:
             # Use provided value from LLM
             value = params[param_name]
