@@ -63,6 +63,9 @@ tools:
           type: "string"
           required: true
           description: "A unique identifier for this request."
+        - name: "user_id" # Sourced from context, not from LLM
+          context_expression: "user_id" # Fetches from tool_context.state.a2a_context.user_id
+          payload_path: "meta.requesting_user_id"
       
       # --- Per-Request Configuration ---
       topic: "acme/weather/request/{{ request_id }}"
@@ -91,6 +94,7 @@ tools:
     -   `description`: (Optional) A description of the parameter for the LLM.
     -   `default`: (Optional) A default value if the parameter is not provided.
     -   `payload_path`: (Optional) The path to map the parameter's value into the outgoing JSON payload. It supports dot notation for nested objects (e.g., `customer.address.city`). If omitted, the parameter is not included in the payload but can still be used in the topic template.
+    -   `context_expression`: (Optional) A dot-notation path to source the parameter's value from the agent's execution context (`a2a_context`). **If this is specified, the parameter is considered internal and will not be exposed to the LLM.** This is useful for automatically injecting data like user IDs, session details, or user profile information.
 -   `topic`: The topic string for the outgoing request message. You can insert parameter values into the topic using `{{ parameter_name }}`.
 -   `wait_for_response`: (Optional) `true` (default) for synchronous requests that wait for a reply. Set to `false` for asynchronous "fire-and-forget" requests.
 

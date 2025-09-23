@@ -39,6 +39,9 @@
                 type: "string"
                 required: true
                 description: "A unique identifier for this request."
+              - name: "user_id" # Sourced from context, not from LLM
+                context_expression: "user_id" # Fetches from tool_context.state.a2a_context.user_id
+                payload_path: "meta.requesting_user_id"
             
             # --- Per-Request Configuration ---
             topic: "acme/weather/request/{{ request_id }}"

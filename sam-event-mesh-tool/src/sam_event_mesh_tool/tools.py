@@ -6,37 +6,45 @@ from google.genai import types as adk_types
 
 from solace_ai_connector.common.log import log
 from solace_ai_connector.common.message import Message
+from solace_ai_connector.common.utils import get_data_value
 from solace_agent_mesh.agent.tools.dynamic_tool import DynamicTool
 from solace_agent_mesh.agent.sac.component import SamAgentComponent
 from solace_agent_mesh.agent.tools.tool_config_types import AnyToolConfig
 
 
 def _build_payload_and_resolve_params(
-    parameters_map: Dict[str, Any], params: Dict[str, Any]
+    parameters_map: Dict[str, Any],
+    params: Dict[str, Any],
+    tool_context: ToolContext,
 ) -> tuple[Dict[str, Any], Dict[str, Any]]:
     """Build the message payload and resolve all parameters with defaults applied.
 
     Args:
-        parameters_map: Dictionary mapping parameter names to their configuration
-        params: Dictionary of provided parameter values
+        parameters_map: Dictionary mapping parameter names to their configuration.
+        params: Dictionary of provided parameter values from the LLM.
+        tool_context: The tool context, used to source context-based parameters.
 
     Returns:
         Tuple of (payload, resolved_params) where:
-        - payload: Dict containing the structured payload with nested paths
-        - resolved_params: Dict containing all parameters with defaults applied
+        - payload: Dict containing the structured payload with nested paths.
+        - resolved_params: Dict containing all parameters with defaults and context values applied.
     """
     payload = {}
     resolved_params = {}
+    a2a_context = tool_context.state.get("a2a_context", {})
 
     # Iterate over all defined parameters, not just provided ones
     for param_name, param_config in parameters_map.items():
-        # Determine the value to use
         value = None
-        if param_name in params:
-            # Use provided value (even if it's falsy like 0, False, "")
+        if "context_expression" in param_config:
+            # Source value from context
+            expr = param_config["context_expression"]
+            value = get_data_value(a2a_context, expr)
+        elif param_name in params:
+            # Use provided value from LLM
             value = params[param_name]
         elif "default" in param_config:
-            # Use default value (even if it's falsy like 0, False, "")
+            # Use default value
             value = param_config["default"]
         else:
             # No value provided and no default - skip this parameter entirely
@@ -162,6 +170,10 @@ class EventMeshTool(DynamicTool):
                     f"Parameter at index {i} is not a valid dictionary. Found: '{param}'"
                 )
 
+            # Skip parameters that are sourced from context, they are not for the LLM
+            if "context_expression" in param:
+                continue
+
             param_name = param.get("name")
             if not param_name:
                 raise ValueError(
@@ -219,7 +231,7 @@ class EventMeshTool(DynamicTool):
 
             # Build payload and resolve all parameters (including defaults) in one place
             payload, resolved_params = _build_payload_and_resolve_params(
-                parameters_map, args
+                parameters_map, args, tool_context
             )
             topic = _fill_topic_template(topic_template, resolved_params)
 
