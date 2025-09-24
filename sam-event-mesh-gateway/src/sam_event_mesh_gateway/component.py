@@ -1278,7 +1278,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
     def _start_listener(self) -> None:
         """
         GDK Hook: Schedules data plane initialization and starts the data plane message processor.
-        Called by BaseGatewayComponent.run() within self.async_loop.
+        Called by BaseGatewayComponent.run() within async_loop.
         """
         log_id_prefix = f"{self.log_identifier}[StartListener]"
         log.info(
@@ -1286,7 +1286,8 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             log_id_prefix,
         )
 
-        if not self.async_loop:
+        async_loop = self.get_async_loop()
+        if not async_loop:
             log.error(
                 "%s Async loop not available. Cannot start listener.",
                 log_id_prefix,
@@ -1294,14 +1295,15 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             self.stop_signal.set()
             return
 
-        self.async_loop.create_task(self._initialize_and_subscribe_data_plane())
+
+        async_loop.create_task(self._initialize_and_subscribe_data_plane())
         log.info("%s Data plane subscriber initialization task created.", log_id_prefix)
 
         if (
             self.data_plane_processor_task is None
             or self.data_plane_processor_task.done()
         ):
-            self.data_plane_processor_task = self.async_loop.create_task(
+            self.data_plane_processor_task = async_loop.create_task(
                 self._data_plane_message_processor_loop()
             )
             log.info(
@@ -1323,11 +1325,13 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             "%s Stopping listener: scheduling data plane client stop and terminating processor...",
             log_id_prefix,
         )
+        
+        async_loop = self.get_async_loop()
 
-        if self.async_loop and self.async_loop.is_running():
+        if async_loop and async_loop.is_running():
             if self.data_plane_internal_app:
                 stop_subscriber_future = asyncio.run_coroutine_threadsafe(
-                    self._stop_data_plane_client(), self.async_loop
+                    self._stop_data_plane_client(), async_loop
                 )
                 try:
                     stop_subscriber_future.result(timeout=10)
