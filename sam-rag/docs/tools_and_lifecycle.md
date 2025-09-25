@@ -172,12 +172,10 @@ tools:
   - tool_type: python
     component_module: "sam_rag.tools"
     function_name: "ingest_document"
-    required_scopes: ["rag:ingest:write"]
   
   - tool_type: python
     component_module: "sam_rag.tools"
     function_name: "search_documents"
-    required_scopes: ["rag:search:read"]
 ```
 
 2. **Lifecycle Function Registration**: The lifecycle functions are registered with the ADK framework in the configuration file:
