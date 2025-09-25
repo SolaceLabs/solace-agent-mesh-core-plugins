@@ -37,7 +37,7 @@ shared_config:
     # Default artifact service configuration
     artifact_service: &default_artifact_service
       type: "filesystem"
-      base_path: "/tmp/a2a_rag_agent_artifacts"
+      base_path: "/tmp/samv2"
       artifact_scope: "app"
 
 apps:
@@ -181,146 +181,11 @@ apps:
                   enabled: true
                   sqs_queue_url: "${S3_SQS_QUEUE_URL}"
                   polling_interval: 300  # 5 minutes
-          
-          # Preprocessor configuration
-          preprocessor:
-            default_preprocessor:
-              type: enhanced
-              params:
-                  lowercase: true
-                  normalize_whitespace: true
-                  remove_stopwords: false
-                  remove_punctuation: false
-                  remove_numbers: false
-                  remove_non_ascii: false
-                  remove_urls: true
-                  remove_emails: false
-                  remove_html_tags: false
-            
-            # Text file configurations
-            text:
-              type: text
-              params:
-                lowercase: true
-                normalize_whitespace: true
-                remove_stopwords: false
-                remove_punctuation: true
-                remove_numbers: false
-                remove_non_ascii: false
-                remove_urls: true
-                remove_emails: false
-                remove_html_tags: false
-              
-            # Document file configurations
-            pdf:
-              type: document
-              params:
-                lowercase: true
-                normalize_whitespace: true
-                remove_stopwords: false
-                remove_punctuation: true
-                remove_numbers: false
-                remove_non_ascii: true
-                remove_urls: true
-                remove_emails: true
-                remove_html_tags: false
-              
-            doc:
-              type: document
-              params:
-                lowercase: true
-                normalize_whitespace: true
-                remove_stopwords: false
-                remove_punctuation: true
-                remove_numbers: false
-                remove_non_ascii: true
-                remove_urls: true
-                remove_emails: true
-                remove_html_tags: false
-
-            odt:
-              type: document
-              params:
-                lowercase: true
-                normalize_whitespace: true
-                remove_stopwords: false
-                remove_punctuation: true
-                remove_numbers: false
-                remove_non_ascii: true
-                remove_urls: true
-                remove_emails: true
-                remove_html_tags: false
-              
-            # Structured data configurations
-            json:
-              type: structured
-              params:
-                lowercase: true
-                normalize_whitespace: true
-                remove_stopwords: false
-                remove_punctuation: false
-                remove_numbers: false
-                remove_non_ascii: false
-                remove_urls: true
-                remove_emails: true
-                remove_html_tags: false
-              
-            html:
-              type: html
-              params:
-                lowercase: true
-                normalize_whitespace: true
-                remove_stopwords: false
-                remove_punctuation: false
-                remove_numbers: false
-                remove_non_ascii: false
-                remove_urls: true
-                remove_emails: true
-                remove_html_tags: false
-              
-            markdown:
-              type: markdown
-              params:
-                lowercase: true
-                normalize_whitespace: true
-                remove_stopwords: false
-                remove_punctuation: false
-                remove_numbers: false
-                remove_non_ascii: false
-                remove_urls: true
-                remove_emails: true
-                remove_html_tags: false
-
-            csv:
-              type: csv
-              params:
-                lowercase: true
-                normalize_whitespace: true
-                remove_stopwords: false
-                remove_punctuation: true
-                remove_numbers: false
-                remove_non_ascii: false
-                remove_urls: true
-                remove_emails: true
-                remove_html_tags: false
-
-            xls:
-               type: xls
-               params:
-                lowercase: true
-                normalize_whitespace: true
-                remove_stopwords: false
-                remove_punctuation: true
-                remove_numbers: false
-                remove_non_ascii: false
-                remove_urls: true
-                remove_emails: true
-                remove_html_tags: false
         
           # Text splitter configuration
           splitter:
-            default_splitter:
-              type: character
+            default:
+              method: CharacterTextSplitter
               params:
                 chunk_size: 2048 # minimum chunk size
                 chunk_overlap: 800
@@ -328,7 +193,7 @@ apps:
             splitters:
               # Text file configurations
               text:
-                type: character
+                method: CharacterTextSplitter
                 params:
                   chunk_size: 2048 # minimum chunk size
                   chunk_overlap: 800
@@ -337,7 +202,7 @@ apps:
                   keep_separator: true
                   strip_whitespace: true
               txt:
-                type: character
+                method: CharacterTextSplitter
                 params:
                   chunk_size: 2048 # minimum chunk size
                   chunk_overlap: 800
@@ -347,25 +212,25 @@ apps:
                   strip_whitespace: true
               # Structured data configurations
               json:
-                type: recursive_json
+                method: RecursiveJSONSplitter
                 params:
                   chunk_size: 200
                   chunk_overlap: 50
               html:
-                type: html
+                method: HTMLSplitter
                 params:
                   chunk_size: 2048
                   chunk_overlap: 800
                   tags_to_extract: ["p", "h1", "h2", "h3", "li"]
               markdown:
-                type: markdown
+                method: MarkdownSplitter
                 params:
                   chunk_size: 2048
                   chunk_overlap: 800
                   headers_to_split_on: ["#", "##", "###", "####", "#####", "######"]
                   strip_headers: false
               csv:
-                type: csv
+                method: CSVSplitter
                 params:
                   chunk_size: 2048 # chunk size in number of rows
                   include_header: false

@@ -603,7 +603,13 @@ scanner:
     # Google Drive source
     - type: google_drive
       provider: google_drive
+      # OAuth2 Authentication (Default)
       credentials_path: "${GOOGLE_DRIVE_CREDENTIALS_PATH}"
+      
+      # OR Service Account Authentication
+      # auth_type: "service_account"  # Use Service Account instead of OAuth2
+      # service_account_key_path: "${GOOGLE_SERVICE_ACCOUNT_KEY_PATH}" # e.g. "/path/to/service-account-key.json"
+      
       folders:
         - folder_id: "${GOOGLE_DRIVE_FOLDER_ID_1}"
           name: "Documents"
@@ -684,7 +690,8 @@ Set the following environment variables for the aforementioned sources:
   - `LOCAL_DOCUMENTS_PATH`: Path to local documents directory for batch scanning documents.
   
   - **Google Drive:**
-    - `GOOGLE_DRIVE_CREDENTIALS_PATH`: Path to Google Drive credentials file
+    - `GOOGLE_DRIVE_CREDENTIALS_PATH`: Path to Google Drive credentials file (for OAuth2)
+    - `GOOGLE_SERVICE_ACCOUNT_KEY_PATH`: Path to service account key file (for service account auth)
     - `GOOGLE_DRIVE_FOLDER_ID_1`, `GOOGLE_DRIVE_FOLDER_ID_2`: IDs of Google Drive folders to monitor
     - `GOOGLE_DRIVE_WEBHOOK_URL`: Webhook URL for real-time updates
   
