@@ -228,7 +228,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
     def _start_listener(self) -> None:
         """
         GDK Hook: Starts the FastAPI/Uvicorn server and dynamically adds routes.
-        This method is called by BaseGatewayComponent.run() within the self.async_loop.
+        This method is called by BaseGatewayComponent.run() within the async_loop.
         """
         log.info(
             "%s [_start_listener] Attempting to start FastAPI/Uvicorn server...",
@@ -307,13 +307,15 @@ class WebhookGatewayComponent(BaseGatewayComponent):
             )
             self.uvicorn_server = uvicorn.Server(config)
 
-            if self.async_loop:
+            async_loop = self.get_async_loop()
+
+            if async_loop:
                 log.info(
                     "%s Scheduling Uvicorn server on existing async_loop: %s",
                     self.log_identifier,
-                    self.async_loop,
+                    async_loop,
                 )
-                asyncio.ensure_future(self.uvicorn_server.serve(), loop=self.async_loop)
+                asyncio.ensure_future(self.uvicorn_server.serve(), loop=async_loop)
                 log.info(
                     "%s FastAPI/Uvicorn server scheduled to run on http://%s:%d",
                     self.log_identifier,
@@ -322,7 +324,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
                 )
             else:
                 log.error(
-                    "%s self.async_loop not available. Cannot start Uvicorn server.",
+                    "%s async_loop not available. Cannot start Uvicorn server.",
                     self.log_identifier,
                 )
                 raise RuntimeError("Asyncio event loop not available for Uvicorn.")
