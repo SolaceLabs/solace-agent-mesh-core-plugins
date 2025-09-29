@@ -18,10 +18,10 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "solace-ai-connector==1.2.0", # Align with SAM Host, adjust as needed
-    "pydantic==2.11.9",
-    "jsonschema==4.25.1",
-    "solace-pubsubplus==1.9.0" # For data plane client if used directly
+    "solace-ai-connector>=0.8.0", # Align with SAM Host, adjust as needed
+    "pydantic>=2.0.0",
+    "jsonschema>=4.0.0",
+    "solace-pubsubplus>=1.3.0" # For data plane client if used directly
 ]
 
 [project.entry-points."solace_agent_mesh.plugins"]
