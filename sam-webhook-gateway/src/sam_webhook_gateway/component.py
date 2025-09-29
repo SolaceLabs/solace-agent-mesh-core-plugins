@@ -27,14 +27,15 @@ from solace_ai_connector.common.log import log
 from solace_ai_connector.common.message import Message as SolaceMessage
 
 from solace_agent_mesh.gateway.base.component import BaseGatewayComponent
-from solace_agent_mesh.common.types import (
-    Part as A2APart,
+from a2a.types import (
     TextPart,
     Task,
     TaskStatusUpdateEvent,
     TaskArtifactUpdateEvent,
     JSONRPCError,
 )
+from solace_agent_mesh.common import a2a
+from solace_agent_mesh.common.a2a import ContentPart
 
 from solace_agent_mesh.agent.utils.artifact_helpers import save_artifact_with_metadata
 
@@ -227,7 +228,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
     def _start_listener(self) -> None:
         """
         GDK Hook: Starts the FastAPI/Uvicorn server and dynamically adds routes.
-        This method is called by BaseGatewayComponent.run() within the self.async_loop.
+        This method is called by BaseGatewayComponent.run() within the async_loop.
         """
         log.info(
             "%s [_start_listener] Attempting to start FastAPI/Uvicorn server...",
@@ -306,13 +307,15 @@ class WebhookGatewayComponent(BaseGatewayComponent):
             )
             self.uvicorn_server = uvicorn.Server(config)
 
-            if self.async_loop:
+            async_loop = self.get_async_loop()
+
+            if async_loop:
                 log.info(
                     "%s Scheduling Uvicorn server on existing async_loop: %s",
                     self.log_identifier,
-                    self.async_loop,
+                    async_loop,
                 )
-                asyncio.ensure_future(self.uvicorn_server.serve(), loop=self.async_loop)
+                asyncio.ensure_future(self.uvicorn_server.serve(), loop=async_loop)
                 log.info(
                     "%s FastAPI/Uvicorn server scheduled to run on http://%s:%d",
                     self.log_identifier,
@@ -321,7 +324,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
                 )
             else:
                 log.error(
-                    "%s self.async_loop not available. Cannot start Uvicorn server.",
+                    "%s async_loop not available. Cannot start Uvicorn server.",
                     self.log_identifier,
                 )
                 raise RuntimeError("Asyncio event loop not available for Uvicorn.")
@@ -579,7 +582,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
         request: FastAPIRequest,
         endpoint_config: Dict[str, Any],
         user_identity: Dict[str, Any],
-    ) -> Tuple[str, List[A2APart], Dict[str, Any]]:
+    ) -> Tuple[str, List[ContentPart], Dict[str, Any]]:
         """
         Translates webhook data (FastAPIRequest) into A2A task parameters.
         Parses payload based on 'payload_format', optionally saves as artifact,
@@ -845,9 +848,10 @@ class WebhookGatewayComponent(BaseGatewayComponent):
                 f"Error processing input_template: {template_err}"
             ) from template_err
 
-        a2a_parts: List[A2APart] = []
+        a2a_parts: List[ContentPart] = []
         if templated_text is not None:
-            a2a_parts.append(TextPart(text=str(templated_text)))
+            text_part = a2a.create_text_part(text=str(templated_text))
+            a2a_parts.append(text_part)
 
         external_request_context = {
             "webhook_path": request.url.path,
@@ -873,7 +877,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
         is_final_chunk_of_update: bool,
     ) -> None:
         log_id_prefix = f"{self.log_identifier}[SendUpdate]"
-        a2a_task_id = event_data.id
+        a2a_task_id = event_data.task_id
         log.debug(
             "%s _send_update_to_external called for task %s. Webhook gateway already ACKed. Update Type: %s. Final Chunk: %s. Context: %s",
             log_id_prefix,
@@ -887,12 +891,12 @@ class WebhookGatewayComponent(BaseGatewayComponent):
         self, external_request_context: Dict[str, Any], task_data: Task
     ) -> None:
         log_id_prefix = f"{self.log_identifier}[SendFinalResponse]"
-        a2a_task_id = task_data.id
+        a2a_task_id = a2a.get_task_id(task_data)
         log.debug(
             "%s _send_final_response_to_external called for task %s. Webhook gateway already ACKed. Task Status: %s. Context: %s",
             log_id_prefix,
             a2a_task_id,
-            task_data.status.state,
+            a2a.get_task_status(task_data),
             external_request_context,
         )
 
@@ -903,7 +907,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
         log.debug(
             "%s _send_error_to_external called. Webhook gateway already ACKed. Error Code: %s, Message: %s. Context: %s",
             log_id_prefix,
-            error_data.code,
-            error_data.message,
+            a2a.get_error_code(error_data),
+            a2a.get_error_message(error_data),
             external_request_context,
         )

@@ -10,7 +10,7 @@ type = "gateway"
 
 [project]
 name = "sam_slack"
-version = "0.1.0"
+version = "0.2.0"
 authors = [
   { name="SolaceLabs", email="solacelabs@solace.com" },
 ]
@@ -38,10 +38,12 @@ markers = []
 
 [tool.hatch.envs.hatch-test]
 dependencies = [
+  "a2a-sdk[http-server]>=0.3.1",
   "pytest-asyncio",
   "pytest>=8.0.0",
   "pytest-mock>=3.0.0",
   "pytest-cov>=4.0.0",
   "pytest-xdist>=3.5.0",
+  "solace_agent_mesh>=1.1.0,<2.0.0",
   "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure"
 ]

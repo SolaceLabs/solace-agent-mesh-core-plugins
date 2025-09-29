@@ -1,0 +1,44 @@
+# Topic Matching Test Case
+# Tests topic subscription patterns and wildcard matching
+
+test_scenario:
+  name: "topic_matching"
+  description: "Test topic subscription patterns with wildcards"
+  
+  llm_responses:
+    - static_response:
+        choices:
+          - message:
+              role: "assistant"
+              content: "Processed message from wildcard subscription"
+        usage:
+          prompt_tokens: 8
+          completion_tokens: 8
+          total_tokens: 16
+
+  test_steps:
+    - type: "publish_message"
+      topic: "test/events/wildcard/level1/level2"
+      payload:
+        message: "Message to wildcard topic"
+        topic_level: "deep"
+      user_properties:
+        user_id: "wildcard_test_user"
+    
+    - type: "expect_a2a_task"
+      target_agent: "TestEventMeshAgent"
+      content_contains: "Message to wildcard topic"
+      timeout_seconds: 5.0
+    
+    - type: "respond_with"
+      content: "Processed message from wildcard subscription"
+    
+    - type: "expect_published"
+      topic_pattern: "test/responses/basic/*"
+      payload_contains: "Processed message from wildcard"
+      timeout_seconds: 5.0
+
+  validation:
+    expected_messages: 1
+    expected_responses: 1
+    max_duration_seconds: 10.0

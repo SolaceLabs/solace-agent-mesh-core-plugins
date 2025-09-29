@@ -10,7 +10,7 @@ type = "agent"
 
 [project]
 name = "sam_sql_database"
-version = "0.1.0" # Initial version
+version = "0.1.1"
 description = "A2A ADK Host plugin for natural language querying of SQL databases."
 readme = "README.md"
 authors = [
@@ -19,7 +19,7 @@ authors = [
 requires-python = ">=3.10"
 dependencies = [
     "SQLAlchemy>=2.0.0",
-    "mysql-connector-python>=8.0.0",
+    "PyMySQL>=1.0.0",
     "psycopg2-binary>=2.9.0",
     "pydantic>=2.0.0",
     "PyYAML>=6.0"

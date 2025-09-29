@@ -3,6 +3,7 @@ Service for splitting documents into chunks for embedding.
 """
 
 from typing import Dict, Any, List
+from solace_ai_connector.common.log import log as logger
 
 from sam_rag.services.splitter.splitter_base import SplitterBase
 from sam_rag.services.splitter.text_splitter import (
@@ -18,6 +19,15 @@ from sam_rag.services.splitter.structured_splitter import (
     CSVSplitter,
 )
 
+class SplitterMethod:
+    CHARACTER = "CharacterTextSplitter"
+    RECURSIVE_CHARACTER = "RecursiveCharacterTextSplitter"
+    TOKEN = "TokenTextSplitter"
+    JSON = "JSONSplitter"
+    RECURSIVE_JSON = "RecursiveJSONSplitter"
+    HTML = "HTMLSplitter"
+    MARKDOWN = "MarkdownSplitter"
+    CSV = "CSVSplitter"
 
 class SplitterService:
     """
@@ -65,49 +75,52 @@ class SplitterService:
         else:
             # Register splitters based on the configuration
             for data_type, splitter_config in splitter_configs.items():
-                splitter_type = splitter_config.get("type", "recursive_character")
+                splitter_type = splitter_config.get("method", SplitterMethod.RECURSIVE_CHARACTER)
                 splitter_params = splitter_config.get("params", {})
 
-                # Create the appropriate splitter based on the type
+                # Create the appropriate splitter based on the method
                 match splitter_type:
-                    case "character":
+                    case SplitterMethod.CHARACTER:
                         self.splitters[data_type] = CharacterTextSplitter(
                             splitter_params
                         )
-                    case "recursive_character":
+                    case SplitterMethod.RECURSIVE_CHARACTER:
                         self.splitters[data_type] = RecursiveCharacterTextSplitter(
                             splitter_params
                         )
-                    case "token":
+                    case SplitterMethod.TOKEN:
                         self.splitters[data_type] = TokenTextSplitter(splitter_params)
-                    case "json":
+                    case SplitterMethod.JSON:
                         self.splitters[data_type] = JSONSplitter(splitter_params)
-                    case "recursive_json":
+                    case SplitterMethod.RECURSIVE_JSON:
                         self.splitters[data_type] = RecursiveJSONSplitter(
                             splitter_params
                         )
-                    case "html":
+                    case SplitterMethod.HTML:
                         self.splitters[data_type] = HTMLSplitter(splitter_params)
-                    case "markdown":
+                    case SplitterMethod.MARKDOWN:
                         self.splitters[data_type] = MarkdownSplitter(splitter_params)
-                    case "csv":
+                    case SplitterMethod.CSV:
                         self.splitters[data_type] = CSVSplitter(splitter_params)
 
             # Set the default splitter
-            default_config = self.config.get("default_splitter", {})
-            default_type = default_config.get("type", "recursive_character")
+            default_config = self.config.get("default", {})
+            default_type = default_config.get("type", SplitterMethod.RECURSIVE_CHARACTER)
             default_params = default_config.get("params", {})
 
             match default_type:
-                case "character":
+                case SplitterMethod.CHARACTER:
                     self.default_splitter = CharacterTextSplitter(default_params)
-                case "recursive_character":
+                case SplitterMethod.RECURSIVE_CHARACTER:
                     self.default_splitter = RecursiveCharacterTextSplitter(
                         default_params
                     )
-                case "token":
+                case SplitterMethod.TOKEN:
                     self.default_splitter = TokenTextSplitter(default_params)
                 case _:
+                    logger.info(
+                        f"Unsupported default splitter type '{default_type}'. Falling back to RecursiveCharacterTextSplitter."
+                    )
                     self.default_splitter = RecursiveCharacterTextSplitter()
 
     def get_splitter(self, data_type: str) -> SplitterBase:

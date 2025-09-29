@@ -193,7 +193,14 @@ class DatabaseService(ABC):
         if self.engine.name == "mysql":
             query = f"SELECT DISTINCT `{column_name}` FROM `{table_name}` WHERE `{column_name}` IS NOT NULL ORDER BY RAND() LIMIT {limit}"
         elif self.engine.name == "postgresql":
-            query = f'SELECT DISTINCT "{column_name}" FROM "{table_name}" WHERE "{column_name}" IS NOT NULL ORDER BY RANDOM() LIMIT {limit}'
+            query = f'''
+            SELECT "{column_name}" FROM (
+                SELECT DISTINCT "{column_name}"
+                FROM "{table_name}"
+                WHERE "{column_name}" IS NOT NULL
+            ) AS distinct_values
+            ORDER BY RANDOM()
+            LIMIT {limit}'''
         elif self.engine.name == "sqlite":
             query = f'SELECT DISTINCT "{column_name}" FROM "{table_name}" WHERE "{column_name}" IS NOT NULL ORDER BY RANDOM() LIMIT {limit}'
         else:
@@ -328,7 +335,7 @@ class MySQLService(DatabaseService):
     def _create_engine(self) -> Engine:
         """Create MySQL database engine."""
         connection_url = sa.URL.create(
-            "mysql+mysqlconnector",
+            "mysql+pymysql",
             username=self.connection_params.get("user"),
             password=self.connection_params.get("password"),
             host=self.connection_params.get("host"),

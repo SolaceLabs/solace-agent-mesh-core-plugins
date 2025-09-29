@@ -1,0 +1,44 @@
+# Error Handling Test Case
+# Tests how the gateway handles errors and publishes error responses
+
+test_scenario:
+  name: "error_handling"
+  description: "Test error handling and error response publishing"
+  
+  llm_responses:
+    - static_response:
+        choices:
+          - message:
+              role: "assistant"
+              content: "I'm sorry, but I cannot process this request due to an error."
+        usage:
+          prompt_tokens: 10
+          completion_tokens: 15
+          total_tokens: 25
+
+  test_steps:
+    - type: "publish_message"
+      topic: "test/events/error/sample"
+      payload:
+        message: "This should trigger an error"
+        error_trigger: true
+      user_properties:
+        user_id: "error_test_user"
+    
+    - type: "expect_a2a_task"
+      target_agent: "TestEventMeshAgent"
+      content_contains: "This should trigger an error"
+      timeout_seconds: 5.0
+    
+    - type: "respond_with"
+      content: "Error response from agent"
+    
+    - type: "expect_published"
+      topic_pattern: "test/responses/basic/*"
+      payload_contains: "I'm sorry, but I cannot process"
+      timeout_seconds: 5.0
+
+  validation:
+    expected_messages: 1
+    expected_responses: 1
+    max_duration_seconds: 10.0

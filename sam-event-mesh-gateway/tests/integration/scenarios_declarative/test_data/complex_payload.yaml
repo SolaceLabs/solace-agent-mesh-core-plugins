@@ -1,0 +1,63 @@
+# Complex Payload Test Case
+# Tests processing messages with complex JSON payloads
+
+test_scenario:
+  name: "complex_payload"
+  description: "Test processing messages with nested JSON payloads and metadata"
+  
+  llm_responses:
+    - static_response:
+        choices:
+          - message:
+              role: "assistant"
+              content: "I processed your order for 3 widgets with priority high. Order ID: ORD-12345"
+        usage:
+          prompt_tokens: 25
+          completion_tokens: 20
+          total_tokens: 45
+
+  test_steps:
+    - type: "publish_message"
+      topic: "test/events/orders/new"
+      payload:
+        message: "New order received"
+        order_details:
+          order_id: "ORD-12345"
+          customer:
+            name: "John Doe"
+            email: "john.doe@example.com"
+            customer_id: "CUST-789"
+          items:
+            - product: "widget"
+              quantity: 3
+              price: 29.99
+            - product: "gadget"
+              quantity: 1
+              price: 15.50
+          metadata:
+            priority: "high"
+            source: "web_portal"
+            timestamp: "2024-01-01T12:00:00Z"
+        total_amount: 105.47
+      user_properties:
+        user_id: "system_order_processor"
+        correlation_id: "corr-abc-123"
+        message_type: "order_event"
+    
+    - type: "expect_a2a_task"
+      target_agent: "TestEventMeshAgent"
+      content_contains: "New order received"
+      timeout_seconds: 5.0
+    
+    - type: "respond_with"
+      content: "I processed your order for 3 widgets with priority high. Order ID: ORD-12345"
+    
+    - type: "expect_published"
+      topic_pattern: "test/responses/basic/*"
+      payload_contains: "I processed your order"
+      timeout_seconds: 5.0
+
+  validation:
+    expected_messages: 1
+    expected_responses: 1
+    max_duration_seconds: 10.0

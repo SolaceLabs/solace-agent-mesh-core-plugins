@@ -7,14 +7,8 @@ import re
 import json
 from typing import TYPE_CHECKING, Optional, List, Tuple, Any, Dict
 from solace_ai_connector.common.log import log
-from solace_agent_mesh.common.types import DataPart
-from solace_agent_mesh.common.utils.embeds import (
-    resolve_embeds_in_string,
-    evaluate_embed,
-    LATE_EMBED_TYPES,
-    EMBED_DELIMITER_OPEN,
-)
-from solace_agent_mesh.common.a2a_protocol import _subscription_to_regex
+from a2a.types import DataPart
+from solace_agent_mesh.common import a2a
 
 if TYPE_CHECKING:
     from .component import SlackGatewayComponent
@@ -32,35 +26,6 @@ def generate_a2a_session_id(channel_id: str, thread_ts: str, agent_name: str) ->
     thread_ts_sanitized = thread_ts.replace(".", "_")
     return f"slack_{channel_id}__{thread_ts_sanitized}_agent_{agent_name}"
 
-
-def extract_task_id_from_topic(topic: str, subscription_pattern: str) -> Optional[str]:
-    """
-    Extracts the task ID from the end of a topic string based on the subscription pattern.
-    (Copied/adapted from Web UI MessageProcessor)
-    """
-    log_id = "[SlackUtil:extract_task_id]"
-    try:
-        base_regex_str = _subscription_to_regex(subscription_pattern).replace(r".*", "")
-        base_regex = re.compile(base_regex_str)
-        match = base_regex.match(topic)
-        if match:
-            task_id_part = topic[match.end() :]
-            task_id = task_id_part.lstrip("/")
-            if task_id:
-                log.debug(
-                    "%s Extracted Task ID '%s' from topic '%s'", log_id, task_id, topic
-                )
-                return task_id
-        log.warning(
-            "%s Could not extract Task ID from topic '%s' using pattern '%s'",
-            log_id,
-            topic,
-            subscription_pattern,
-        )
-        return None
-    except Exception as e:
-        log.error("%s Error extracting task ID from topic '%s': %s", log_id, topic, e)
-        return None
 
 
 def correct_slack_markdown(text: str) -> str:
@@ -85,18 +50,12 @@ def correct_slack_markdown(text: str) -> str:
 def format_data_part_for_slack(data_part: DataPart) -> str:
     """Formats an A2A DataPart for display in Slack (e.g., as a JSON code block)."""
     try:
-        if data_part.data.get("a2a_signal_type") == "agent_status_message":
-            status_text = data_part.data.get("text", "[Agent status update]")
-            log.debug(
-                "[SlackUtil:format_data_part] Extracted agent_status_message text: '%s'",
-                status_text,
-            )
-            return status_text
-
-        json_string = json.dumps(data_part.data, indent=2)
+        data_dict = a2a.get_data_from_data_part(data_part)
+        json_string = json.dumps(data_dict, indent=2)
         header = "Received Data"
-        if data_part.metadata:
-            tool_name = data_part.metadata.get("tool_name")
+        metadata = a2a.get_metadata_from_part(data_part)
+        if metadata:
+            tool_name = metadata.get("tool_name")
             if tool_name:
                 header = f"Result from Tool: `{tool_name}`"
 
@@ -280,114 +239,6 @@ async def upload_slack_file(
                 log_id,
                 notify_err,
             )
-
-
-async def resolve_and_format_for_slack(
-    component: "SlackGatewayComponent", text: str, task_id: str
-) -> Tuple[str, int, List[Tuple[int, Any]]]:
-    """
-    Resolves late-stage embeds in text and applies Slack markdown correction.
-    Now runs synchronously and returns processed_until_index.
-    """
-    log_id = f"{component.log_identifier}[ResolveSlack:{task_id}]"
-    resolved_text = text
-    signals_found: List[Tuple[int, Any]] = []
-    processed_until_index = len(text)
-
-    if component.enable_embed_resolution and text and EMBED_DELIMITER_OPEN in text:
-        log.debug(
-            "%s Performing late-stage embed resolution for Slack output...", log_id
-        )
-        session_context = None
-        with component.context_lock:
-            slack_context = component.task_slack_context.get(task_id)
-            if slack_context:
-                session_context = {
-                    "app_name": component.gateway_id,
-                    "user_id": slack_context.get("user", "unknown_slack_user"),
-                    "session_id": generate_a2a_session_id(
-                        slack_context.get("channel"),
-                        slack_context.get("thread_ts"),
-                        component.default_agent_name or "UnknownAgent",
-                    ),
-                }
-            else:
-                log.warning(
-                    "%s Slack context not found for Task ID: %s during embed resolution.",
-                    log_id,
-                    task_id,
-                )
-
-        if not session_context:
-            log.warning(
-                "%s Cannot resolve embeds: Session context could not be constructed for Task ID: %s",
-                log_id,
-                task_id,
-            )
-            return text, len(text), []
-        elif not component.shared_artifact_service:
-            log.warning(
-                "%s Cannot resolve artifact_content embeds: ArtifactService not available.",
-                log_id,
-            )
-            types_to_resolve = {"status_update"}
-        else:
-            types_to_resolve = LATE_EMBED_TYPES.union({"status_update"})
-
-            gateway_context = {
-                "artifact_service": component.shared_artifact_service,
-                "session_context": session_context,
-            }
-            embed_config = {
-                "gateway_artifact_content_limit_bytes": component.gateway_artifact_content_limit_bytes,
-                "gateway_recursive_embed_depth": component.gateway_recursive_embed_depth,
-            }
-
-            try:
-                resolved_text, processed_until_index, signals_found = (
-                    resolve_embeds_in_string(
-                        text=text,
-                        context=gateway_context,
-                        resolver_func=evaluate_embed,
-                        types_to_resolve=types_to_resolve,
-                        log_identifier=log_id,
-                        config=embed_config,
-                    )
-                )
-
-                if resolved_text != text or signals_found:
-                    log.info(
-                        "%s Embed/signal resolution complete (Processed Index: %d, Signals: %d).",
-                        log_id,
-                        processed_until_index,
-                        len(signals_found),
-                    )
-                else:
-                    log.debug("%s No embeds/signals resolved.", log_id)
-
-            except Exception as e:
-                log.exception("%s Error during embed resolution: %s", log_id, e)
-                resolved_text = (
-                    text + f"\n\n[:warning: Error resolving dynamic content: {e}]"
-                )
-                processed_until_index = len(text)
-                signals_found = []
-
-    if component.correct_markdown_formatting:
-        formatted_text = correct_slack_markdown(resolved_text)
-        if formatted_text != resolved_text:
-            log.debug("%s Applied Slack markdown corrections.", log_id)
-        return (
-            formatted_text,
-            processed_until_index,
-            signals_found,
-        )
-    else:
-        return (
-            resolved_text,
-            processed_until_index,
-            signals_found,
-        )
 
 
 def create_feedback_blocks(

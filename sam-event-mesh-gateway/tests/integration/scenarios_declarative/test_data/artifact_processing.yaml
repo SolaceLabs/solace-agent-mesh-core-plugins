@@ -1,0 +1,74 @@
+# Artifact Processing Test Case
+# Tests processing messages with pre-existing artifacts
+
+test_scenario:
+  name: "artifact_processing"
+  description: "Test processing messages with artifact context and creation"
+  
+  setup_artifacts:
+    - filename: "customer_data.json"
+      content: |
+        {
+          "customer_id": "CUST-789",
+          "name": "John Doe",
+          "email": "john.doe@example.com",
+          "preferences": {
+            "communication": "email",
+            "language": "en"
+          },
+          "order_history": [
+            {"order_id": "ORD-001", "amount": 99.99},
+            {"order_id": "ORD-002", "amount": 149.50}
+          ]
+        }
+      mime_type: "application/json"
+    - filename: "product_catalog.txt"
+      content: |
+        Product Catalog:
+        - Widget Pro: $29.99
+        - Super Gadget: $15.50
+        - Premium Tool: $89.99
+        - Basic Kit: $12.00
+      mime_type: "text/plain"
+  
+  llm_responses:
+    - static_response:
+        choices:
+          - message:
+              role: "assistant"
+              content: "I found customer John Doe with 2 previous orders. Processing new order for Widget Pro ($29.99). Customer prefers email communication."
+        usage:
+          prompt_tokens: 50
+          completion_tokens: 25
+          total_tokens: 75
+
+  test_steps:
+    - type: "publish_message"
+      topic: "test/events/orders/with_context"
+      payload:
+        message: "Process order with customer context"
+        customer_id: "CUST-789"
+        product: "Widget Pro"
+        quantity: 2
+        request_type: "order_processing"
+      user_properties:
+        user_id: "order_system"
+        context_required: "customer_data"
+    
+    - type: "expect_a2a_task"
+      target_agent: "TestEventMeshAgent"
+      content_contains: "Process order with customer context"
+      timeout_seconds: 5.0
+    
+    - type: "respond_with"
+      content: "I found customer John Doe with 2 previous orders. Processing new order for Widget Pro ($29.99). Customer prefers email communication."
+    
+    - type: "expect_published"
+      topic_pattern: "test/responses/basic/*"
+      payload_contains: "I found customer John Doe"
+      timeout_seconds: 5.0
+
+  validation:
+    expected_messages: 1
+    expected_responses: 1
+    max_duration_seconds: 10.0

@@ -26,7 +26,7 @@ dependencies = [
     "odfpy>=1.4.1",  # For ODT processing
     "lxml>=4.9.1",  # XML parser for BeautifulSoup
     "PyYAML~=6.0.2",  # For YAML processing
-    "openai~=1.68.2",  # For OpenAI API access
+    "openai~=1.99.9",  # For OpenAI API access
     "qdrant-client~=1.13.3",  # For Qdrant vector database access
     "watchdog==6.0.0",  # Fixed syntax for watchdog dependency
     "ujson==5.10.0",  # For faster JSON processing

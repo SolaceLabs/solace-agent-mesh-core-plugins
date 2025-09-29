@@ -17,7 +17,9 @@ The Solace Agent Mesh RAG system provides a complete RAG pipeline that includes:
 ## Documentation
 
 Comprehensive documentation is available in the `docs` directory:
+- [Architecture Guide](docs/architecture.md): Overview of the SAM RAG architecture and components
 - [Configuration Guide](docs/configuration.md): Detailed explanation of configuration options
+- [Tools and Lifecycle Guide](docs/tools_and_lifecycle.md): Documentation for tools and lifecycle functions
 
 ## Installation
 

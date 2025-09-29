@@ -28,17 +28,23 @@ except ImportError:
 
 from solace_ai_connector.common.log import log
 from solace_agent_mesh.gateway.base.component import BaseGatewayComponent
-from solace_agent_mesh.common.types import (
-    Part as A2APart,
+from a2a.types import (
     TextPart,
     FilePart,
     DataPart,
-    FileContent,
+    FileWithUri,
+    FileWithBytes,
     Task,
     TaskStatusUpdateEvent,
     TaskArtifactUpdateEvent,
     JSONRPCError,
     TaskState,
+)
+from solace_agent_mesh.common import a2a
+from solace_agent_mesh.common.a2a import ContentPart
+from solace_agent_mesh.common.data_parts import (
+    AgentProgressUpdateData,
+    ArtifactCreationProgressData,
 )
 from solace_agent_mesh.agent.utils.artifact_helpers import save_artifact_with_metadata
 from .utils import (
@@ -49,6 +55,7 @@ from .utils import (
     create_feedback_blocks,
     _build_current_slack_blocks,
     correct_slack_markdown,
+    format_data_part_for_slack,
     CANCEL_BUTTON_ACTION_ID,
 )
 
@@ -204,6 +211,36 @@ class SlackGatewayComponent(BaseGatewayComponent):
         log.info(
             "%s Slack Gateway Component initialization complete.", self.log_identifier
         )
+
+    def _process_file_part(
+        self, part: FilePart, task_id: str, log_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Processes an A2A FilePart and returns a dictionary for Slack upload."""
+        if not part.file:
+            return None
+
+        file_info = {
+            "name": part.file.name or f"artifact_{task_id}",
+            "mime_type": part.file.mime_type,
+            "bytes": None,
+            "uri": None,
+        }
+        if isinstance(part.file, FileWithBytes) and part.file.bytes:
+            try:
+                file_info["bytes"] = base64.b64decode(part.file.bytes)
+            except Exception as e:
+                log.error(
+                    "%s Failed to decode base64 bytes for artifact '%s': %s",
+                    log_id,
+                    file_info["name"],
+                    e,
+                )
+        elif isinstance(part.file, FileWithUri) and part.file.uri:
+            file_info["uri"] = part.file.uri
+
+        if file_info["bytes"] or file_info["uri"]:
+            return file_info
+        return None
 
     async def _resolve_mentions_in_text(self, text: str) -> str:
         """
@@ -516,23 +553,16 @@ class SlackGatewayComponent(BaseGatewayComponent):
             "%s [_start_listener] Scheduling Slack listener startup...",
             self.log_identifier,
         )
-        if self.async_loop and self.async_loop.is_running():
-            self.async_loop.create_task(self._start_slack_listener())
+        loop = self.get_async_loop()
+        if loop:
+            loop.create_task(self._start_slack_listener())
             log.info(
-                "%s Slack listener startup task created on async_loop.",
+                "%s Slack listener startup task created on the event loop.",
                 self.log_identifier,
-            )
-        elif self.async_loop:
-            log.warning(
-                "%s async_loop exists but is not running. Attempting to run _start_slack_listener via call_soon_threadsafe.",
-                self.log_identifier,
-            )
-            self.async_loop.call_soon_threadsafe(
-                self.async_loop.create_task, self._start_slack_listener()
             )
         else:
             log.error(
-                "%s Cannot start Slack listener: self.async_loop is not available.",
+                "%s Cannot start Slack listener: Event loop not available.",
                 self.log_identifier,
             )
             self.stop_signal.set()
@@ -600,10 +630,11 @@ class SlackGatewayComponent(BaseGatewayComponent):
             return {"error": f"Unexpected error downloading file: {e}"}
 
     async def _translate_external_input(
-        self, external_event: Any, authenticated_user_identity: Dict[str, Any]
-    ) -> Tuple[str, List[A2APart], Dict[str, Any]]:
+        self, external_event: Any
+    ) -> Tuple[str, List[ContentPart], Dict[str, Any]]:
         log_id = f"{self.log_identifier}[TranslateInput]"
         event: Dict = external_event
+        authenticated_user_identity = event.get("_authenticated_user_identity", {})
         if event.get("bot_id") or event.get("subtype") == "bot_message":
             log.debug("%s Ignoring message from bot.", log_id)
             raise ValueError("Ignoring bot message")
@@ -653,7 +684,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
         a2a_session_id = generate_a2a_session_id(
             channel_id, thread_ts, target_agent_name
         )
-        a2a_parts: List[A2APart] = []
+        a2a_parts: List[ContentPart] = []
         file_metadata_summary_parts: List[str] = []
         processed_text_for_a2a = resolved_text
         if files_info and self.shared_artifact_service:
@@ -699,10 +730,12 @@ class SlackGatewayComponent(BaseGatewayComponent):
                     if save_result["status"] in ["success", "partial_success"]:
                         data_version = save_result.get("data_version", 0)
                         artifact_uri = f"artifact://{self.gateway_id}/{user_id_for_artifacts}/{a2a_session_id}/{original_filename}?version={data_version}"
-                        file_content_a2a = FileContent(
-                            name=original_filename, mimeType=mime_type, uri=artifact_uri
+                        file_part = a2a.create_file_part_from_uri(
+                            uri=artifact_uri,
+                            name=original_filename,
+                            mime_type=mime_type,
                         )
-                        a2a_parts.append(FilePart(file=file_content_a2a))
+                        a2a_parts.append(file_part)
                         file_metadata_summary_parts.append(
                             f"- {original_filename} ({mime_type}, {len(content_bytes)} bytes, URI: {artifact_uri})"
                         )
@@ -726,7 +759,8 @@ class SlackGatewayComponent(BaseGatewayComponent):
             )
             processed_text_for_a2a = f"{summary_text}\n\nUser message: {resolved_text}"
         if processed_text_for_a2a:
-            a2a_parts.append(TextPart(text=processed_text_for_a2a))
+            text_part = a2a.create_text_part(text=processed_text_for_a2a)
+            a2a_parts.append(text_part)
         if not a2a_parts:
             log.warning(
                 "%s No text or successfully processed files. Cannot create A2A message.",
@@ -1052,7 +1086,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
         event_data: Union[TaskStatusUpdateEvent, TaskArtifactUpdateEvent],
         is_final_chunk_of_update: bool,
     ) -> None:
-        task_id = event_data.id
+        task_id = event_data.task_id
         log_id = f"{self.log_identifier}[SendUpdateExt:{task_id}]"
         log.debug(
             "%s Received event type: %s. GDK final_chunk_of_update: %s",
@@ -1068,12 +1102,10 @@ class SlackGatewayComponent(BaseGatewayComponent):
 
         if isinstance(event_data, TaskStatusUpdateEvent):
             temp_text_parts = []
-            if (
-                event_data.status
-                and event_data.status.message
-                and event_data.status.message.parts
-            ):
-                for part in event_data.status.message.parts:
+            message = a2a.get_message_from_status_update(event_data)
+            if message:
+                parts = a2a.get_parts_from_message(message)
+                for part in parts:
                     if isinstance(part, TextPart):
                         if not is_final_chunk_of_update:
                             corrected_text = (
@@ -1083,14 +1115,46 @@ class SlackGatewayComponent(BaseGatewayComponent):
                             )
                             temp_text_parts.append(corrected_text)
                     elif isinstance(part, DataPart):
-                        if part.data.get("a2a_signal_type") == "agent_status_message":
-                            signal_text = part.data.get("text", "[Agent status update]")
-                            status_signal_text = f":thinking_face: {signal_text}"
-                            log.debug(
-                                "%s Processed DataPart as agent_status_message signal: '%s'",
-                                log_id,
-                                status_signal_text,
-                            )
+                        signal_type = part.data.get("type")
+                        if signal_type == "agent_progress_update":
+                            try:
+                                progress_data = AgentProgressUpdateData.model_validate(
+                                    part.data
+                                )
+                                status_signal_text = f":thinking_face: {progress_data.status_text}"
+                                log.debug(
+                                    "%s Processed agent_progress_update signal: '%s'",
+                                    log_id,
+                                    status_signal_text,
+                                )
+                            except Exception as e:
+                                log.warning(
+                                    "%s Failed to parse AgentProgressUpdateData: %s",
+                                    log_id,
+                                    e,
+                                )
+                        elif signal_type == "artifact_creation_progress":
+                            try:
+                                progress_data = (
+                                    ArtifactCreationProgressData.model_validate(
+                                        part.data
+                                    )
+                                )
+                                status_signal_text = f":floppy_disk: Creating artifact `{progress_data.filename}` ({progress_data.bytes_saved} bytes)..."
+                                log.debug(
+                                    "%s Processed artifact_creation_progress signal: '%s'",
+                                    log_id,
+                                    status_signal_text,
+                                )
+                            except Exception as e:
+                                log.warning(
+                                    "%s Failed to parse ArtifactCreationProgressData: %s",
+                                    log_id,
+                                    e,
+                                )
+                    elif isinstance(part, FilePart):
+                        if file_info := self._process_file_part(part, task_id, log_id):
+                            file_infos_for_slack.append(file_info)
 
             if temp_text_parts:
                 text_to_display = "".join(temp_text_parts)
@@ -1106,28 +1170,12 @@ class SlackGatewayComponent(BaseGatewayComponent):
                     text_to_display = None
 
         elif isinstance(event_data, TaskArtifactUpdateEvent):
-            if event_data.artifact and event_data.artifact.parts:
-                for part in event_data.artifact.parts:
-                    if isinstance(part, FilePart) and part.file:
-                        file_info = {
-                            "name": part.file.name or f"artifact_{task_id}",
-                            "mime_type": part.file.mimeType,
-                            "bytes": None,
-                            "uri": None,
-                        }
-                        if part.file.bytes:
-                            try:
-                                file_info["bytes"] = base64.b64decode(part.file.bytes)
-                            except Exception as e:
-                                log.error(
-                                    "%s Failed to decode base64 bytes for artifact '%s': %s",
-                                    log_id,
-                                    file_info["name"],
-                                    e,
-                                )
-                        elif part.file.uri:
-                            file_info["uri"] = part.file.uri
-                        if file_info["bytes"] or file_info["uri"]:
+            artifact = a2a.get_artifact_from_artifact_update(event_data)
+            if artifact:
+                parts = a2a.get_parts_from_artifact(artifact)
+                for part in parts:
+                    if isinstance(part, FilePart):
+                        if file_info := self._process_file_part(part, task_id, log_id):
                             file_infos_for_slack.append(file_info)
 
         await self._update_slack_ui_state(
@@ -1143,26 +1191,55 @@ class SlackGatewayComponent(BaseGatewayComponent):
     async def _send_final_response_to_external(
         self, external_request_context: Dict[str, Any], task_data: Task
     ) -> None:
-        task_id = task_data.id
+        task_id = a2a.get_task_id(task_data)
         log_id = f"{self.log_identifier}[SendFinalResponseExt:{task_id}]"
         log.debug("%s Processing final task data.", log_id)
 
         text_to_display: Optional[str] = None
         data_parts_for_slack: List[str] = []
+        file_infos_for_slack: List[Dict] = []
+
+        all_final_parts: List[ContentPart] = []
+        if task_data.status and task_data.status.message:
+            all_final_parts.extend(a2a.get_parts_from_message(task_data.status.message))
+
+        artifacts = a2a.get_task_artifacts(task_data)
+        if artifacts:
+            for artifact in artifacts:
+                all_final_parts.extend(a2a.get_parts_from_artifact(artifact))
+
+        if all_final_parts:
+            log.debug(
+                "%s Processing %d final parts from status message and artifacts.",
+                log_id,
+                len(all_final_parts),
+            )
+            text_parts_content = []
+            for part in all_final_parts:
+                if isinstance(part, TextPart):
+                    text_parts_content.append(part.text)
+                elif isinstance(part, DataPart):
+                    data_parts_for_slack.append(format_data_part_for_slack(part))
+                elif isinstance(part, FilePart):
+                    if file_info := self._process_file_part(part, task_id, log_id):
+                        file_infos_for_slack.append(file_info)
+
+            if text_parts_content:
+                text_to_display = "\n".join(text_parts_content)
 
         final_status_text_for_slack = ":checkered_flag: Task complete."
-        if task_data.status:
-            if task_data.status.state == TaskState.FAILED:
+        task_status = a2a.get_task_status(task_data)
+        if task_status:
+            if task_status == TaskState.failed:
                 error_message_text = ""
-                if task_data.status.message and task_data.status.message.parts:
-                    for part in task_data.status.message.parts:
-                        if isinstance(part, TextPart):
-                            error_message_text = part.text
-                            break
+                if task_data.status and task_data.status.message:
+                    error_message_text = a2a.get_text_from_message(
+                        task_data.status.message
+                    )
                 final_status_text_for_slack = (
                     f":x: Error: Task failed. {error_message_text}".strip()
                 )
-            elif task_data.status.state == TaskState.CANCELED:
+            elif task_status == TaskState.canceled:
                 final_status_text_for_slack = ":octagonal_sign: Task canceled."
 
         await self._update_slack_ui_state(
@@ -1170,7 +1247,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
             external_request_context,
             text_to_display,
             data_parts_for_slack,
-            [],
+            file_infos_for_slack,
             final_status_text_for_slack,
             is_final_event=True,
         )
@@ -1182,17 +1259,21 @@ class SlackGatewayComponent(BaseGatewayComponent):
             "a2a_task_id_for_event", "unknown_task_error"
         )
         log_id = f"{self.log_identifier}[SendErrorExt:{task_id}]"
-        log.debug("%s Processing error: %s", log_id, error_data.message)
+        error_message = a2a.get_error_message(error_data)
+        error_code = a2a.get_error_code(error_data)
+        error_details_data = a2a.get_error_data(error_data)
+
+        log.debug("%s Processing error: %s", log_id, error_message)
 
         error_text_for_slack = (
-            f":boom: An error occurred: {error_data.message} (Code: {error_data.code})"
+            f":boom: An error occurred: {error_message} (Code: {error_code})"
         )
-        if error_data.data:
+        if error_details_data:
             try:
-                error_details = json.dumps(error_data.data, indent=2)
+                error_details = json.dumps(error_details_data, indent=2)
                 error_text_for_slack += f"\nDetails:\n```\n{error_details}\n```"
             except Exception:
-                error_text_for_slack += f"\nDetails: {str(error_data.data)}"
+                error_text_for_slack += f"\nDetails: {str(error_details_data)}"
 
         await self._update_slack_ui_state(
             task_id,

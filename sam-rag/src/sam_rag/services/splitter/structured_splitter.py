@@ -102,8 +102,8 @@ class RecursiveJSONSplitter(SplitterBase):
                 - include_metadata: Whether to include metadata about the JSON structure (default: True).
         """
         super().__init__(config)
-        self.chunk_size = self.config.get("chunk_size", 1000)
-        self.chunk_overlap = self.config.get("chunk_overlap", 200)
+        self.chunk_size = self.config.get("chunk_size", 200)
+        self.chunk_overlap = self.config.get("chunk_overlap", 50)
         self.include_metadata = self.config.get("include_metadata", True)
         # text_splitter is only used as fallback
         self.text_splitter = RecursiveCharacterTextSplitter(
@@ -269,8 +269,8 @@ class HTMLSplitter(SplitterBase):
                 - tags_to_extract: The HTML tags to extract (default: ["div", "p", "section", "article"]).
         """
         super().__init__(config)
-        self.chunk_size = self.config.get("chunk_size", 1000)
-        self.chunk_overlap = self.config.get("chunk_overlap", 200)
+        self.chunk_size = self.config.get("chunk_size", 2048)
+        self.chunk_overlap = self.config.get("chunk_overlap", 800)
         self.tags_to_extract = self.config.get(
             "tags_to_extract", ["div", "p", "section", "article"]
         )
@@ -371,8 +371,8 @@ class MarkdownSplitter(SplitterBase):
                 - return_each_line: Whether to return each line with its header metadata (default: False).
         """
         super().__init__(config)
-        self.chunk_size = self.config.get("chunk_size", 1000)
-        self.chunk_overlap = self.config.get("chunk_overlap", 200)
+        self.chunk_size = self.config.get("chunk_size", 2048)
+        self.chunk_overlap = self.config.get("chunk_overlap", 800)
         self.headers_to_split_on = self.config.get(
             "headers_to_split_on", ["#", "##", "###", "####", "#####", "######"]
         )
@@ -413,7 +413,7 @@ class MarkdownSplitter(SplitterBase):
         # If no headers found, use the text splitter
         if not headers_with_positions:
             chunks = self.text_splitter.split_text(text)
-            return [{"content": chunk, "metadata": {}} for chunk in chunks]
+            return chunks
 
         # Sort headers by position
         headers_with_positions.sort(key=lambda x: x[2])
@@ -480,10 +480,10 @@ class MarkdownSplitter(SplitterBase):
                 chunks = self.text_splitter.split_text(doc["content"])
                 for chunk in chunks:
                     final_documents.append(
-                        {"content": chunk, "metadata": doc["metadata"].copy()}
+                        str({"content": chunk, "metadata": doc["metadata"].copy()})
                     )
             else:
-                final_documents.append(doc)
+                final_documents.append(str(doc))
 
         return final_documents
 
@@ -515,7 +515,7 @@ class CSVSplitter(SplitterBase):
                 - include_header: Whether to include the header in each chunk (default: True).
         """
         super().__init__(config)
-        self.chunk_size = self.config.get("chunk_size", 100)
+        self.chunk_size = self.config.get("chunk_size", 2048)
         self.include_header = self.config.get("include_header", True)
 
     def split_text(self, text: str) -> List[str]:
