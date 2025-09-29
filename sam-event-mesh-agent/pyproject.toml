@@ -18,7 +18,7 @@ description = "This agent sends a message into event mesh and subscribes for a r
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "solace_agent_mesh>=1.0.2,<2.0.0",
+    "solace_agent_mesh==1.4.7",
     # Add plugin-specific dependencies here
 ]
 
