@@ -195,7 +195,7 @@ class DatabaseService(ABC):
         elif self.engine.name == "postgresql":
             query = f'''
             SELECT "{column_name}" FROM (
-                SELECT "{column_name}"
+                SELECT DISTINCT "{column_name}"
                 FROM "{table_name}"
                 WHERE "{column_name}" IS NOT NULL
             ) AS distinct_values
