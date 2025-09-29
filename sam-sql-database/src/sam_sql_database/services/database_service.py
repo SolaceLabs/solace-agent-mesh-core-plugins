@@ -193,7 +193,14 @@ class DatabaseService(ABC):
         if self.engine.name == "mysql":
             query = f"SELECT DISTINCT `{column_name}` FROM `{table_name}` WHERE `{column_name}` IS NOT NULL ORDER BY RAND() LIMIT {limit}"
         elif self.engine.name == "postgresql":
-            query = f'SELECT DISTINCT "{column_name}" FROM "{table_name}" WHERE "{column_name}" IS NOT NULL ORDER BY RANDOM() LIMIT {limit}'
+            query = f'''
+            SELECT "{column_name}" FROM (
+                SELECT DISTINCT "{column_name}"
+                FROM "{table_name}"
+                WHERE "{column_name}" IS NOT NULL
+            ) AS distinct_values
+            ORDER BY RANDOM()
+            LIMIT {limit}'''
         elif self.engine.name == "sqlite":
             query = f'SELECT DISTINCT "{column_name}" FROM "{table_name}" WHERE "{column_name}" IS NOT NULL ORDER BY RANDOM() LIMIT {limit}'
         else:
