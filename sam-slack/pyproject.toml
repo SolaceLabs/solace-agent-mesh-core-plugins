@@ -18,7 +18,7 @@ description = "Solace-agent-mesh gateway interface for Slack"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "slack_bolt>=1.18.1",
+    "slack_bolt==1.25.0",
 ]
 
 [tool.hatch.build.targets.wheel]
