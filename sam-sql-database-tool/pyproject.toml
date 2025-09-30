@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.sam_sql_database_tool.metadata]
+type = "sam_sql_database_tool"
+
+[project]
+name = "sam_sql_database_tool"
+version = "0.1.0"
+description = "A reusable SQL database tool for Solace Agent Mesh."
+readme = "README.md"
+authors = [
+    { name = "Hugo Pare", email = "hugo.pare@solace.com" },
+]
+requires-python = ">=3.10"
+dependencies = [
+    "SQLAlchemy>=2.0.0",
+    "PyMySQL>=1.0.0",
+    "psycopg2-binary>=2.9.0",
+    "pydantic>=2.0.0",
+    "PyYAML>=6.0"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["sam_sql_database_tool"]
+src-path = "src"
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/sam_sql_database_tool" = "sam_sql_database_tool/"
+"config.yaml" = "sam_sql_database_tool/config.yaml"
+"README.md" = "sam_sql_database_tool/README.md"
+"pyproject.toml" = "sam_sql_database_tool/pyproject.toml"
