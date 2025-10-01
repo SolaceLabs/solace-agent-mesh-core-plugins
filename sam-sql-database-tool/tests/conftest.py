@@ -142,36 +142,31 @@ async def db_tool_provider(request, tmp_path: Path):
     if db_type == "postgresql":
         local_postgres_db = request.getfixturevalue("local_postgres_db")
         dsn = local_postgres_db.dsn()
+        connection_string = f"postgresql+psycopg2://{dsn.get('user')}:test@{dsn.get('host')}:{dsn.get('port')}/{dsn.get('database', 'test')}"
         config_dict = {
             "tool_name": "postgres_test_tool",
             "db_type": "postgresql",
-            "db_host": dsn.get("host"),
-            "db_port": dsn.get("port"),
-            "db_user": dsn.get("user"),
-            "db_password": "test",
-            "db_name": dsn.get("database", "test")
+            "connection_string": connection_string,
         }
     elif db_type == "mysql":
         host_port = request.getfixturevalue("mysql_service")
         request.getfixturevalue("mysql_db")
+        connection_string = f"mysql+pymysql://test_user:test_password@127.0.0.1:{host_port}/test_db"
         config_dict = {
             "tool_name": "mysql_test_tool",
             "db_type": "mysql",
-            "db_host": "127.0.0.1",
-            "db_port": host_port,
-            "db_user": "test_user",
-            "db_password": "test_password",
-            "db_name": "test_db",
+            "connection_string": connection_string,
         }
     elif db_type == "sqlite":
         sqlite_db_path = tmp_path / "test.db"
         conn = sqlite3.connect(sqlite_db_path)
         populate_db(conn)
         conn.close()
+        connection_string = f"sqlite:///{sqlite_db_path}"
         config_dict = {
             "tool_name": "sqlite_test_tool",
             "db_type": "sqlite",
-            "db_name": str(sqlite_db_path),
+            "connection_string": connection_string,
         }
     
     tool_config = DatabaseConfig(**config_dict)

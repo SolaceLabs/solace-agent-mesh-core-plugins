@@ -10,7 +10,7 @@ def mock_db_service():
         mock_engine = MagicMock()
         mock_create_engine.return_value = mock_engine
         
-        service = SQLiteService({"database": ":memory:"})
+        service = SQLiteService("sqlite:///:memory:")
         service.engine = mock_engine
         return service
 
@@ -62,7 +62,7 @@ class TestDatabaseService:
 
     def test_execute_query_no_engine(self):
         """Test that executing a query without an engine raises an error."""
-        service = SQLiteService({"database": ":memory:"})
-        service.engine = None  # Ensure engine is not set
-        with pytest.raises(RuntimeError, match="Database engine is not initialized"):
-            service.execute_query("SELECT 1")
+        with patch('sqlalchemy.create_engine', side_effect=Exception("Connection failed")):
+            with pytest.raises(RuntimeError, match="Database engine is not initialized"):
+                service = SQLiteService("bad-connection-string")
+                service.execute_query("SELECT 1")

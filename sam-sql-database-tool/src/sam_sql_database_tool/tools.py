@@ -24,20 +24,8 @@ class DatabaseConfig(BaseModel):
     db_type: Literal["postgresql", "mysql", "sqlite"] = Field(
         description="Type of the database."
     )
-    db_host: Optional[str] = Field(
-        default=None, description="Database host (required for PostgreSQL/MySQL)."
-    )
-    db_port: Optional[int] = Field(
-        default=None, description="Database port (required for PostgreSQL/MySQL)."
-    )
-    db_user: Optional[str] = Field(
-        default=None, description="Database user (required for PostgreSQL/MySQL)."
-    )
-    db_password: Optional[SecretStr] = Field(
-        default=None, description="Database password (required for PostgreSQL/MySQL)."
-    )
-    db_name: str = Field(
-        description="Database name (for PostgreSQL/MySQL) or file path (for SQLite)."
+    connection_string: SecretStr = Field(
+        description="The full database connection string (e.g., 'postgresql+psycopg2://user:password@host:port/dbname')."
     )
     auto_detect_schema: bool = Field(
         default=True,
@@ -54,11 +42,8 @@ class DatabaseConfig(BaseModel):
 
     @model_validator(mode='after')
     def check_required_fields(self) -> 'DatabaseConfig':
-        if self.db_type in ["postgresql", "mysql"]:
-            if not all([self.db_host, self.db_port, self.db_user, self.db_password]):
-                raise ValueError(
-                    f"For db_type '{self.db_type}', db_host, db_port, db_user, and db_password are required."
-                )
+        if not self.connection_string:
+            raise ValueError("'connection_string' is required.")
         
         if self.auto_detect_schema is False:
             if self.database_schema_override is None:
@@ -108,25 +93,14 @@ class SqlDatabaseTool(DynamicTool):
     async def init(self, component: SamAgentComponent, tool_config: Dict):
         log_identifier = f"[{self.tool_name}:init]"
         log.info("%s Initializing connection...", log_identifier)
-        connection_params = {
-            "host": self.tool_config.db_host,
-            "port": self.tool_config.db_port,
-            "user": self.tool_config.db_user,
-            "password": (
-                self.tool_config.db_password.get_secret_value()
-                if self.tool_config.db_password
-                else None
-            ),
-            "database": self.tool_config.db_name,
-        }
+        connection_string = self.tool_config.connection_string.get_secret_value()
 
         if self.tool_config.db_type == "postgresql":
-            self.db_service = PostgresService(connection_params)
+            self.db_service = PostgresService(connection_string)
         elif self.tool_config.db_type == "mysql":
-            self.db_service = MySQLService(connection_params)
+            self.db_service = MySQLService(connection_string)
         elif self.tool_config.db_type == "sqlite":
-            sqlite_params = {"database": self.tool_config.db_name}
-            self.db_service = SQLiteService(sqlite_params)
+            self.db_service = SQLiteService(connection_string)
         else:
             raise ValueError(f"Unsupported database type: {self.tool_config.db_type}")
         

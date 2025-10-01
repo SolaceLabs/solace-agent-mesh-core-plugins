@@ -18,14 +18,14 @@ log = logging.getLogger(__name__)
 class DatabaseService(ABC):
     """Abstract base class for database services."""
 
-    def __init__(self, connection_params: Dict[str, Any], query_timeout: int = 30):
+    def __init__(self, connection_string: str, query_timeout: int = 30):
         """Initialize the database service.
 
         Args:
-            connection_params: Database connection parameters.
+            connection_string: Database connection string.
             query_timeout: Query timeout in seconds.
         """
-        self.connection_params = connection_params
+        self.connection_string = connection_string
         self.query_timeout = query_timeout
         self.engine: Optional[Engine] = None
         try:
@@ -205,7 +205,7 @@ class DatabaseService(ABC):
             results = self.execute_query(query)
             return [row[column_name] for row in results]
         except Exception as e:
-            log.warning(
+            log.error(
                 "Could not fetch unique values for %s.%s: %s",
                 table_name,
                 column_name,
@@ -329,17 +329,8 @@ class MySQLService(DatabaseService):
 
     def _create_engine(self) -> Engine:
         """Create MySQL database engine."""
-        connection_url = sa.URL.create(
-            "mysql+pymysql",
-            username=self.connection_params.get("user"),
-            password=self.connection_params.get("password"),
-            host=self.connection_params.get("host"),
-            port=self.connection_params.get("port"),
-            database=self.connection_params.get("database"),
-        )
-
         return sa.create_engine(
-            connection_url,
+            self.connection_string,
             pool_size=5,
             max_overflow=10,
             pool_timeout=30,
@@ -354,17 +345,8 @@ class PostgresService(DatabaseService):
 
     def _create_engine(self) -> Engine:
         """Create PostgreSQL database engine."""
-        connection_url = sa.URL.create(
-            "postgresql+psycopg2",
-            username=self.connection_params.get("user"),
-            password=self.connection_params.get("password"),
-            host=self.connection_params.get("host"),
-            port=self.connection_params.get("port"),
-            database=self.connection_params.get("database"),
-        )
-
         return sa.create_engine(
-            connection_url,
+            self.connection_string,
             pool_size=5,
             max_overflow=10,
             pool_timeout=30,
@@ -379,15 +361,6 @@ class SQLiteService(DatabaseService):
 
     def _create_engine(self) -> Engine:
         """Create SQLite database engine."""
-        db_path = self.connection_params.get("database")
-        if not db_path:
-            raise ValueError("SQLite database path ('database') is required.")
-
-        if db_path == ":memory:":
-            connection_url_str = "sqlite:///:memory:"
-        else:
-            connection_url_str = f"sqlite:///{db_path}"
-
         return sa.create_engine(
-            connection_url_str, connect_args={"timeout": self.query_timeout}
+            self.connection_string, connect_args={"timeout": self.query_timeout}
         )

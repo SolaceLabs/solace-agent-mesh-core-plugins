@@ -10,7 +10,7 @@ class TestDatabaseConfig:
         config = {
             "tool_name": "sqlite_test",
             "db_type": "sqlite",
-            "db_name": "/path/to/db.sqlite",
+            "connection_string": "sqlite:///:memory:",
         }
         assert DatabaseConfig(**config)
 
@@ -19,11 +19,7 @@ class TestDatabaseConfig:
         config = {
             "tool_name": "postgres_test",
             "db_type": "postgresql",
-            "db_host": "localhost",
-            "db_port": 5432,
-            "db_user": "user",
-            "db_password": "password",
-            "db_name": "testdb",
+            "connection_string": "postgresql+psycopg2://user:password@localhost:5432/testdb",
         }
         assert DatabaseConfig(**config)
 
@@ -32,32 +28,16 @@ class TestDatabaseConfig:
         config = {
             "tool_name": "mysql_test",
             "db_type": "mysql",
-            "db_host": "localhost",
-            "db_port": 3306,
-            "db_user": "user",
-            "db_password": "password",
-            "db_name": "testdb",
+            "connection_string": "mysql+pymysql://user:password@localhost:3306/testdb",
         }
         assert DatabaseConfig(**config)
 
-    def test_invalid_postgresql_missing_fields(self):
-        """Test that PostgreSQL config raises error if fields are missing."""
+    def test_invalid_missing_connection_string(self):
+        """Test that config raises error if connection_string is missing."""
         with pytest.raises(ValidationError):
             DatabaseConfig(
-                tool_name="postgres_test",
-                db_type="postgresql",
-                db_name="testdb",
-                db_host="localhost" # Missing port, user, password
-            )
-
-    def test_invalid_mysql_missing_fields(self):
-        """Test that MySQL config raises error if fields are missing."""
-        with pytest.raises(ValidationError):
-            DatabaseConfig(
-                tool_name="mysql_test",
-                db_type="mysql",
-                db_name="testdb",
-                db_host="localhost" # Missing port, user
+                tool_name="test",
+                db_type="postgresql"
             )
 
     def test_manual_schema_missing_overrides(self):
@@ -66,7 +46,7 @@ class TestDatabaseConfig:
             DatabaseConfig(
                 tool_name="sqlite_test",
                 db_type="sqlite",
-                db_name="/path/to/db.sqlite",
+                connection_string="sqlite:///:memory:",
                 auto_detect_schema=False
                 # Missing database_schema_override and schema_summary_override
             )

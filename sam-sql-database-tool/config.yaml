@@ -71,11 +71,7 @@ apps:
             tool_name: "first_db"
             tool_description: "A SQL database tool connected to a specific database."
             db_type: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB1_TYPE}"
-            db_host: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB1_HOST}"
-            db_port: ${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB1_PORT}
-            db_user: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB1_USER}"
-            db_password: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB1_PASSWORD}"
-            db_name: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB1_NAME}"
+            connection_string: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB1_CONNECTION_STRING}"
 
         - tool_type: python
           component_module: "sam_sql_database_tool.tools"
@@ -85,11 +81,7 @@ apps:
             tool_name: "second_db"
             tool_description: "A SQL database tool connected to another specific database."
             db_type: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB2_TYPE}"
-            db_host: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB2_HOST}"
-            db_port: ${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB2_PORT}
-            db_user: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB2_USER}"
-            db_password: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB2_PASSWORD}"
-            db_name: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB2_NAME}"
+            connection_string: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB2_CONNECTION_STRING}"
             auto_detect_schema: false # Disable auto schema detection
             # Provide manual schema information and summary
             database_schema_override: >

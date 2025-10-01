@@ -44,11 +44,7 @@ tools:
 
       # --- Database Connection Configuration ---
       db_type: "postgresql"
-      db_host: "${DB_HOST}"
-      db_port: ${DB_PORT}
-      db_user: "${DB_USER}"
-      db_password: "${DB_PASSWORD}"
-      db_name: "customer_db"
+      connection_string: "${CUSTOMER_DB_CONNECTION_STRING}"
 
       # --- Schema Handling ---
       auto_detect_schema: true
@@ -62,8 +58,7 @@ tools:
 -   `tool_name`: (Required) The function name the LLM will use to call the tool.
 -   `tool_description`: (Optional) A clear description for the LLM explaining what the tool does.
 -   `db_type`: (Required) The type of the database. Must be one of `"postgresql"`, `"mysql"`, or `"sqlite"`.
--   `db_host`, `db_port`, `db_user`, `db_password`: (Required for PostgreSQL/MySQL) Connection details for your database. It's highly recommended to use environment variables (e.g., `${DB_HOST}`) for sensitive information.
--   `db_name`: (Required) The name of the database (for PostgreSQL/MySQL) or the file path to the database file (for SQLite).
+-   `connection_string`: (Required) The full database connection string (e.g., `postgresql+psycopg2://user:password@host:port/dbname`). It is highly recommended to use a single environment variable for the entire string.
 -   `auto_detect_schema`: (Optional, default: `true`) If `true`, the plugin attempts to automatically detect the database schema. If `false`, you must provide `database_schema_override` and `schema_summary_override`.
 -   `database_schema_override`: (Required if `auto_detect_schema` is `false`) A YAML or plain text string describing the detailed database schema (e.g., DDL statements).
 -   `schema_summary_override`: (Required if `auto_detect_schema` is `false`) A concise natural language summary of the schema, suitable for direct inclusion in an LLM prompt.
