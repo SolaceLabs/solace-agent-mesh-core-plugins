@@ -129,7 +129,7 @@ class DatabaseService(ABC):
             with self.get_connection() as conn:
                 result = conn.execute(text(query))
                 if result.returns_rows:
-                    return list(result.mappings())
+                    return [dict(row) for row in result.mappings()]
                 else:
                     log.info(
                         "Query executed successfully, affected rows: %s",

@@ -1,15 +1,23 @@
-# Solace Agent Mesh - Reusable SQL Database Tool
+# SQL Database Tool Plugin
 
-This plugin provides a reusable `DynamicTool` for connecting to SQL databases within the Solace Agent Mesh. It follows the recommended pattern of defining each database connection as a separate, explicit tool in the agent's configuration YAML.
+> **Note:** Currently, this tool only supports **PostgreSQL**. Support for MySQL and SQLite is coming soon.
 
-## Features
+This plugin for Solace Agent Mesh (SAM) provides a powerful and dynamic tool for executing SQL queries against a database. It allows any agent to be augmented with direct database access.
 
-- **Lifecycle Management**: The tool manages its own database connection lifecycle using the `init` and `cleanup` methods.
-- **Configuration Validation**: Uses a Pydantic model to validate the tool's configuration.
-- **Reusable**: A single `DynamicTool` Python class is reused for all database connections.
-- **Multi-Database Support:** Works with MySQL, PostgreSQL, and SQLite.
+Unlike the `sam-sql-database` agent, which provides a complete Natural-Language-to-SQL agent, this plugin provides a **tool** that can be added to any existing or new agent. This allows you to create multi-faceted agents that can interact directly with databases for specific, targeted tasks.
+
+## Key Features
+
+- **Dynamic Tool Creation**: Define custom SQL query tools directly in your agent's YAML configuration. Each tool instance is completely independent.
+- **Multi-Database Support**: Works with MySQL, PostgreSQL, and SQLite.
+- **Dedicated Connections**: Each tool instance creates its own dedicated database connection, allowing for fine-grained configuration.
+- **Flexible Schema Handling**:
+    -   Automatic schema detection and summarization for LLM prompting.
+    -   Manual override for providing a detailed schema and a natural language summary.
 
 ## Installation
+
+To add this tool to a new or existing agent, you must first install it and then manually add the tool configuration to your agent's YAML file:
 
 ```bash
 sam plugin add <your-component-name> --plugin sam-sql-database-tool
@@ -19,43 +27,51 @@ This creates a new component configuration at `configs/plugins/<your-component-n
 
 ## Configuration
 
-The SQL Database Tool is configured within the `tools` list of your agent's YAML configuration file.
+To use the tool, add one or more `tool_type: python` blocks to the `tools` list in your agent's `app_config`. Each block will create a new, independent tool instance.
 
-**Key Configuration Sections:**
+### Example Tool Configuration
 
-### Tool Configuration (`tools`)
-
-To use the `SqlQueryTool`, you will add a separate `tool_type: python` block to your agent's `tools` list for each database you want to connect to. Each block requires a `tool_config` section that defines the connection parameters.
+Here is an example of configuring a tool to query a customer database.
 
 ```yaml
-# Within app_config:
+# In your agent's app_config:
 tools:
   - tool_type: python
     component_module: "sam_sql_database_tool.tools"
     class_name: "SqlDatabaseTool"
     tool_config:
-      # --- Connection Parameters ---
-      name: "my_db" # A unique name for this tool instance
+      # --- Tool Definition for LLM ---
+      tool_name: "QueryCustomerDatabase"
+      tool_description: "Executes a SQL query against the customer database."
+
+      # --- Database Connection Configuration ---
       db_type: "postgresql"
       db_host: "${DB_HOST}"
       db_port: ${DB_PORT}
       db_user: "${DB_USER}"
       db_password: "${DB_PASSWORD}"
-      db_name: "${DB_NAME}"
+      db_name: "customer_db"
+
+      # --- Schema Handling ---
+      auto_detect_schema: true
+      # database_schema_override: |
+      #   CREATE TABLE customers (id INT, name VARCHAR(255));
+      # schema_summary_override: "A table named 'customers' with columns 'id' and 'name'."
 ```
 
-*   **`name`**: (Required) A unique name for this tool instance. This will be used to generate the tool name (e.g., `query_my_db`).
-*   **`db_type`**: (Required) Specify `"postgresql"`, `"mysql"`, or `"sqlite"`.
-*   **`db_host`**, **`db_port`**, **`db_user`**, **`db_password`**: (Required for PostgreSQL/MySQL) Connection details for your database. It's highly recommended to use environment variables (e.g., `${DB_HOST}`) for sensitive information.
-*   **`db_name`**: (Required) The name of the database (for PostgreSQL/MySQL) or the file path to the database file (for SQLite).
+### `tool_config` Details
 
-## Usage
+-   `tool_name`: (Required) The function name the LLM will use to call the tool.
+-   `tool_description`: (Optional) A clear description for the LLM explaining what the tool does.
+-   `db_type`: (Required) The type of the database. Must be one of `"postgresql"`, `"mysql"`, or `"sqlite"`.
+-   `db_host`, `db_port`, `db_user`, `db_password`: (Required for PostgreSQL/MySQL) Connection details for your database. It's highly recommended to use environment variables (e.g., `${DB_HOST}`) for sensitive information.
+-   `db_name`: (Required) The name of the database (for PostgreSQL/MySQL) or the file path to the database file (for SQLite).
+-   `auto_detect_schema`: (Optional, default: `true`) If `true`, the plugin attempts to automatically detect the database schema. If `false`, you must provide `database_schema_override` and `schema_summary_override`.
+-   `database_schema_override`: (Required if `auto_detect_schema` is `false`) A YAML or plain text string describing the detailed database schema (e.g., DDL statements).
+-   `schema_summary_override`: (Required if `auto_detect_schema` is `false`) A concise natural language summary of the schema, suitable for direct inclusion in an LLM prompt.
 
-Once the agent is configured with the SQL Database Tool:
+### Tool Parameters
 
-1.  The agent starts, and the `init` method of the `SqlDatabaseTool` class connects to the database.
-2.  A user sends a natural language query to the agent.
-3.  The ADK agent, using its instruction, converts the natural language query into an SQL query string.
-4.  The ADK agent invokes the dynamically named tool (e.g., `query_my_db`) with the generated SQL.
-5.  The tool's `_run_async_impl` method executes the SQL query against the database and returns the results.
-6.  When the agent shuts down, the `cleanup` method of the `SqlDatabaseTool` class closes the database connection.
+The generated tool accepts a single parameter:
+
+-   `query` (string, required): The SQL query to execute.
