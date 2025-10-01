@@ -18,8 +18,6 @@ description = "This agent sends a message into event mesh and subscribes for a r
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "solace_agent_mesh==1.4.7",
-    # Add plugin-specific dependencies here
 ]
 
 [tool.hatch.build.targets.wheel]

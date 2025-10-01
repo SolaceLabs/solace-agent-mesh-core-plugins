@@ -18,8 +18,6 @@ description = "a Universal Webhook Gateway for the Solace Agent Mesh that allows
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "solace_agent_mesh~=1.0.0",
-    # Add plugin-specific dependencies here
 ]
 
 [tool.hatch.build.targets.wheel]
