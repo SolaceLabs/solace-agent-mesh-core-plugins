@@ -2,22 +2,17 @@
 
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
-import yaml
 from typing import List, Dict, Any, Generator, Optional
 
-import sqlalchemy as sa
+from .csv_import_service import CsvImportService
 from sqlalchemy.engine import Engine, Connection
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import inspect, text
 
-try:
-    from solace_ai_connector.common.log import log
-except ImportError:
-    import logging
-
-    log = logging.getLogger(__name__)
-
-from .csv_import_service import CsvImportService
+import sqlalchemy as sa
+import yaml
+import logging
+log = logging.getLogger(__name__)
 
 
 class DatabaseService(ABC):
