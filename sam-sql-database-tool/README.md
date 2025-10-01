@@ -1,7 +1,5 @@
 # SQL Database Tool Plugin
 
-> **Note:** Currently, this tool only supports **PostgreSQL**. Support for MySQL and SQLite is coming soon.
-
 This plugin for Solace Agent Mesh (SAM) provides a powerful and dynamic tool for executing SQL queries against a database. It allows any agent to be augmented with direct database access.
 
 Unlike the `sam-sql-database` agent, which provides a complete Natural-Language-to-SQL agent, this plugin provides a **tool** that can be added to any existing or new agent. This allows you to create multi-faceted agents that can interact directly with databases for specific, targeted tasks.

@@ -34,3 +34,20 @@ src-path = "src"
 "config.yaml" = "sam_sql_database_tool/config.yaml"
 "README.md" = "sam_sql_database_tool/README.md"
 "pyproject.toml" = "sam_sql_database_tool/pyproject.toml"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "--tb=short --strict-markers --disable-warnings -p pytest_asyncio"
+
+[tool.hatch.envs.hatch-test]
+dependencies = [
+  "a2a-sdk[http-server]>=0.3.1",
+  "pytest-asyncio",
+  "pytest>=8.0.0",
+  "pytest-mock>=3.0.0",
+  "pytest-cov>=4.0.0",
+  "pytest-xdist>=3.5.0",
+  "solace-agent-mesh>=1.4.9,<2.0.0",
+  "testing.postgresql",
+  "psycopg2-binary"
+]
