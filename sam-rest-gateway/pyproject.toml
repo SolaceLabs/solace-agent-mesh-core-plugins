@@ -18,8 +18,6 @@ description = "The Solace Agent Mesh (SAM) REST API Gateway provides a standard,
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "solace_agent_mesh==1.4.7",
-    # Add plugin-specific dependencies here
 ]
 
 [tool.hatch.build.targets.wheel]

@@ -18,9 +18,6 @@ description = "A tool to allow an agent to send requests to a Solace broker and 
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "solace_agent_mesh==1.4.7",
-    "solace-ai-connector==1.2.0",
-    # Add plugin-specific dependencies here
 ]
 
 [project.optional-dependencies]
