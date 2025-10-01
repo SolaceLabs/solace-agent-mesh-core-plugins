@@ -1,13 +1,12 @@
 """Service for handling SQL database operations."""
 
-from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from typing import List, Dict, Any, Generator, Optional
 
 from .csv_import_service import CsvImportService
 from sqlalchemy.engine import Engine, Connection
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, text, select, func, distinct, table, column
 
 import sqlalchemy as sa
 import yaml
@@ -15,27 +14,26 @@ import logging
 log = logging.getLogger(__name__)
 
 
-class DatabaseService(ABC):
-    """Abstract base class for database services."""
+class DatabaseService:
+    """A generic service for handling SQL database operations."""
 
-    def __init__(self, connection_string: str, query_timeout: int = 30):
+    def __init__(self, connection_string: str):
         """Initialize the database service.
 
         Args:
             connection_string: Database connection string.
-            query_timeout: Query timeout in seconds.
         """
         self.connection_string = connection_string
-        self.query_timeout = query_timeout
         self.engine: Optional[Engine] = None
         try:
             self.engine = self._create_engine()
             log.info(
-                "Database engine created successfully for type: %s",
-                self.__class__.__name__,
+                "Database engine created successfully for dialect: %s",
+                self.engine.dialect.name,
             )
         except Exception as e:
             log.error("Failed to create database engine: %s", e, exc_info=True)
+            raise
 
         if self.engine:
             self.csv_import_service = CsvImportService(self)
@@ -45,6 +43,17 @@ class DatabaseService(ABC):
             log.warning(
                 "CsvImportService not initialized due to missing database engine."
             )
+
+    def _create_engine(self) -> Engine:
+        """Creates a SQLAlchemy engine with generic pooling settings."""
+        return sa.create_engine(
+            self.connection_string,
+            pool_size=5,
+            max_overflow=10,
+            pool_timeout=30,
+            pool_recycle=1800,
+            pool_pre_ping=True,
+        )
 
     def import_csv_data(
         self, files: Optional[List[str]] = None, directories: Optional[List[str]] = None
@@ -59,15 +68,6 @@ class DatabaseService(ABC):
             log.error(
                 "Cannot import CSV data: CsvImportService is not available (likely due to engine init failure)."
             )
-
-    @abstractmethod
-    def _create_engine(self) -> Engine:
-        """Create SQLAlchemy engine for database connection.
-
-        Returns:
-            SQLAlchemy Engine instance.
-        """
-        pass
 
     def close(self) -> None:
         """Dispose of the engine and its connection pool."""
@@ -181,64 +181,54 @@ class DatabaseService(ABC):
     def get_unique_values(
         self, table_name: str, column_name: str, limit: int = 3
     ) -> List[Any]:
-        """Get a sample of unique values from a column."""
+        """Get a sample of unique values from a column using dialect-agnostic queries."""
         if not self.engine:
             raise RuntimeError("Database engine is not initialized.")
 
-        if self.engine.name == "mysql":
-            query = f"SELECT DISTINCT `{column_name}` FROM `{table_name}` WHERE `{column_name}` IS NOT NULL ORDER BY RAND() LIMIT {limit}"
-        elif self.engine.name == "postgresql":
-            query = f'''
-            SELECT "{column_name}" FROM (
-                SELECT DISTINCT "{column_name}"
-                FROM "{table_name}"
-                WHERE "{column_name}" IS NOT NULL
-            ) AS distinct_values
-            ORDER BY RANDOM()
-            LIMIT {limit}'''
-        elif self.engine.name == "sqlite":
-            query = f'SELECT DISTINCT "{column_name}" FROM "{table_name}" WHERE "{column_name}" IS NOT NULL ORDER BY RANDOM() LIMIT {limit}'
-        else:
-            query = f'SELECT DISTINCT "{column_name}" FROM "{table_name}" WHERE "{column_name}" IS NOT NULL LIMIT {limit}'
-
         try:
-            results = self.execute_query(query)
-            return [row[column_name] for row in results]
-        except Exception as e:
-            log.error(
-                "Could not fetch unique values for %s.%s: %s",
-                table_name,
-                column_name,
-                e,
+            tbl = table(table_name)
+            col = column(column_name)
+            
+            random_func = func.random()
+            if self.engine.dialect.name == 'mysql':
+                random_func = func.rand()
+
+            query = (
+                select(distinct(col))
+                .where(col.is_not(None))
+                .order_by(random_func)
+                .limit(limit)
             )
-            return []
+            
+            with self.get_connection() as conn:
+                results = conn.execute(query).fetchall()
+                return [row[0] for row in results]
+                
+        except Exception as e:
+            log.error("Could not fetch unique values for %s.%s: %s", table_name, column_name, e)
+            raise
 
     def get_column_stats(self, table_name: str, column_name: str) -> Dict[str, Any]:
-        """Get basic statistics for a column (count, unique_count, min, max)."""
+        """Get basic statistics for a column using dialect-agnostic queries."""
         if not self.engine:
             raise RuntimeError("Database engine is not initialized.")
 
-        quoted_column = f'"{column_name}"'
-        quoted_table = f'"{table_name}"'
-        if self.engine.name == "mysql":
-            quoted_column = f"`{column_name}`"
-            quoted_table = f"`{table_name}`"
-
-        query = f"""
-            SELECT 
-                COUNT(*) as count,
-                COUNT(DISTINCT {quoted_column}) as unique_count
-            FROM {quoted_table}
-            WHERE {quoted_column} IS NOT NULL
-        """
         try:
-            results = self.execute_query(query)
-            return results[0] if results else {}
+            tbl = table(table_name)
+            col = column(column_name)
+
+            query = select(
+                func.count().label("count"),
+                func.count(distinct(col)).label("unique_count")
+            ).select_from(tbl).where(col.is_not(None))
+
+            with self.get_connection() as conn:
+                result = conn.execute(query).first()
+                return dict(result._mapping) if result else {}
+
         except Exception as e:
-            log.warning(
-                "Could not fetch column stats for %s.%s: %s", table_name, column_name, e
-            )
-            return {}
+            log.error("Could not fetch column stats for %s.%s: %s", table_name, column_name, e)
+            raise
 
     def get_detailed_schema_representation(self) -> Dict[str, Any]:
         """Detect database schema including tables, columns, relationships and sample data.
@@ -322,45 +312,3 @@ class DatabaseService(ABC):
                 )
                 summary_lines.append(f"{table_name}: {col_str}")
             return "\n".join(summary_lines)
-
-
-class MySQLService(DatabaseService):
-    """MySQL database service implementation."""
-
-    def _create_engine(self) -> Engine:
-        """Create MySQL database engine."""
-        return sa.create_engine(
-            self.connection_string,
-            pool_size=5,
-            max_overflow=10,
-            pool_timeout=30,
-            pool_recycle=1800,
-            pool_pre_ping=True,
-            connect_args={"connect_timeout": self.query_timeout},
-        )
-
-
-class PostgresService(DatabaseService):
-    """PostgreSQL database service implementation."""
-
-    def _create_engine(self) -> Engine:
-        """Create PostgreSQL database engine."""
-        return sa.create_engine(
-            self.connection_string,
-            pool_size=5,
-            max_overflow=10,
-            pool_timeout=30,
-            pool_recycle=1800,
-            pool_pre_ping=True,
-            connect_args={"connect_timeout": self.query_timeout},
-        )
-
-
-class SQLiteService(DatabaseService):
-    """SQLite database service implementation."""
-
-    def _create_engine(self) -> Engine:
-        """Create SQLite database engine."""
-        return sa.create_engine(
-            self.connection_string, connect_args={"timeout": self.query_timeout}
-        )

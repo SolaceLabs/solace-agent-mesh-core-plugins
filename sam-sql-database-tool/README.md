@@ -43,7 +43,6 @@ tools:
       tool_description: "Executes a SQL query against the customer database."
 
       # --- Database Connection Configuration ---
-      db_type: "postgresql"
       connection_string: "${CUSTOMER_DB_CONNECTION_STRING}"
 
       # --- Schema Handling ---
@@ -57,7 +56,6 @@ tools:
 
 -   `tool_name`: (Required) The function name the LLM will use to call the tool.
 -   `tool_description`: (Optional) A clear description for the LLM explaining what the tool does.
--   `db_type`: (Required) The type of the database. Must be one of `"postgresql"`, `"mysql"`, or `"sqlite"`.
 -   `connection_string`: (Required) The full database connection string (e.g., `postgresql+psycopg2://user:password@host:port/dbname`). It is highly recommended to use a single environment variable for the entire string.
 -   `auto_detect_schema`: (Optional, default: `true`) If `true`, the plugin attempts to automatically detect the database schema. If `false`, you must provide `database_schema_override` and `schema_summary_override`.
 -   `database_schema_override`: (Required if `auto_detect_schema` is `false`) A YAML or plain text string describing the detailed database schema (e.g., DDL statements).

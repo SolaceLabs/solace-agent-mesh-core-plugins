@@ -145,7 +145,6 @@ async def db_tool_provider(request, tmp_path: Path):
         connection_string = f"postgresql+psycopg2://{dsn.get('user')}:test@{dsn.get('host')}:{dsn.get('port')}/{dsn.get('database', 'test')}"
         config_dict = {
             "tool_name": "postgres_test_tool",
-            "db_type": "postgresql",
             "connection_string": connection_string,
         }
     elif db_type == "mysql":
@@ -154,7 +153,6 @@ async def db_tool_provider(request, tmp_path: Path):
         connection_string = f"mysql+pymysql://test_user:test_password@127.0.0.1:{host_port}/test_db"
         config_dict = {
             "tool_name": "mysql_test_tool",
-            "db_type": "mysql",
             "connection_string": connection_string,
         }
     elif db_type == "sqlite":
@@ -165,7 +163,6 @@ async def db_tool_provider(request, tmp_path: Path):
         connection_string = f"sqlite:///{sqlite_db_path}"
         config_dict = {
             "tool_name": "sqlite_test_tool",
-            "db_type": "sqlite",
             "connection_string": connection_string,
         }
     

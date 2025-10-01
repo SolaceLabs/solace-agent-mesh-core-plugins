@@ -70,7 +70,6 @@ apps:
           tool_config:
             tool_name: "first_db"
             tool_description: "A SQL database tool connected to a specific database."
-            db_type: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB1_TYPE}"
             connection_string: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB1_CONNECTION_STRING}"
 
         - tool_type: python
@@ -80,7 +79,6 @@ apps:
           tool_config:
             tool_name: "second_db"
             tool_description: "A SQL database tool connected to another specific database."
-            db_type: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB2_TYPE}"
             connection_string: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB2_CONNECTION_STRING}"
             auto_detect_schema: false # Disable auto schema detection
             # Provide manual schema information and summary

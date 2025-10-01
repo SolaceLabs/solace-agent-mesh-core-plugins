@@ -1,14 +1,9 @@
-from typing import Dict, Any, Literal, Optional
+from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field, model_validator, SecretStr
 from google.genai import types as adk_types
 from solace_agent_mesh.agent.tools.dynamic_tool import DynamicTool
 from solace_agent_mesh.agent.sac.component import SamAgentComponent
-from .services.database_service import (
-    DatabaseService,
-    MySQLService,
-    PostgresService,
-    SQLiteService,
-)
+from .services.database_service import DatabaseService
 
 import yaml
 import logging
@@ -20,9 +15,6 @@ class DatabaseConfig(BaseModel):
     )
     tool_description: Optional[str] = Field(
         default="", description="A description of what the tool does."
-    )
-    db_type: Literal["postgresql", "mysql", "sqlite"] = Field(
-        description="Type of the database."
     )
     connection_string: SecretStr = Field(
         description="The full database connection string (e.g., 'postgresql+psycopg2://user:password@host:port/dbname')."
@@ -42,9 +34,6 @@ class DatabaseConfig(BaseModel):
 
     @model_validator(mode='after')
     def check_required_fields(self) -> 'DatabaseConfig':
-        if not self.connection_string:
-            raise ValueError("'connection_string' is required.")
-        
         if self.auto_detect_schema is False:
             if self.database_schema_override is None:
                 raise ValueError(
@@ -93,16 +82,14 @@ class SqlDatabaseTool(DynamicTool):
     async def init(self, component: SamAgentComponent, tool_config: Dict):
         log_identifier = f"[{self.tool_name}:init]"
         log.info("%s Initializing connection...", log_identifier)
+        
         connection_string = self.tool_config.connection_string.get_secret_value()
 
-        if self.tool_config.db_type == "postgresql":
-            self.db_service = PostgresService(connection_string)
-        elif self.tool_config.db_type == "mysql":
-            self.db_service = MySQLService(connection_string)
-        elif self.tool_config.db_type == "sqlite":
-            self.db_service = SQLiteService(connection_string)
-        else:
-            raise ValueError(f"Unsupported database type: {self.tool_config.db_type}")
+        try:
+            self.db_service = DatabaseService(connection_string=connection_string)
+        except Exception as e:
+            log.error("Failed to initialize DatabaseService: %s", e)
+            raise ValueError("Invalid connection string or unsupported database dialect.") from e
         
         schema_summary_for_llm: str = ""
         detailed_schema_yaml: str = ""

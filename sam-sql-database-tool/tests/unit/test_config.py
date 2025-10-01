@@ -9,7 +9,6 @@ class TestDatabaseConfig:
         """Test a valid SQLite configuration."""
         config = {
             "tool_name": "sqlite_test",
-            "db_type": "sqlite",
             "connection_string": "sqlite:///:memory:",
         }
         assert DatabaseConfig(**config)
@@ -18,7 +17,6 @@ class TestDatabaseConfig:
         """Test a valid PostgreSQL configuration."""
         config = {
             "tool_name": "postgres_test",
-            "db_type": "postgresql",
             "connection_string": "postgresql+psycopg2://user:password@localhost:5432/testdb",
         }
         assert DatabaseConfig(**config)
@@ -27,7 +25,6 @@ class TestDatabaseConfig:
         """Test a valid MySQL configuration."""
         config = {
             "tool_name": "mysql_test",
-            "db_type": "mysql",
             "connection_string": "mysql+pymysql://user:password@localhost:3306/testdb",
         }
         assert DatabaseConfig(**config)
@@ -37,7 +34,6 @@ class TestDatabaseConfig:
         with pytest.raises(ValidationError):
             DatabaseConfig(
                 tool_name="test",
-                db_type="postgresql"
             )
 
     def test_manual_schema_missing_overrides(self):
@@ -45,7 +41,6 @@ class TestDatabaseConfig:
         with pytest.raises(ValidationError):
             DatabaseConfig(
                 tool_name="sqlite_test",
-                db_type="sqlite",
                 connection_string="sqlite:///:memory:",
                 auto_detect_schema=False
                 # Missing database_schema_override and schema_summary_override

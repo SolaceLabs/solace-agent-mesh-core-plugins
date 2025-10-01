@@ -1,16 +1,16 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from sam_sql_database_tool.services.database_service import SQLiteService
+from sam_sql_database_tool.services.database_service import DatabaseService
 
 @pytest.fixture
 def mock_db_service():
     """Fixture to create a mock DatabaseService."""
-    # We use SQLiteService as a concrete class, but mock its engine
     with patch('sqlalchemy.create_engine') as mock_create_engine:
         mock_engine = MagicMock()
+        mock_engine.dialect.name = "sqlite"
         mock_create_engine.return_value = mock_engine
         
-        service = SQLiteService("sqlite:///:memory:")
+        service = DatabaseService("sqlite:///:memory:")
         service.engine = mock_engine
         return service
 
@@ -63,6 +63,5 @@ class TestDatabaseService:
     def test_execute_query_no_engine(self):
         """Test that executing a query without an engine raises an error."""
         with patch('sqlalchemy.create_engine', side_effect=Exception("Connection failed")):
-            with pytest.raises(RuntimeError, match="Database engine is not initialized"):
-                service = SQLiteService("bad-connection-string")
-                service.execute_query("SELECT 1")
+            with pytest.raises(Exception, match="Connection failed"):
+                DatabaseService("bad-connection-string")
