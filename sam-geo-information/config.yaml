@@ -48,7 +48,7 @@ apps:
       namespace: ${NAMESPACE} 
       supports_streaming: true 
       agent_name: "__COMPONENT_PASCAL_CASE_NAME__" 
-      display_name: "__COMPONENT_PASCAL_CASE_NAME__" 
+      display_name: "__COMPONENT_SPACED_CAPITALIZED_NAME__ Agent" 
       model: *general_model 
 
       instruction: |

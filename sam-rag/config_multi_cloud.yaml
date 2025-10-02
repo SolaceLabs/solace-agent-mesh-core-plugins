@@ -48,7 +48,7 @@ apps:
     app_config:
       namespace: "${NAMESPACE}" # Your A2A topic namespace
       agent_name: "__COMPONENT_PASCAL_CASE_NAME__" 
-      display_name: "__COMPONENT_PASCAL_CASE_NAME__ Component" 
+      display_name: "__COMPONENT_SPACED_CAPITALIZED_NAME__ Agent" 
       supports_streaming: true # RAG agent supports streaming responses
 
       model: *general_model 
