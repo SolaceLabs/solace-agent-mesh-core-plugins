@@ -7,6 +7,9 @@ sam-mongodb:
 sam-sql-database:
   - changed-files:
       - any-glob-to-any-file: sam-sql-database/**
+sam-sql-database-tool:
+  - changed-files:
+      - any-glob-to-any-file: sam-sql-database-tool/**
 sam-geo-information:
   - changed-files:
       - any-glob-to-any-file: sam-geo-information/**
