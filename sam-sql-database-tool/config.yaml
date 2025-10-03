@@ -82,7 +82,7 @@ apps:
             connection_string: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB2_CONNECTION_STRING}"
             auto_detect_schema: false # Disable auto schema detection
             # Provide manual schema information and summary
-            database_schema_override: >
+            schema_summary_override: >
               "### Schema Information:\n\n"
               "**Table: table_1**\n"
               "- id (integer, primary key)\n"
@@ -93,10 +93,18 @@ apps:
               "- id (integer, primary key)\n"
               "- description (text)\n"
               "- value (float)\n\n"
-            schema_summary_override: >
-              "This database contains two tables: table_1 and table_2. "
-              "table_1 stores basic information with fields for id, name, and creation timestamp. "
-              "table_2 holds descriptive data with fields for id, description, and a numeric value."
+
+        - tool_type: python
+          component_module: "sam_sql_database_tool.tools"
+          component_base_path: .
+          class_name: "SqlDatabaseTool"
+          tool_config:
+            tool_name: "third_db"
+            tool_description: "A SQL database tool with custom schema detection settings."
+            connection_string: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB3_CONNECTION_STRING}"
+            max_enum_cardinality: 200
+            schema_sample_size: 50
+            cache_ttl_seconds: 1800 # 30 minutes
 
       session_service: *default_session_service
       artifact_service: *default_artifact_service
@@ -113,6 +121,9 @@ apps:
           - id: "sql_query_second_db"
             name: "Database Query (Second DB)"
             description: "Answers questions by querying the second configured SQL database."
+          - id: "sql_query_third_db"
+            name: "Database Query (Third DB)"
+            description: "Answers questions by querying the third configured SQL database."
 
       agent_card_publishing:
         interval_seconds: 30

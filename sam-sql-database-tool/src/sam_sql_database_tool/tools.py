@@ -23,10 +23,6 @@ class DatabaseConfig(BaseModel):
         default=True,
         description="If true, automatically detect schema. If false, overrides must be provided.",
     )
-    database_schema_override: Optional[str] = Field(
-        default=None,
-        description="YAML/text string of the detailed database schema if auto_detect_schema is false.",
-    )
     schema_summary_override: Optional[str] = Field(
         default=None,
         description="Natural language summary of the schema if auto_detect_schema is false.",

@@ -18,7 +18,7 @@ Unlike the `sam-sql-database` agent, which provides a complete Natural-Language-
 To add this tool to a new or existing agent, you must first install it and then manually add the tool configuration to your agent's YAML file:
 
 ```bash
-sam plugin add <your-component-name> --plugin sam-sql-database-tool
+sam plugin install sam-sql-database-tool
 ```
 
 This creates a new component configuration at `configs/plugins/<your-component-name-kebab-case>.yaml`.
@@ -47,8 +47,6 @@ tools:
 
       # --- Schema Handling ---
       auto_detect_schema: true
-      # database_schema_override: |
-      #   CREATE TABLE customers (id INT, name VARCHAR(255));
       # schema_summary_override: "A table named 'customers' with columns 'id' and 'name'."
 ```
 
@@ -57,8 +55,7 @@ tools:
 -   `tool_name`: (Required) The function name the LLM will use to call the tool.
 -   `tool_description`: (Optional) A clear description for the LLM explaining what the tool does.
 -   `connection_string`: (Required) The full database connection string (e.g., `postgresql+psycopg2://user:password@host:port/dbname`). It is highly recommended to use a single environment variable for the entire string.
--   `auto_detect_schema`: (Optional, default: `true`) If `true`, the plugin attempts to automatically detect the database schema. If `false`, you must provide `database_schema_override` and `schema_summary_override`.
--   `database_schema_override`: (Required if `auto_detect_schema` is `false`) A YAML or plain text string describing the detailed database schema (e.g., DDL statements).
+-   `auto_detect_schema`: (Optional, default: `true`) If `true`, the plugin attempts to automatically detect the database schema. If `false`, you must provide `schema_summary_override`.
 -   `schema_summary_override`: (Required if `auto_detect_schema` is `false`) A concise natural language summary of the schema, suitable for direct inclusion in an LLM prompt.
 -   `max_enum_cardinality`: (Optional, default: `100`) Maximum number of distinct values to consider a column as an enum. Increase for columns like countries (190+), decrease for faster init times.
 -   `schema_sample_size`: (Optional, default: `100`) Number of rows to sample per table for schema detection. Increase for better accuracy on sparse data, decrease for faster init times.

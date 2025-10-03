@@ -82,3 +82,26 @@ class TestSqlDatabaseTool:
         assert "name" in schema
         assert "sku" in schema
         assert "price" in schema
+
+    @pytest.mark.parametrize("query", [
+        "INSERT INTO users (id, name) VALUES (10, 'test');",
+        "UPDATE users SET name = 'test' WHERE id = 1;",
+        "DELETE FROM users WHERE id = 1;",
+    ])
+    async def test_dml_queries_execute_successfully(self, db_tool_provider: SqlDatabaseTool, query: str):
+        """Test that DML queries (INSERT, UPDATE, DELETE) execute and report affected rows."""
+        result = await db_tool_provider._run_async_impl(args={"query": query})
+        assert "error" not in result
+        assert "result" in result
+        assert "affected_rows" in result["result"][0]
+        assert result["result"][0]["affected_rows"] >= 0
+
+    async def test_manual_schema_override(self, db_tool_provider_manual_schema: SqlDatabaseTool):
+        """Test that a manual schema override is correctly applied."""
+        description = db_tool_provider_manual_schema.tool_description
+        assert "MANUAL_SCHEMA_TEST" in description
+        
+        # Also ensure it can still run queries
+        select_query = "SELECT * FROM users WHERE id = 1;"
+        select_result = await db_tool_provider_manual_schema._run_async_impl(args={"query": select_query})
+        assert "error" not in select_result

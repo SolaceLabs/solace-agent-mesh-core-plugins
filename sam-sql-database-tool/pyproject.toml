@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [tool.sam_sql_database_tool.metadata]
-type = "sam_sql_database_tool"
+type = "tool"
 
 [project]
 name = "sam_sql_database_tool"

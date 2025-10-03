@@ -162,3 +162,24 @@ async def db_tool_provider(request):
     yield tool
 
     await tool.cleanup(component=None, tool_config={})
+
+@pytest.fixture(scope="function")
+async def db_tool_provider_manual_schema(local_postgres_db):
+    """Yields a tool configured with a manual schema override."""
+    dsn = local_postgres_db.dsn()
+    connection_string = f"postgresql+psycopg2://{dsn.get('user')}:test@{dsn.get('host')}:{dsn.get('port')}/{dsn.get('database', 'test')}"
+    
+    config_dict = {
+        "tool_name": "manual_schema_tool",
+        "connection_string": connection_string,
+        "auto_detect_schema": False,
+        "schema_summary_override": "MANUAL_SCHEMA_TEST"
+    }
+    
+    tool_config = DatabaseConfig(**config_dict)
+    tool = SqlDatabaseTool(tool_config)
+    await tool.init(component=None, tool_config={})
+
+    yield tool
+
+    await tool.cleanup(component=None, tool_config={})
