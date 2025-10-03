@@ -3,7 +3,6 @@ from pathlib import Path
 import testing.postgresql
 import psycopg2
 import pymysql
-import sqlite3
 import subprocess
 import time
 
@@ -33,7 +32,7 @@ def populate_db(conn):
     ]
     
     # Determine placeholder style based on the DB driver
-    placeholder = "%s" if isinstance(conn, (pymysql.connections.Connection, psycopg2.extensions.connection)) else "?"
+    placeholder = "%s"
     
     user_sql = f"INSERT INTO users (id, name) VALUES ({placeholder}, {placeholder});"
     product_sql = f"INSERT INTO products (sku, name, price) VALUES ({placeholder}, {placeholder}, {placeholder});"
@@ -132,9 +131,9 @@ def mysql_db(mysql_service):
 # --- Generic Tool Provider ---
 @pytest.fixture(
     scope="function",
-    params=["postgresql", "mysql", "sqlite"]
+    params=["postgresql", "mysql"]
 )
-async def db_tool_provider(request, tmp_path: Path):
+async def db_tool_provider(request):
     """Yields an initialized SqlDatabaseTool for each database provider."""
     db_type = request.param
     config_dict = None
@@ -155,21 +154,11 @@ async def db_tool_provider(request, tmp_path: Path):
             "tool_name": "mysql_test_tool",
             "connection_string": connection_string,
         }
-    elif db_type == "sqlite":
-        sqlite_db_path = tmp_path / "test.db"
-        conn = sqlite3.connect(sqlite_db_path)
-        populate_db(conn)
-        conn.close()
-        connection_string = f"sqlite:///{sqlite_db_path}"
-        config_dict = {
-            "tool_name": "sqlite_test_tool",
-            "connection_string": connection_string,
-        }
-    
+
     tool_config = DatabaseConfig(**config_dict)
     tool = SqlDatabaseTool(tool_config)
     await tool.init(component=None, tool_config={})
-    
+
     yield tool
-    
+
     await tool.cleanup(component=None, tool_config={})

@@ -7,7 +7,7 @@ Unlike the `sam-sql-database` agent, which provides a complete Natural-Language-
 ## Key Features
 
 - **Dynamic Tool Creation**: Define custom SQL query tools directly in your agent's YAML configuration. Each tool instance is completely independent.
-- **Multi-Database Support**: Works with MySQL, PostgreSQL, and SQLite.
+- **Multi-Database Support**: Works with PostgreSQL, MySQL, and MariaDB.
 - **Dedicated Connections**: Each tool instance creates its own dedicated database connection, allowing for fine-grained configuration.
 - **Flexible Schema Handling**:
     -   Automatic schema detection and summarization for LLM prompting.
@@ -60,6 +60,9 @@ tools:
 -   `auto_detect_schema`: (Optional, default: `true`) If `true`, the plugin attempts to automatically detect the database schema. If `false`, you must provide `database_schema_override` and `schema_summary_override`.
 -   `database_schema_override`: (Required if `auto_detect_schema` is `false`) A YAML or plain text string describing the detailed database schema (e.g., DDL statements).
 -   `schema_summary_override`: (Required if `auto_detect_schema` is `false`) A concise natural language summary of the schema, suitable for direct inclusion in an LLM prompt.
+-   `max_enum_cardinality`: (Optional, default: `100`) Maximum number of distinct values to consider a column as an enum. Increase for columns like countries (190+), decrease for faster init times.
+-   `schema_sample_size`: (Optional, default: `100`) Number of rows to sample per table for schema detection. Increase for better accuracy on sparse data, decrease for faster init times.
+-   `cache_ttl_seconds`: (Optional, default: `3600`) Time-to-live for schema cache in seconds. After this duration, the schema will be re-detected on the next query. Set to `0` to disable caching.
 
 ### Tool Parameters
 

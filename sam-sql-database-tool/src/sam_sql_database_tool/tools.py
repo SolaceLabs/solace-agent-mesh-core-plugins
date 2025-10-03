@@ -31,14 +31,22 @@ class DatabaseConfig(BaseModel):
         default=None,
         description="Natural language summary of the schema if auto_detect_schema is false.",
     )
+    max_enum_cardinality: int = Field(
+        default=100,
+        description="Maximum number of distinct values to consider a column as an enum (default: 100).",
+    )
+    schema_sample_size: int = Field(
+        default=100,
+        description="Number of rows to sample per table for schema detection (default: 100).",
+    )
+    cache_ttl_seconds: int = Field(
+        default=3600,
+        description="Time-to-live for schema cache in seconds (default: 3600 = 1 hour).",
+    )
 
     @model_validator(mode='after')
     def check_required_fields(self) -> 'DatabaseConfig':
         if self.auto_detect_schema is False:
-            if self.database_schema_override is None:
-                raise ValueError(
-                    "'database_schema_override' is required when 'auto_detect_schema' is false"
-                )
             if self.schema_summary_override is None:
                 raise ValueError(
                     "'schema_summary_override' is required when 'auto_detect_schema' is false"
@@ -55,6 +63,7 @@ class SqlDatabaseTool(DynamicTool):
     def __init__(self, tool_config: DatabaseConfig):
         super().__init__(tool_config)
         self.db_service: Optional[DatabaseService] = None
+        self._schema_context: Optional[str] = None
 
     @property
     def tool_name(self) -> str:
@@ -63,8 +72,13 @@ class SqlDatabaseTool(DynamicTool):
 
     @property
     def tool_description(self) -> str:
-        """Return the description of what this tool does."""
-        return self.tool_config.get("tool_description", "")
+        """Return the description of what this tool does, including schema context."""
+        base_description = self.tool_config.get("tool_description", "")
+
+        if self._schema_context:
+            return f"{base_description}\n\nDatabase Schema:\n{self._schema_context}"
+
+        return base_description
 
     @property
     def parameters_schema(self) -> adk_types.Schema:
@@ -82,43 +96,39 @@ class SqlDatabaseTool(DynamicTool):
     async def init(self, component: SamAgentComponent, tool_config: Dict):
         log_identifier = f"[{self.tool_name}:init]"
         log.info("%s Initializing connection...", log_identifier)
-        
+
         connection_string = self.tool_config.connection_string.get_secret_value()
+        cache_ttl = self.tool_config.cache_ttl_seconds
 
         try:
-            self.db_service = DatabaseService(connection_string=connection_string)
+            self.db_service = DatabaseService(
+                connection_string=connection_string,
+                cache_ttl_seconds=cache_ttl
+            )
         except Exception as e:
             log.error("Failed to initialize DatabaseService: %s", e)
             raise ValueError("Invalid connection string or unsupported database dialect.") from e
-        
-        schema_summary_for_llm: str = ""
-        detailed_schema_yaml: str = ""
 
         try:
             if self.tool_config.auto_detect_schema:
                 log.info("%s Auto-detecting database schema...", log_identifier)
-                schema_summary_for_llm = self.db_service.get_schema_summary_for_llm()
-                detailed_schema_dict = self.db_service.get_detailed_schema_representation()
-                detailed_schema_yaml = yaml.dump(
-                    detailed_schema_dict, sort_keys=False, allow_unicode=True
+                self._schema_context = self.db_service.get_optimized_schema_for_llm(
+                    max_enum_cardinality=self.tool_config.max_enum_cardinality,
+                    sample_size=self.tool_config.schema_sample_size
                 )
-                log.info("%s Schema auto-detection complete.", log_identifier)
+                log.info("%s Schema cached in memory (%d chars)", log_identifier, len(self._schema_context))
             else:
                 log.info("%s Using provided schema overrides.", log_identifier)
-                if (
-                    not self.tool_config.schema_summary_override
-                    or not self.tool_config.database_schema_override
-                ):
+                if not self.tool_config.schema_summary_override:
                     raise ValueError(
-                        "schema_summary_override and database_schema_override are required when auto_detect_schema is false."
+                        "schema_summary_override is required when auto_detect_schema is false."
                     )
-                schema_summary_for_llm = self.tool_config.schema_summary_override
-                detailed_schema_yaml = self.tool_config.database_schema_override
+                self._schema_context = self.tool_config.schema_summary_override
                 log.info("%s Schema overrides applied.", log_identifier)
 
-            if not schema_summary_for_llm:
+            if not self._schema_context:
                 log.warning(
-                    "%s Schema summary for LLM is empty. This may impact LLM performance.",
+                    "%s Schema context is empty. This may impact LLM performance.",
                     log_identifier,
                 )
 

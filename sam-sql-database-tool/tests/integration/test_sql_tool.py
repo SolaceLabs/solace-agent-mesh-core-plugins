@@ -17,8 +17,8 @@ class TestSqlDatabaseTool:
 
     async def test_schema_detection(self, db_tool_provider: SqlDatabaseTool):
         """Test the automatic schema detection."""
-        summary = db_tool_provider.db_service.get_schema_summary_for_llm()
-        
+        summary = db_tool_provider.db_service.get_optimized_schema_for_llm()
+
         assert "products" in summary
         assert "sku" in summary
         assert "price" in summary
@@ -45,17 +45,40 @@ class TestSqlDatabaseTool:
         result = await db_tool_provider._run_async_impl(args={"query": invalid_query})
         assert "error" in result
         
-    async def test_detailed_schema_representation(self, db_tool_provider: SqlDatabaseTool):
-        """Test the detailed schema representation (read-only)."""
-        schema = db_tool_provider.db_service.get_detailed_schema_representation()
-        
+    async def test_schema_caching(self, db_tool_provider: SqlDatabaseTool):
+        """Test that schema is cached in memory."""
+        assert db_tool_provider._schema_context is not None
+        assert len(db_tool_provider._schema_context) > 0
+
+        assert "users" in db_tool_provider._schema_context
+        assert "products" in db_tool_provider._schema_context
+
+    async def test_cache_hit_performance(self, db_tool_provider: SqlDatabaseTool):
+        """Test that cache provides instant schema retrieval."""
+        import time
+
+        first_call_start = time.time()
+        schema1 = db_tool_provider.db_service.get_optimized_schema_for_llm()
+        first_call_time = time.time() - first_call_start
+
+        second_call_start = time.time()
+        schema2 = db_tool_provider.db_service.get_optimized_schema_for_llm()
+        second_call_time = time.time() - second_call_start
+
+        assert schema1 == schema2
+        assert second_call_time < 0.01
+
+    async def test_cache_ttl_configuration(self, db_tool_provider: SqlDatabaseTool):
+        """Test that cache TTL is configurable."""
+        assert db_tool_provider.db_service._cache_ttl.total_seconds() == 3600
+
+    async def test_parallel_processing(self, db_tool_provider: SqlDatabaseTool):
+        """Test that parallel processing detects all tables and columns."""
+        schema = db_tool_provider.db_service.get_optimized_schema_for_llm()
+
         assert "users" in schema
         assert "products" in schema
-        
-        assert "id" in schema["users"]["columns"]
-        assert "name" in schema["users"]["columns"]
-        assert schema["users"]["primary_keys"] == ["id"]
-        
-        assert "sku" in schema["products"]["columns"]
-        assert "price" in schema["products"]["columns"]
-        assert schema["products"]["primary_keys"] == ["sku"]
+        assert "id" in schema
+        assert "name" in schema
+        assert "sku" in schema
+        assert "price" in schema
