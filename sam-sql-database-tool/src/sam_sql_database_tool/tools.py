@@ -5,7 +5,6 @@ from solace_agent_mesh.agent.tools.dynamic_tool import DynamicTool
 from solace_agent_mesh.agent.sac.component import SamAgentComponent
 from .services.database_service import DatabaseService
 
-import yaml
 import logging
 log = logging.getLogger(__name__)
 
@@ -60,6 +59,7 @@ class SqlDatabaseTool(DynamicTool):
         super().__init__(tool_config)
         self.db_service: Optional[DatabaseService] = None
         self._schema_context: Optional[str] = None
+        self.description = self.tool_description
 
     @property
     def tool_name(self) -> str:
