@@ -165,3 +165,4 @@ cython_debug/
 .aider*
 
 .vscode/
+.DS_Store

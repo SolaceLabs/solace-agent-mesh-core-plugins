@@ -3,6 +3,8 @@
 # Version: 0.1.0
 # Description: Solace Agent Mesh Gateway plugin for integrating with Solace PubSub+ event brokers.
 # Author: SolaceLabs <solacelabs@solace.com>
+# Test:
+## Sent a valid json payload to topic "abc/jira/issue/create/>" and verified it was processed by the OrchestratorAgent and response published to "event_mesh/responses/>".
 
 log:
   stdout_log_level: INFO
@@ -77,6 +79,7 @@ apps:
           on_success: "success_response_handler"
           on_error: "error_response_handler"
           user_identity_expression: "input.user_properties:initiator_id" # Optional
+          default_user_identity: "anonymous_event_mesh_user" # If no identity from event
           target_agent_name: "OrchestratorAgent" # Static target agent
           # target_agent_name_expression: "input.user_properties:target_agent" # Or dynamic
           forward_context: # Optional: Forward data from input to output handlers
@@ -87,6 +90,7 @@ apps:
             - topic: "solace/images/>"
           payload_format: "text"
           user_identity_expression: "static:sam_dev_user"
+          default_user_identity: "anonymous_event_mesh_user" # If no identity from event
           artifact_processing:
             extract_artifacts_expression: "input.payload"
             artifact_definition:
