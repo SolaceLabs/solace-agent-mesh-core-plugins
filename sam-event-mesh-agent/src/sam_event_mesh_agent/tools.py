@@ -1,12 +1,13 @@
+import logging
 import re
 import yaml
 import json
 import uuid
 from typing import Any, Dict, Optional
 from google.adk.tools import ToolContext
-from solace_ai_connector.common.log import log
 from solace_ai_connector.common.message import Message
 
+log = logging.getLogger(__name__)
 
 def _validate_topic_template(topic: str, params) -> str:
     """Validate that a topic template is properly formatted.

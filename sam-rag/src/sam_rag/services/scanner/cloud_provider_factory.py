@@ -5,11 +5,12 @@ This module provides a factory pattern for instantiating different cloud storage
 providers in a consistent and extensible manner.
 """
 
+import logging
 from typing import Dict, List, Any, Type
-from solace_ai_connector.common.log import log as logger
 
 from sam_rag.services.scanner.datasource_base import DataSource
 
+logger = logging.getLogger(__name__)
 
 class CloudProviderFactory:
     """

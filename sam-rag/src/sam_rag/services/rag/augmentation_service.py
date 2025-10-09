@@ -8,16 +8,12 @@ This module provides functionality to augment retrieved documents by:
 4. Returning improved content with source information
 """
 
+import logging
 import time
 from typing import Dict, Any, List, Optional, Tuple
 from collections import defaultdict
 
-# Import SAC logger if available, otherwise use standard logging
-try:
-    from solace_ai_connector.common.log import log as logger
-except ImportError:
-    import logging
-    logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 # Import LiteLLM for language model access
 try:

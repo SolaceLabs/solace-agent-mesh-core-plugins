@@ -3,17 +3,11 @@ File system data source implementation for the SAM RAG plugin.
 Monitors local file system for document changes and processes them.
 """
 
+import logging
 import os
 import time
 import threading
 from typing import Dict, List, Any, Optional
-
-# Import SAC logger if available, otherwise use standard logging
-try:
-    from solace_ai_connector.common.log import log as logger
-except ImportError:
-    import logging
-    logger = logging.getLogger(__name__)
 
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -37,6 +31,7 @@ try:
 except ImportError:
     DATABASE_AVAILABLE = False
 
+logger = logging.getLogger(__name__)
 
 class LocalFileSystemDataSource(DataSource):
     """

@@ -2,11 +2,12 @@
 Text preprocessing utilities for cleaning and normalizing text.
 """
 
+import logging
 import re
 import unicodedata
 from typing import Dict, Any
-from solace_ai_connector.common.log import log
 
+log = logging.getLogger(__name__)
 
 class RawTextPreprocessor:
     """

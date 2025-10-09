@@ -1,10 +1,10 @@
+import logging
 import os
 import tempfile
 import threading
 import time
 from abc import abstractmethod
 from typing import Dict, List, Any, Optional
-from solace_ai_connector.common.log import log as logger
 
 from sam_rag.services.scanner.datasource_base import DataSource
 from sam_rag.services.memory.memory_storage import memory_storage
@@ -17,6 +17,7 @@ try:
 except ImportError:
     DATABASE_AVAILABLE = False
 
+logger = logging.getLogger(__name__)
 
 # Abstract base class for Cloud Storage implementations
 class CloudStorageDataSource(DataSource):

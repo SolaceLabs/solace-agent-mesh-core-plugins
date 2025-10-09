@@ -1,9 +1,9 @@
 import httpx
+import logging
 import uuid
 from typing import Any, Dict, Optional
 
 from google.adk.tools import ToolContext
-from solace_ai_connector.common.log import log
 from solace_agent_mesh.agent.utils.artifact_helpers import (
     save_artifact_with_metadata,
     ensure_correct_extension,
@@ -12,6 +12,7 @@ from solace_agent_mesh.agent.utils.artifact_helpers import (
 from solace_agent_mesh.agent.utils.context_helpers import get_original_session_id
 from datetime import datetime, timezone
 
+log = logging.getLogger(__name__)
 
 async def draw(
     mermaid_code: str,

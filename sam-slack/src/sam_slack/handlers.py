@@ -4,8 +4,8 @@ Translates Slack events into A2A task submissions.
 """
 
 import asyncio
+import logging
 from typing import TYPE_CHECKING, Dict, Any, Optional
-from solace_ai_connector.common.log import log
 from .utils import (
     send_slack_message,
     _build_current_slack_blocks,
@@ -14,6 +14,7 @@ from .utils import (
 if TYPE_CHECKING:
     from .component import SlackGatewayComponent
 
+log = logging.getLogger(__name__)
 
 async def _process_slack_event(
     component: "SlackGatewayComponent", event: Dict, say: Any, client: Any

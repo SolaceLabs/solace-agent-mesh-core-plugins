@@ -1,3 +1,4 @@
+import logging
 from typing import Dict
 
 from sqlalchemy.orm import Session
@@ -5,9 +6,10 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from sqlalchemy import inspect
 from datetime import datetime
-from solace_ai_connector.common.log import log
 
 from sam_rag.services.database.model import Document, StatusEnum, config_db
+
+log = logging.getLogger(__name__)
 
 SessionLocal = None
 

@@ -6,6 +6,7 @@ Connects to Slack, handles events, interacts with CoreA2AService, and processes 
 import asyncio
 import base64
 import json
+import logging
 import re
 import threading
 from typing import Any, Dict, Optional, List, Tuple, Union, Set
@@ -26,7 +27,6 @@ except ImportError:
     AsyncSocketModeHandler = None
     SlackApiError = None
 
-from solace_ai_connector.common.log import log
 from solace_agent_mesh.gateway.base.component import BaseGatewayComponent
 from a2a.types import (
     TextPart,
@@ -58,6 +58,8 @@ from .utils import (
     format_data_part_for_slack,
     CANCEL_BUTTON_ACTION_ID,
 )
+
+log = logging.getLogger(__name__)
 
 _NO_EMAIL_MARKER = "_NO_EMAIL_"
 

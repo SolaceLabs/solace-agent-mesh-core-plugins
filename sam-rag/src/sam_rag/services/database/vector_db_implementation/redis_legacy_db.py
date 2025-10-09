@@ -3,13 +3,14 @@ Redis (legacy) vector database implementation.
 This version uses the 'redis' package directly.
 """
 
+import logging
 import uuid
 import numpy as np
 from typing import Dict, Any, List, Optional
-from solace_ai_connector.common.log import log as logger
 
 from sam_rag.services.database.vector_db_base import VectorDBBase
 
+logger = logging.getLogger(__name__)
 
 class RedisDB(VectorDBBase):
     """

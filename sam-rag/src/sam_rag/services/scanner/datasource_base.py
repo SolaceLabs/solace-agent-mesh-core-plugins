@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
+import logging
 from typing import List, Dict, Any, Optional
-from solace_ai_connector.common.log import log as logger
+
+logger = logging.getLogger(__name__)
 
 # Abstract base class for data sources
 class DataSource(ABC):

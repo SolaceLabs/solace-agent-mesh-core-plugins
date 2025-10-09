@@ -3,6 +3,7 @@ ADK Tools for the SQL Database Agent Plugin.
 """
 
 import json
+import logging
 import yaml
 import csv
 import io
@@ -12,13 +13,6 @@ from typing import Any, Dict, List, Optional, Literal
 
 from google.adk.tools import ToolContext
 from google.genai import types as adk_types
-
-try:
-    from solace_ai_connector.common.log import log
-except ImportError:
-    import logging
-
-    log = logging.getLogger(__name__)
 
 from typing import TYPE_CHECKING
 
@@ -31,6 +25,8 @@ from solace_agent_mesh.agent.utils.artifact_helpers import (
     DEFAULT_SCHEMA_MAX_KEYS,
     ensure_correct_extension,
 )
+
+log = logging.getLogger(__name__)
 
 
 async def execute_sql_query(

@@ -1,5 +1,6 @@
 """Tool implementations for the SAM RAG plugin."""
 
+import logging
 from typing import Dict, Any, Optional, List
 import os
 import uuid
@@ -17,16 +18,11 @@ from google.adk.tools import ToolContext
 from solace_agent_mesh.agent.utils.artifact_helpers import load_artifact_content_or_metadata
 from solace_agent_mesh.common.utils.mime_helpers import is_text_based_mime_type
 
-# Import SAC logger if available, otherwise use standard logging
-try:
-    from solace_ai_connector.common.log import log
-except ImportError:
-    import logging
-    log = logging.getLogger(__name__)
-
 # Import decorator for embed resolution
 from solace_agent_mesh.agent.utils.artifact_helpers import save_artifact_with_metadata
 from solace_agent_mesh.agent.utils.context_helpers import get_original_session_id
+
+log = logging.getLogger(__name__)
 
 async def ingest_document(
     input_file: str,

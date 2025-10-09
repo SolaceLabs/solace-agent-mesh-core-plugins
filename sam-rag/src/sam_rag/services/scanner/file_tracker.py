@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import logging
 from typing import List, Dict, Any, Union
-from solace_ai_connector.common.log import log as logger
 
 from sam_rag.services.scanner.file_system import LocalFileSystemDataSource
 from sam_rag.services.scanner.cloud_storage import CloudStorageDataSource
@@ -18,6 +18,7 @@ try:
 except ImportError:
     DATABASE_AVAILABLE = False
 
+logger = logging.getLogger(__name__)
 
 # Class to track file changes
 class FileChangeTracker:

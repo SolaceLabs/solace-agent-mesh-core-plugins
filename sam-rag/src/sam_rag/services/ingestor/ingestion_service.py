@@ -6,12 +6,13 @@ pre-processed, pre-embedded content into a vector database. The preprocessing,
 splitting, and embedding steps are handled by the RAG pipeline.
 """
 
+import logging
 from typing import Dict, Any, List, Optional
-from solace_ai_connector.common.log import log as logger
 
 from sam_rag.services.database.vector_db_service import VectorDBService
 from sam_rag.services.ingestor.ingestion_base import IngestionBase
 
+logger = logging.getLogger(__name__)
 
 class IngestionService(IngestionBase):
     """

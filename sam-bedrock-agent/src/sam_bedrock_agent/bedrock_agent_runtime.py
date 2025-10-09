@@ -1,9 +1,10 @@
-from solace_ai_connector.common.log import log
+import logging
 from botocore.exceptions import ClientError
 import json
 
 from .aws_session_manager import get_aws_session_manager
 
+log = logging.getLogger(__name__)
 
 class BedrockAgentRuntime:
     """Encapsulates Amazon Bedrock Agents Runtime actions."""

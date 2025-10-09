@@ -3,16 +3,17 @@ Utility functions for the Slack Gateway component, including session ID generati
 topic extraction, Slack formatting, and API call wrappers.
 """
 
+import logging
 import re
 import json
 from typing import TYPE_CHECKING, Optional, List, Tuple, Any, Dict
-from solace_ai_connector.common.log import log
 from a2a.types import DataPart
 from solace_agent_mesh.common import a2a
 
 if TYPE_CHECKING:
     from .component import SlackGatewayComponent
 
+log = logging.getLogger(__name__)
 
 def generate_a2a_session_id(channel_id: str, thread_ts: str, agent_name: str) -> str:
     """

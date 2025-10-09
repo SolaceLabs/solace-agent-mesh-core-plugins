@@ -2,8 +2,8 @@
 Service for splitting documents into chunks for embedding.
 """
 
+import logging
 from typing import Dict, Any, List
-from solace_ai_connector.common.log import log as logger
 
 from sam_rag.services.splitter.splitter_base import SplitterBase
 from sam_rag.services.splitter.text_splitter import (
@@ -18,6 +18,8 @@ from sam_rag.services.splitter.structured_splitter import (
     MarkdownSplitter,
     CSVSplitter,
 )
+
+logger = logging.getLogger(__name__)
 
 class SplitterMethod:
     CHARACTER = "CharacterTextSplitter"

@@ -1,23 +1,18 @@
 """Service for importing CSV files into database tables."""
 
+import logging
 import os
 import csv
 from typing import List, Optional
 import sqlalchemy as sa
 from sqlalchemy import inspect, MetaData
 
-try:
-    from solace_ai_connector.common.log import log
-except ImportError:
-    import logging
-
-    log = logging.getLogger(__name__)
-
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .database_service import DatabaseService
 
+log = logging.getLogger(__name__)
 
 class CsvImportService:
     """Service for importing CSV files into database tables."""

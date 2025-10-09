@@ -2,6 +2,7 @@
 FastAPI router for managing artifacts via the REST API.
 """
 
+import logging
 import io
 from typing import List, Union
 
@@ -16,7 +17,6 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from google.adk.artifacts import BaseArtifactService
 
-from solace_ai_connector.common.log import log
 from solace_agent_mesh.common.a2a.types import ArtifactInfo
 from solace_agent_mesh.agent.utils.artifact_helpers import (
     get_artifact_info_list,
@@ -27,6 +27,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..component import RestGatewayComponent
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 

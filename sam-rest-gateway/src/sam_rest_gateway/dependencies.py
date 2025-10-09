@@ -4,12 +4,13 @@ managed by the RestGatewayComponent.
 """
 
 from fastapi import Depends, HTTPException, status
+import logging
 from typing import TYPE_CHECKING
-
-from solace_ai_connector.common.log import log
 
 if TYPE_CHECKING:
     from .component import RestGatewayComponent
+
+log = logging.getLogger(__name__)
 
 sac_component_instance: "RestGatewayComponent" = None
 

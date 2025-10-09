@@ -5,14 +5,16 @@ This module provides OneDrive integration with Microsoft Graph API authenticatio
 batch scanning, real-time monitoring, and file processing capabilities.
 """
 
+import logging
 import os
 import tempfile
 import threading
 import time
 from typing import Dict, List, Any, Optional
-from solace_ai_connector.common.log import log as logger
 
 from sam_rag.services.cloud_storage import CloudStorageDataSource
+
+logger = logging.getLogger(__name__)
 
 # Try to import OneDrive/Microsoft Graph dependencies
 try:

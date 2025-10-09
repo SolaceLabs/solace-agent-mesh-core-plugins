@@ -1,10 +1,12 @@
+import logging
 from sklearn.feature_extraction.text import TfidfVectorizer
 from nltk.corpus import stopwords
 from typing import Dict, Any, List, Optional, Callable
 import nltk
 import re
 import string  # For punctuation removal
-from solace_ai_connector.common.log import log as logger
+
+logger = logging.getLogger(__name__)
 
 # Ensure NLTK stopwords are available during module load or first use.
 # This is a common pattern but can be moved to __init__ if preferred for explicitness.

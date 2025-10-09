@@ -4,6 +4,7 @@ Simulates an external authentication service with token validation and user info
 """
 
 import asyncio
+import logging
 import threading
 import time
 from typing import Dict, Any, Optional
@@ -12,12 +13,11 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from solace_ai_connector.common.log import log
-
 
 class TokenValidationRequest(BaseModel):
     provider: str = "azure"
 
+log = logging.getLogger(__name__)
 
 class MockAuthServer:
     """
