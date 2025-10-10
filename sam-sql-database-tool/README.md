@@ -7,7 +7,7 @@ Unlike the `sam-sql-database` agent, which provides a complete Natural-Language-
 ## Key Features
 
 - **Dynamic Tool Creation**: Define custom SQL query tools directly in your agent's YAML configuration. Each tool instance is completely independent.
-- **Multi-Database Support**: Works with PostgreSQL, MySQL, and MariaDB.
+- **Multi-Database Support**: Natively supports PostgreSQL, MySQL, and MariaDB.
 - **Dedicated Connections**: Each tool instance creates its own dedicated database connection, allowing for fine-grained configuration.
 - **Flexible Schema Handling**:
     -   Automatic schema detection and summarization for LLM prompting.
@@ -54,7 +54,7 @@ tools:
 
 -   `tool_name`: (Required) The function name the LLM will use to call the tool.
 -   `tool_description`: (Optional) A clear description for the LLM explaining what the tool does.
--   `connection_string`: (Required) The full database connection string (e.g., `postgresql+psycopg2://user:password@host:port/dbname`). It is highly recommended to use a single environment variable for the entire string.
+-   `connection_string`: (Required) The full database connection string (e.g., `postgresql+psycopg2://user:password@host:port/dbname` for PostgreSQL, or `mysql+pymysql://user:password@host:port/dbname` for MySQL/MariaDB). It is highly recommended to use a single environment variable for the entire string.
 -   `auto_detect_schema`: (Optional, default: `true`) If `true`, the plugin attempts to automatically detect the database schema. If `false`, you must provide `schema_summary_override`.
 -   `schema_summary_override`: (Required if `auto_detect_schema` is `false`) A concise natural language summary of the schema, suitable for direct inclusion in an LLM prompt.
 -   `max_enum_cardinality`: (Optional, default: `100`) Maximum number of distinct values to consider a column as an enum. Increase for columns like countries (190+), decrease for faster init times.
