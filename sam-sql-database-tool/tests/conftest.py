@@ -1,137 +1,189 @@
 import pytest
-from pathlib import Path
-import testing.postgresql
 import psycopg2
 import pymysql
+import oracledb
 import subprocess
 import time
-
+import sqlalchemy as sa
 from sam_sql_database_tool.tools import DatabaseConfig, SqlDatabaseTool
+from .test_data import populate_db
 
-def populate_db(conn):
-    """Generic function to create tables and insert data."""
-    cursor = conn.cursor()
+# --- Generic Docker Service Factory ---
+@pytest.fixture(scope="session")
+def _docker_service_factory(request):
+    """A factory for creating Docker-based database services."""
     
-    # Drop tables if they exist for a clean slate, especially for mysql_db fixture
-    cursor.execute("DROP TABLE IF EXISTS users;")
-    cursor.execute("DROP TABLE IF EXISTS products;")
+    def _factory(container_name, image, env_vars, internal_port, connection_check_fn):
+        # Ensure the container is stopped and removed before starting
+        subprocess.run(["docker", "stop", container_name], check=False, capture_output=True)
+        subprocess.run(["docker", "rm", container_name], check=False, capture_output=True)
+        
+        run_command = ["docker", "run", "--name", container_name, "-d", "-p", f"0.0.0.0::{internal_port}"]
+        for key, value in env_vars.items():
+            run_command.extend(["-e", f"{key}={value}"])
+        run_command.append(image)
+        
+        subprocess.run(run_command, check=True)
 
-    # Create tables
-    cursor.execute("CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(50));")
-    cursor.execute("CREATE TABLE products (sku VARCHAR(20) PRIMARY KEY, name VARCHAR(100), price FLOAT);")
-    
-    users_data = [
-        (1, 'Alice'), (2, 'Bob'), (3, 'Charlie'), (4, 'David'), (5, 'Eve')
-    ]
-    products_data = [
-        ('SKU001', 'Laptop', 1200.50),
-        ('SKU002', 'Mouse', 25.00),
-        ('SKU003', 'Keyboard', 75.99),
-        ('SKU004', 'Monitor', 300.00),
-        ('SKU005', 'Webcam', 50.25)
-    ]
-    
-    # Determine placeholder style based on the DB driver
-    placeholder = "%s"
-    
-    user_sql = f"INSERT INTO users (id, name) VALUES ({placeholder}, {placeholder});"
-    product_sql = f"INSERT INTO products (sku, name, price) VALUES ({placeholder}, {placeholder}, {placeholder});"
+        # Give the container a moment to start and potentially fail
+        time.sleep(5)
 
-    cursor.executemany(user_sql, users_data)
-    cursor.executemany(product_sql, products_data)
+        # Verify the container is actually running before proceeding
+        container_check = subprocess.run(
+            ["docker", "ps", "-f", f"name={container_name}", "-f", "status=running", "--quiet"],
+            capture_output=True, text=True, check=True
+        )
+        if not container_check.stdout.strip():
+            logs_proc = subprocess.run(["docker", "logs", container_name], capture_output=True, text=True)
+            pytest.fail(
+                f"Container '{container_name}' failed to start or exited prematurely.\n"
+                f"Docker logs:\n{logs_proc.stderr or logs_proc.stdout}"
+            )
+
+        # Get the dynamically assigned host port
+        port_proc = subprocess.run(
+            ["docker", "port", container_name, f"{internal_port}/tcp"],
+            check=True, capture_output=True, text=True
+        )
+        host_port = int(port_proc.stdout.strip().split(":")[-1])
+        
+        # Wait for the database to be ready
+        retries = 60
+        while retries > 0:
+            try:
+                connection_check_fn(host_port)
+                break
+            except Exception:
+                retries -= 1
+                time.sleep(5)
+        
+        if retries == 0:
+            pytest.fail(f"Could not connect to {container_name} container.")
+
+        def finalizer():
+            subprocess.run(["docker", "stop", container_name], check=False, capture_output=True)
+            subprocess.run(["docker", "rm", container_name], check=False, capture_output=True)
+        
+        request.addfinalizer(finalizer)
+        return host_port
+
+    return _factory
+
+
+# --- PostgreSQL Setup (Docker-based) ---
+@pytest.fixture(scope="session")
+def postgres_service(_docker_service_factory):
+    """Starts and stops the PostgreSQL Docker container."""
     
-    conn.commit()
-    cursor.close()
+    def _connection_check(port):
+        conn = psycopg2.connect(
+            host="127.0.0.1", port=port, user="test_user",
+            password="test_password", dbname="test_db"
+        )
+        conn.close()
 
-# --- PostgreSQL Setup ---
-def postgres_init_handler(postgresql):
-    """Create tables and insert data for PostgreSQL tests."""
-    conn = psycopg2.connect(**postgresql.dsn())
-    populate_db(conn)
-    conn.close()
-
-PostgresqlFactory = testing.postgresql.PostgresqlFactory(
-    cache_initialized_db=True,
-    on_initialized=postgres_init_handler
-)
+    return _docker_service_factory(
+        container_name="postgres_test_container",
+        image="postgres:13",
+        env_vars={
+            "POSTGRES_DB": "test_db",
+            "POSTGRES_USER": "test_user",
+            "POSTGRES_PASSWORD": "test_password",
+        },
+        internal_port=5432,
+        connection_check_fn=_connection_check
+    )
 
 @pytest.fixture(scope="function")
-def local_postgres_db():
-    with PostgresqlFactory() as postgresql:
-        yield postgresql
+def postgres_engine(postgres_service):
+    """Provides a SQLAlchemy engine for the PostgreSQL database and populates it."""
+    connection_string = f"postgresql+psycopg2://test_user:test_password@127.0.0.1:{postgres_service}/test_db"
+    engine = sa.create_engine(connection_string)
+    try:
+        populate_db(engine)
+        yield engine
+    finally:
+        engine.dispose()
 
 # --- MySQL Setup (Docker-based) ---
 @pytest.fixture(scope="session")
-def mysql_service(request):
-    """Starts and stops the MySQL Docker container using a dynamic port."""
-    container_name = "mysql_test_container"
-    
-    # Ensure the container is stopped and removed before starting
-    subprocess.run(["docker", "stop", container_name], check=False, capture_output=True)
-    subprocess.run(["docker", "rm", container_name], check=False, capture_output=True)
-    
-    # Start the container, publishing to a random host port
-    run_command = [
-        "docker", "run", "--name", container_name, "-d",
-        "-e", "MYSQL_DATABASE=test_db",
-        "-e", "MYSQL_USER=test_user",
-        "-e", "MYSQL_PASSWORD=test_password",
-        "-e", "MYSQL_ROOT_PASSWORD=root_password",
-        "-P",  # Use -P to publish all exposed ports to random host ports
-        "mysql:8.0"
-    ]
-    subprocess.run(run_command, check=True)
+def mysql_service(_docker_service_factory):
+    """Starts and stops the MySQL Docker container."""
 
-    # Get the dynamically assigned host port
-    port_proc = subprocess.run(
-        ["docker", "port", container_name, "3306/tcp"],
-        check=True, capture_output=True, text=True
+    def _connection_check(port):
+        conn = pymysql.connect(
+            host="127.0.0.1", port=port, user="test_user",
+            password="test_password", database="test_db"
+        )
+        conn.close()
+
+    return _docker_service_factory(
+        container_name="mysql_test_container",
+        image="mysql:8.0",
+        env_vars={
+            "MYSQL_DATABASE": "test_db",
+            "MYSQL_USER": "test_user",
+            "MYSQL_PASSWORD": "test_password",
+            "MYSQL_ROOT_PASSWORD": "root_password",
+        },
+        internal_port=3306,
+        connection_check_fn=_connection_check
     )
-    host_port = int(port_proc.stdout.strip().split(":")[-1])
-    
-    # Wait for the database to be ready
-    retries = 15
-    while retries > 0:
-        try:
-            conn = pymysql.connect(
-                host="127.0.0.1", port=host_port, user="test_user",
-                password="test_password", database="test_db"
-            )
-            conn.close()
-            break
-        except pymysql.err.OperationalError:
-            retries -= 1
-            time.sleep(3)
-    
-    if retries == 0:
-        pytest.fail("Could not connect to MySQL container.")
-
-    def finalizer():
-        subprocess.run(["docker", "stop", container_name], check=True, capture_output=True)
-        subprocess.run(["docker", "rm", container_name], check=True, capture_output=True)
-    
-    request.addfinalizer(finalizer)
-    return host_port
 
 @pytest.fixture(scope="function")
-def mysql_db(mysql_service):
-    """Provides a connection to the Dockerized MySQL database and creates tables."""
-    host_port = mysql_service
-    conn = pymysql.connect(
-        host="127.0.0.1",
-        port=host_port,
-        user="test_user",
-        password="test_password",
-        database="test_db"
+def mysql_engine(mysql_service):
+    """Provides a SQLAlchemy engine for the MySQL database and populates it."""
+    connection_string = f"mysql+pymysql://test_user:test_password@127.0.0.1:{mysql_service}/test_db"
+    engine = sa.create_engine(connection_string)
+    try:
+        populate_db(engine)
+        yield engine
+    finally:
+        engine.dispose()
+
+# --- MariaDB Setup (Docker-based) ---
+@pytest.fixture(scope="session")
+def mariadb_service(_docker_service_factory):
+    """Starts and stops the MariaDB Docker container."""
+
+    def _connection_check(port):
+        conn = pymysql.connect(
+            host="127.0.0.1", port=port, user="test_user",
+            password="test_password", database="test_db"
+        )
+        conn.close()
+
+    return _docker_service_factory(
+        container_name="mariadb_test_container",
+        image="mariadb:latest",
+        env_vars={
+            "MARIADB_DATABASE": "test_db",
+            "MARIADB_USER": "test_user",
+            "MARIADB_PASSWORD": "test_password",
+            "MARIADB_ROOT_PASSWORD": "root_password",
+        },
+        internal_port=3306,
+        connection_check_fn=_connection_check
     )
-    populate_db(conn)
-    yield conn
-    conn.close()
+
+@pytest.fixture(scope="function")
+def mariadb_engine(mariadb_service):
+    """Provides a SQLAlchemy engine for the MariaDB database and populates it."""
+    connection_string = f"mysql+pymysql://test_user:test_password@127.0.0.1:{mariadb_service}/test_db"
+    engine = sa.create_engine(connection_string)
+    try:
+        populate_db(engine)
+        yield engine
+    finally:
+        engine.dispose()
+
+
+
 
 # --- Generic Tool Provider ---
 @pytest.fixture(
     scope="function",
-    params=["postgresql", "mysql"]
+    params=["postgresql", "mysql", "mariadb"]
 )
 async def db_tool_provider(request):
     """Yields an initialized SqlDatabaseTool for each database provider."""
@@ -139,19 +191,27 @@ async def db_tool_provider(request):
     config_dict = None
 
     if db_type == "postgresql":
-        local_postgres_db = request.getfixturevalue("local_postgres_db")
-        dsn = local_postgres_db.dsn()
-        connection_string = f"postgresql+psycopg2://{dsn.get('user')}:test@{dsn.get('host')}:{dsn.get('port')}/{dsn.get('database', 'test')}"
+        host_port = request.getfixturevalue("postgres_service")
+        request.getfixturevalue("postgres_engine")
+        connection_string = f"postgresql+psycopg2://test_user:test_password@127.0.0.1:{host_port}/test_db"
         config_dict = {
             "tool_name": "postgres_test_tool",
             "connection_string": connection_string,
         }
     elif db_type == "mysql":
         host_port = request.getfixturevalue("mysql_service")
-        request.getfixturevalue("mysql_db")
+        request.getfixturevalue("mysql_engine")
         connection_string = f"mysql+pymysql://test_user:test_password@127.0.0.1:{host_port}/test_db"
         config_dict = {
             "tool_name": "mysql_test_tool",
+            "connection_string": connection_string,
+        }
+    elif db_type == "mariadb":
+        host_port = request.getfixturevalue("mariadb_service")
+        request.getfixturevalue("mariadb_engine")
+        connection_string = f"mysql+pymysql://test_user:test_password@127.0.0.1:{host_port}/test_db"
+        config_dict = {
+            "tool_name": "mariadb_test_tool",
             "connection_string": connection_string,
         }
 
@@ -163,14 +223,30 @@ async def db_tool_provider(request):
 
     await tool.cleanup(component=None, tool_config={})
 
-@pytest.fixture(scope="function")
-async def db_tool_provider_manual_schema(local_postgres_db):
-    """Yields a tool configured with a manual schema override."""
-    dsn = local_postgres_db.dsn()
-    connection_string = f"postgresql+psycopg2://{dsn.get('user')}:test@{dsn.get('host')}:{dsn.get('port')}/{dsn.get('database', 'test')}"
-    
+@pytest.fixture(
+    scope="function",
+    params=["postgresql", "mysql", "mariadb"]
+)
+async def db_tool_provider_manual_schema(request):
+    """Yields a tool configured with a manual schema override for each provider."""
+    db_type = request.param
+    connection_string = None
+
+    if db_type == "postgresql":
+        host_port = request.getfixturevalue("postgres_service")
+        request.getfixturevalue("postgres_engine")
+        connection_string = f"postgresql+psycopg2://test_user:test_password@127.0.0.1:{host_port}/test_db"
+    elif db_type == "mysql":
+        host_port = request.getfixturevalue("mysql_service")
+        request.getfixturevalue("mysql_engine")
+        connection_string = f"mysql+pymysql://test_user:test_password@127.0.0.1:{host_port}/test_db"
+    elif db_type == "mariadb":
+        host_port = request.getfixturevalue("mariadb_service")
+        request.getfixturevalue("mariadb_engine")
+        connection_string = f"mysql+pymysql://test_user:test_password@127.0.0.1:{host_port}/test_db"
+
     config_dict = {
-        "tool_name": "manual_schema_tool",
+        "tool_name": f"{db_type}_manual_schema_tool",
         "connection_string": connection_string,
         "auto_detect_schema": False,
         "schema_summary_override": "MANUAL_SCHEMA_TEST"

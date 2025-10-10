@@ -22,7 +22,8 @@ dependencies = [
     "PyMySQL==1.1.2",
     "psycopg2-binary==2.9.10",
     "pydantic==2.11.9",
-    "PyYAML==6.0.2"
+    "PyYAML==6.0.2",
+    "oracledb==2.2.0"
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -41,6 +42,7 @@ addopts = "--tb=short --strict-markers --disable-warnings -p pytest_asyncio"
 
 [tool.hatch.envs.hatch-test]
 dependencies = [
+  "oracledb",
   "a2a-sdk[http-server]>=0.3.1",
   "pytest-asyncio",
   "pytest>=8.0.0",
