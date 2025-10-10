@@ -3,14 +3,10 @@
 import logging
 from typing import Any, Dict
 
-# Import SAC logger if available, otherwise use standard logging
-try:
-    from solace_ai_connector.common.log import log
-except ImportError:
-    log = logging.getLogger(__name__)
-
 from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
+
+log = logging.getLogger(__name__)
 
 class RagScannerConfig(BaseModel):
     """Configuration for the RAG scanner component."""

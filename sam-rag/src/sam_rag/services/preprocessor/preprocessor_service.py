@@ -2,9 +2,9 @@
 Preprocessor for handling various document formats and preprocessing steps.
 """
 
+import logging
 import os
 from typing import Dict, Any, List, Tuple, Optional
-from solace_ai_connector.common.log import log as logger
 
 from sam_rag.services.preprocessor.preprocessor_base import PreprocessorBase, PreprocessedOutput
 from sam_rag.services.preprocessor.document_preprocessor import (
@@ -17,6 +17,7 @@ from sam_rag.services.preprocessor.document_preprocessor import (
     CSVFilePreprocessor,
 )
 
+logger = logging.getLogger(__name__)
 
 class PreprocessorService:
     """

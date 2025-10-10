@@ -6,13 +6,13 @@ based on a query. It handles the embedding of the query and the retrieval of sim
 documents from the vector database.
 """
 
-from typing import Dict, Any, List, Optional, Tuple
 import logging
-from solace_ai_connector.common.log import log as logger
+from typing import Dict, Any, List, Optional, Tuple
 
 from sam_rag.services.database.vector_db_service import VectorDBService
 from sam_rag.services.embedder.embedder_service import EmbedderService
 
+logger = logging.getLogger(__name__)
 
 class Retriever:
     """

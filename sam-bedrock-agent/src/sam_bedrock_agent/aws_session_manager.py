@@ -1,7 +1,8 @@
 import boto3
+import logging
 from botocore.config import Config
-from solace_ai_connector.common.log import log
 
+log = logging.getLogger(__name__)
 
 class AWSSessionManager:
     _instance = None

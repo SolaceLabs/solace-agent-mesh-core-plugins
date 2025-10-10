@@ -2,13 +2,14 @@
 Document preprocessors for various file formats.
 """
 
+import logging
 import os
 from typing import Dict, Any, List
 from sam_rag.services.preprocessor.preprocessor_base import PreprocessorBase, PreprocessedOutput
 from sam_rag.services.preprocessor.raw_text_preprocessor import RawTextPreprocessor
 import csv
-from solace_ai_connector.common.log import log as logger
 
+logger = logging.getLogger(__name__)
 
 def filter_config(config: Dict[str, Any], key: str) -> Dict[str, Any]:
     """

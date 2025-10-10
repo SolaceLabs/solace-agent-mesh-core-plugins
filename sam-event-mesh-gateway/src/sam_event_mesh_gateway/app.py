@@ -2,9 +2,8 @@
 Solace Agent Mesh - Event Mesh Gateway Plugin: App Definition
 """
 
+import logging
 from typing import Any, Dict, List, Type
-
-from solace_ai_connector.common.log import log
 
 from solace_agent_mesh.gateway.base.app import BaseGatewayApp
 from solace_agent_mesh.gateway.base.component import (
@@ -13,6 +12,7 @@ from solace_agent_mesh.gateway.base.component import (
 
 from .component import EventMeshGatewayComponent
 
+log = logging.getLogger(__name__)
 
 info = {
     "class_name": "EventMeshGatewayApp",

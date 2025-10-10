@@ -3,6 +3,7 @@ ADK Tool for the MongoDB Agent Plugin.
 """
 
 import json
+import logging
 import yaml
 import csv
 import io
@@ -11,19 +12,14 @@ import datetime
 
 from google.adk.tools import ToolContext
 
-try:
-    from solace_ai_connector.common.log import log
-except ImportError:
-    import logging
-
-    log = logging.getLogger(__name__)
-
 from .services.database_service import MongoDatabaseService
 from solace_agent_mesh.agent.utils.artifact_helpers import (
     save_artifact_with_metadata,
     DEFAULT_SCHEMA_MAX_KEYS,
 )
 from solace_agent_mesh.agent.utils.context_helpers import get_original_session_id
+
+log = logging.getLogger(__name__)
 
 MAX_QUERY_LEN_IN_DESCRIPTION = 1000
 

@@ -13,16 +13,18 @@ from fastapi import (
     File,
     UploadFile,
 )
+import logging
 from typing import List
 from pydantic import BaseModel
 from typing import Any
 
-from solace_ai_connector.common.log import log
 from ..dependencies import get_sac_component
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..component import RestGatewayComponent
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 

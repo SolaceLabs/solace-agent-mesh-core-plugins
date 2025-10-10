@@ -3,19 +3,14 @@ Lifecycle functions (initialization and cleanup) and Pydantic configuration mode
 for the MongoDB Agent Plugin.
 """
 
+import logging
 from typing import Any, Dict, List, Optional, Literal
 
 from pydantic import BaseModel, Field, SecretStr, model_validator
 
-try:
-    from solace_ai_connector.common.log import log
-except ImportError:
-    import logging
-
-    log = logging.getLogger(__name__)
-
 from .services.database_service import MongoDatabaseService
 
+log = logging.getLogger(__name__)
 
 class MongoAgentInitConfigModel(BaseModel):
     """

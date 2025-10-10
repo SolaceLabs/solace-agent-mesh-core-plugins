@@ -3,6 +3,7 @@ Test component for REST Gateway that provides HTTP testing capabilities.
 """
 
 import asyncio
+import logging
 import threading
 import time
 from typing import Dict, Any, List, Optional, Tuple
@@ -10,10 +11,10 @@ from fastapi.testclient import TestClient
 from fastapi import UploadFile
 import io
 
-from solace_ai_connector.common.log import log
 from sam_rest_gateway.app import RestGatewayApp
 from sam_rest_gateway.component import RestGatewayComponent
 
+log = logging.getLogger(__name__)
 
 class RestGatewayTestComponent:
     """

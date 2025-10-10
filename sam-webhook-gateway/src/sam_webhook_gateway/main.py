@@ -12,8 +12,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-
-from solace_ai_connector.common.log import log
+import logging
 
 from .dependencies import set_component_instance
 
@@ -28,6 +27,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .component import WebhookGatewayComponent
+
+log =  logging.getLogger(__name__)
 
 app = FastAPI(
     title="Universal Webhook Gateway",

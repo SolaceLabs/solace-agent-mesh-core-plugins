@@ -1,10 +1,11 @@
+import logging
 from typing import List, Tuple
 from sqlalchemy.orm import Session
-from solace_ai_connector.common.log import log
 
 from sam_rag.services.database.connect import get_db
 from sam_rag.services.database.model import Document, StatusEnum
 
+log = logging.getLogger(__name__)
 
 def read_document_data(db: Session) -> List[Tuple[str, str, StatusEnum, str]]:
     """

@@ -21,7 +21,7 @@ from sam_test_infrastructure.artifact_service.service import (
 )
 from sam_test_infrastructure.event_mesh_test_server import EventMeshTestServer
 
-from solace_agent_mesh.common.types import (
+from a2a.types import (
     TextPart,
     DataPart,
     Task,

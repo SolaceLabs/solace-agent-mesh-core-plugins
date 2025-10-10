@@ -1,7 +1,7 @@
 """
 Service for vector database operations.
 """
-
+import logging
 from typing import Dict, Any, List, Optional
 
 from sam_rag.services.database.vector_db_base import VectorDBBase
@@ -14,6 +14,7 @@ from sam_rag.services.database.vector_db_implementation import (  # Corrected im
     ChromaDB,
 )
 
+logger = logging.getLogger(__name__)
 
 class VectorDBService:
     """
@@ -129,7 +130,6 @@ class VectorDBService:
         Returns:
             A list of dictionaries containing the search results.
         """
-        from solace_ai_connector.common.log import log as logger
 
         logger.debug(
             f"[HYBRID_SEARCH_DEBUG] VectorDBService.search called with db_type: {self.db_type}, request_hybrid: {request_hybrid}, has_sparse_vector: {query_sparse_vector is not None and len(query_sparse_vector) > 0 if query_sparse_vector else False}"

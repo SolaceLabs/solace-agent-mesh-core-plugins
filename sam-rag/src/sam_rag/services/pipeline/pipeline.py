@@ -1,10 +1,10 @@
 """The ingestion agent component for the rag"""
 
+import logging
 import os
 import sys
 import threading
 from typing import Dict, List, Any
-from solace_ai_connector.common.log import log
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
@@ -19,6 +19,7 @@ from sam_rag.services.splitter.splitter_service import SplitterService
 from sam_rag.services.embedder.embedder_service import EmbedderService
 from sam_rag.services.rag.augmentation_service import AugmentationService
 
+log = logging.getLogger(__name__)
 
 class Pipeline:
 

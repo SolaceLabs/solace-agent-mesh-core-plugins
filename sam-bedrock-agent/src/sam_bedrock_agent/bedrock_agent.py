@@ -1,11 +1,10 @@
 import json
+import logging
 from typing import Any, Dict, Optional, List
 import uuid
 
-from solace_ai_connector.common.log import log
 from solace_agent_mesh.agent.utils.context_helpers import get_original_session_id
 from google.adk.tools import ToolContext
-
 
 from .bedrock_agent_runtime import BedrockAgentRuntime
 
@@ -13,6 +12,8 @@ import base64
 import os
 import asyncio
 import inspect
+
+log = logging.getLogger(__name__)
 
 MAX_FILE_LENGTH = 10485760  # 10MB
 MAX_NUM_FILES = 5

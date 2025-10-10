@@ -3,18 +3,12 @@ Adapter that provides FileService-compatible methods using BaseArtifactService.
 This adapter bridges the gap between the old FileService API and the new artifact storage system.
 """
 
+import logging
 import os
 import mimetypes
 import datetime
 import asyncio
 from typing import Dict, Any, Optional
-
-# Import SAC logger if available, otherwise use standard logging
-try:
-    from solace_ai_connector.common.log import log
-except ImportError:
-    import logging
-    log = logging.getLogger(__name__)
 
 # Import artifact helpers
 from solace_agent_mesh.agent.utils.artifact_helpers import (
@@ -22,6 +16,7 @@ from solace_agent_mesh.agent.utils.artifact_helpers import (
     load_artifact_content_or_metadata
 )
 
+log = logging.getLogger(__name__)
 
 class ArtifactStorageAdapter:
     """

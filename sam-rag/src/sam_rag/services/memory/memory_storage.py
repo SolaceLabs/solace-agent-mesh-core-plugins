@@ -4,11 +4,11 @@ In-memory storage implementation for the scanner module.
 This module provides an in-memory storage option for the scanner module,
 allowing it to store file information in memory instead of a database.
 """
-
+import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
-from solace_ai_connector.common.log import log as logger
 
+logger = logging.getLogger(__name__)
 
 class MemoryStorage:
     """

@@ -4,15 +4,15 @@ managed by the WebhookGatewayComponent.
 """
 
 from fastapi import HTTPException, status
+import logging
 from typing import TYPE_CHECKING
-
-from solace_ai_connector.common.log import log
 
 if TYPE_CHECKING:
     from .component import WebhookGatewayComponent
 
 sac_component_instance: "WebhookGatewayComponent" = None
 
+log = logging.getLogger(__name__)
 
 def set_component_instance(component: "WebhookGatewayComponent"):
     """Called by the WebhookGatewayComponent during its startup to provide its instance."""

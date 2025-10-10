@@ -3,7 +3,7 @@ import types
 from unittest.mock import AsyncMock, MagicMock
 
 from fastapi.testclient import TestClient
-from solace_agent_mesh.common.types import TextPart
+from a2a.types import TextPart
 
 from sam_webhook_gateway.main import app
 from sam_webhook_gateway.component import WebhookGatewayComponent

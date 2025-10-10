@@ -2,13 +2,14 @@
 ChromaDB vector database implementation.
 """
 
+import logging
 import os
 import uuid
 from typing import Dict, Any, List, Optional
-from solace_ai_connector.common.log import log as logger
 
 from sam_rag.services.database.vector_db_base import VectorDBBase
 
+logger = logging.getLogger(__name__)
 
 class ChromaDB(VectorDBBase):
     """

@@ -2,6 +2,7 @@
 Custom Solace AI Connector Component to host the FastAPI backend for the REST API Gateway.
 """
 
+import logging
 import threading
 from typing import Any, Dict, Optional, List, Tuple, Union
 import uuid
@@ -10,7 +11,6 @@ from datetime import datetime, timezone
 import uvicorn
 from fastapi import FastAPI, Request as FastAPIRequest, UploadFile
 
-from solace_ai_connector.common.log import log
 
 from solace_agent_mesh.gateway.base.component import BaseGatewayComponent
 
@@ -26,6 +26,8 @@ from solace_agent_mesh.common.utils.in_memory_cache import InMemoryCache
 from solace_agent_mesh.agent.utils.artifact_helpers import (
     save_artifact_with_metadata,
 )
+
+log = logging.getLogger(__name__)
 
 info = {
     "class_name": "RestGatewayComponent",

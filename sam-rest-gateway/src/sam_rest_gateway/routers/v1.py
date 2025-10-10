@@ -3,6 +3,7 @@ API Router for the legacy, synchronous v1 endpoints.
 """
 
 import asyncio
+import logging
 from typing import Any
 
 from fastapi import (
@@ -14,12 +15,13 @@ from fastapi import (
     status,
 )
 
-from solace_ai_connector.common.log import log
 from ..dependencies import get_sac_component
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..component import RestGatewayComponent
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 

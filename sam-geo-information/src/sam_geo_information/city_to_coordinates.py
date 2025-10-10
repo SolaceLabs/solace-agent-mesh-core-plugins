@@ -1,12 +1,13 @@
 """Tool for converting city names to geographic coordinates."""
 
+import logging
 from typing import Dict, Any, Optional
 import yaml
 from google.adk.tools import ToolContext
-from solace_ai_connector.common.log import log
 
 from .services import MapsCoGeocodingService
 
+log = logging.getLogger(__name__)
 
 async def city_to_coordinates(
     city: str,

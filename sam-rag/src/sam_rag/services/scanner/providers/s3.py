@@ -5,14 +5,16 @@ This module provides AWS S3 integration with boto3, batch scanning,
 real-time monitoring via S3 events, and file processing capabilities.
 """
 
+import logging
 import os
 import tempfile
 import threading
 import time
 from typing import Dict, List, Any, Optional
-from solace_ai_connector.common.log import log as logger
 
 from sam_rag.services.cloud_storage import CloudStorageDataSource
+
+logger = logging.getLogger(__name__)
 
 # Try to import AWS S3 dependencies
 try:

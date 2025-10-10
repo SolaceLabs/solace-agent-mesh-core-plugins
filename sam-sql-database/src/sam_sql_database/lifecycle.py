@@ -4,17 +4,11 @@ for the SQL Database Agent Plugin.
 """
 
 import datetime
+import logging
 from typing import Any, Dict, List, Optional, Literal
 import yaml
 
 from pydantic import BaseModel, Field, SecretStr, model_validator
-
-try:
-    from solace_ai_connector.common.log import log
-except ImportError:
-    import logging
-
-    log = logging.getLogger(__name__)
 
 from .services.database_service import (
     DatabaseService,
@@ -23,6 +17,7 @@ from .services.database_service import (
     SQLiteService,
 )
 
+log = logging.getLogger(__name__)
 
 class SqlAgentQueryExample(BaseModel):
     natural_language: str = Field(

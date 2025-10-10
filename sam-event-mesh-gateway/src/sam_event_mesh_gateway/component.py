@@ -3,6 +3,7 @@ Solace Agent Mesh - Event Mesh Gateway Plugin: Component Definition
 """
 
 import asyncio
+import logging
 import queue
 import uuid
 import base64
@@ -11,7 +12,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from datetime import datetime, timezone
 
 import jsonschema
-from solace_ai_connector.common.log import log
 from solace_ai_connector.common.message import Message as SolaceMessage
 from solace_ai_connector.components.component_base import ComponentBase
 from solace_ai_connector.transforms.transforms import Transforms
@@ -48,6 +48,7 @@ from solace_agent_mesh.agent.utils.artifact_helpers import (
 )
 from solace_agent_mesh.common.utils import is_text_based_mime_type
 
+log = logging.getLogger(__name__)
 
 info = {
     "class_name": "EventMeshGatewayComponent",

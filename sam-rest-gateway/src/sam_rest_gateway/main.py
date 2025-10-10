@@ -3,7 +3,7 @@ Defines the FastAPI application instance for the REST Gateway.
 """
 
 from fastapi import FastAPI, Request as FastAPIRequest, HTTPException
-from solace_ai_connector.common.log import log
+import logging
 from fastapi.openapi.utils import get_openapi
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse
@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     from .component import RestGatewayComponent
 
 from . import dependencies
+
+log = logging.getLogger(__name__)
 
 app = FastAPI(
     title="SAM REST API Gateway",
