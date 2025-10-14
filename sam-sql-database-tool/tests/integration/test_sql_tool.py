@@ -22,19 +22,29 @@ class TestSqlDatabaseTool:
         """Test the automatic schema detection with the new relational schema."""
         summary = db_tool_provider.db_service.get_optimized_schema_for_llm()
 
-        # Check for presence of new tables
-        assert "users" in summary
-        assert "products" in summary
-        assert "categories" in summary
-        assert "orders" in summary
-        assert "order_items" in summary
-        assert "reviews" in summary
-        assert "product_categories" in summary
+        if db_tool_provider.tool_config.auto_detect_schema:
+            # Check for presence of new tables
+            assert "users" in summary
+            assert "products" in summary
+            assert "categories" in summary
+            assert "orders" in summary
+            assert "order_items" in summary
+            assert "reviews" in summary
+            assert "product_categories" in summary
 
-        # Check for a few key columns to ensure detail
-        assert "email" in summary
-        assert "order_date" in summary
-        assert "rating" in summary
+            # Check for a few key columns to ensure detail
+            assert "email" in summary
+            assert "order_date" in summary
+            assert "rating" in summary
+        else:
+            description = db_tool_provider.tool_description
+            assert "MANUAL_SCHEMA_TEST" in description
+            
+            # Also ensure it can still run queries
+            query = sa.select(users).where(users.c.id == 1)
+            select_query = str(query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
+            select_result = await db_tool_provider._run_async_impl(args={"query": select_query})
+            assert "error" not in select_result
 
     async def test_select_with_aggregation(self, db_tool_provider: SqlDatabaseTool):
         """Test a SELECT query with an aggregation function."""
@@ -68,8 +78,11 @@ class TestSqlDatabaseTool:
         assert db_tool_provider._schema_context is not None
         assert len(db_tool_provider._schema_context) > 0
 
-        assert "users" in db_tool_provider._schema_context
-        assert "products" in db_tool_provider._schema_context
+        if db_tool_provider.tool_config.auto_detect_schema:
+            assert "users" in db_tool_provider._schema_context
+            assert "products" in db_tool_provider._schema_context
+        else:
+            assert db_tool_provider._schema_context == "MANUAL_SCHEMA_TEST"
 
     async def test_cache_hit_performance(self, db_tool_provider: SqlDatabaseTool):
         """Test that cache provides instant schema retrieval."""
@@ -104,16 +117,6 @@ class TestSqlDatabaseTool:
         assert "email" in schema
         assert "rating" in schema
 
-    async def test_manual_schema_override(self, db_tool_provider_manual_schema: SqlDatabaseTool):
-        """Test that a manual schema override is correctly applied."""
-        description = db_tool_provider_manual_schema.tool_description
-        assert "MANUAL_SCHEMA_TEST" in description
-        
-        # Also ensure it can still run queries
-        query = sa.select(users).where(users.c.id == 1)
-        select_query = str(query.compile(db_tool_provider_manual_schema.db_service.engine, compile_kwargs={"literal_binds": True}))
-        select_result = await db_tool_provider_manual_schema._run_async_impl(args={"query": select_query})
-        assert "error" not in select_result
 
     async def test_multi_table_join_query(self, db_tool_provider: SqlDatabaseTool):
         """Test a query that joins multiple tables to find product names ordered by a user."""
