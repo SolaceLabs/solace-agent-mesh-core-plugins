@@ -1,7 +1,6 @@
 import pytest
 import psycopg2
 import pymysql
-import oracledb
 import subprocess
 import time
 import sqlalchemy as sa

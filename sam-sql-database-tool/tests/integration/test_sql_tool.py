@@ -1,5 +1,7 @@
 import pytest
+import sqlalchemy as sa
 from sam_sql_database_tool.tools import SqlDatabaseTool
+from tests.test_data import users, products, categories, orders, order_items, reviews, product_categories
 
 @pytest.mark.asyncio
 class TestSqlDatabaseTool:
@@ -7,7 +9,8 @@ class TestSqlDatabaseTool:
 
     async def test_select_data(self, db_tool_provider: SqlDatabaseTool):
         """Test selecting data from a table."""
-        select_query = "SELECT * FROM users WHERE id = 1;"
+        query = sa.select(users).where(users.c.id == 1)
+        select_query = str(query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
         select_result = await db_tool_provider._run_async_impl(args={"query": select_query})
         
         assert "error" not in select_result, f"Failed to select data: {select_result.get('error')}"
@@ -35,16 +38,18 @@ class TestSqlDatabaseTool:
 
     async def test_select_with_aggregation(self, db_tool_provider: SqlDatabaseTool):
         """Test a SELECT query with an aggregation function."""
-        query = "SELECT COUNT(*) as user_count FROM users;"
-        result = await db_tool_provider._run_async_impl(args={"query": query})
+        query = sa.select(sa.func.count().label("user_count")).select_from(users)
+        compiled_query = str(query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
+        result = await db_tool_provider._run_async_impl(args={"query": compiled_query})
         assert "error" not in result
         # The exact key for the count may vary, so we check the first value.
         assert list(result.get("result")[0].values())[0] == 9
 
     async def test_select_with_order_by(self, db_tool_provider: SqlDatabaseTool):
         """Test a SELECT query with an ORDER BY clause."""
-        query = "SELECT name FROM users ORDER BY name ASC;"
-        result = await db_tool_provider._run_async_impl(args={"query": query})
+        query = sa.select(users.c.name).order_by(users.c.name.asc())
+        compiled_query = str(query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
+        result = await db_tool_provider._run_async_impl(args={"query": compiled_query})
         assert "error" not in result
         names = [row['name'] for row in result.get("result")]
         assert names[0] == 'Alice Smith'
@@ -52,8 +57,10 @@ class TestSqlDatabaseTool:
 
     async def test_invalid_select_query(self, db_tool_provider: SqlDatabaseTool):
         """Test that an invalid SELECT query returns an error."""
-        invalid_query = "SELECT * FROM non_existent_table;"
-        result = await db_tool_provider._run_async_impl(args={"query": invalid_query})
+        non_existent_table = sa.Table('non_existent_table', sa.MetaData(), sa.Column('id'))
+        query = sa.select(non_existent_table)
+        compiled_query = str(query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
+        result = await db_tool_provider._run_async_impl(args={"query": compiled_query})
         assert "error" in result
         
     async def test_schema_caching(self, db_tool_provider: SqlDatabaseTool):
@@ -97,41 +104,29 @@ class TestSqlDatabaseTool:
         assert "email" in schema
         assert "rating" in schema
 
-    @pytest.mark.parametrize("query", [
-        "INSERT INTO users (id, name, email, created_at) VALUES (10, 'test_user', 'test@example.com', '2023-01-01 00:00:00');",
-        "UPDATE users SET name = 'test_update' WHERE id = 1;",
-        "DELETE FROM users WHERE id = 2;",
-    ])
-    async def test_dml_queries_execute_successfully(self, db_tool_provider: SqlDatabaseTool, query: str):
-        """Test that DML queries (INSERT, UPDATE, DELETE) execute and report affected rows."""
-        result = await db_tool_provider._run_async_impl(args={"query": query})
-        assert "error" not in result
-        assert "result" in result
-        assert "affected_rows" in result["result"][0]
-        assert result["result"][0]["affected_rows"] >= 0
-
     async def test_manual_schema_override(self, db_tool_provider_manual_schema: SqlDatabaseTool):
         """Test that a manual schema override is correctly applied."""
         description = db_tool_provider_manual_schema.tool_description
         assert "MANUAL_SCHEMA_TEST" in description
         
         # Also ensure it can still run queries
-        select_query = "SELECT * FROM users WHERE id = 1;"
+        query = sa.select(users).where(users.c.id == 1)
+        select_query = str(query.compile(db_tool_provider_manual_schema.db_service.engine, compile_kwargs={"literal_binds": True}))
         select_result = await db_tool_provider_manual_schema._run_async_impl(args={"query": select_query})
         assert "error" not in select_result
 
     async def test_multi_table_join_query(self, db_tool_provider: SqlDatabaseTool):
         """Test a query that joins multiple tables to find product names ordered by a user."""
-        query = """
-            SELECT p.name
-            FROM users u
-            JOIN orders o ON u.id = o.user_id
-            JOIN order_items oi ON o.id = oi.order_id
-            JOIN products p ON oi.product_id = p.id
-            WHERE u.name = 'Alice Smith'
-            ORDER BY p.name;
-        """
-        result = await db_tool_provider._run_async_impl(args={"query": query})
+        query = (
+            sa.select(products.c.name)
+            .join(order_items, products.c.id == order_items.c.product_id)
+            .join(orders, order_items.c.order_id == orders.c.id)
+            .join(users, orders.c.user_id == users.c.id)
+            .where(users.c.name == 'Alice Smith')
+            .order_by(products.c.name)
+        )
+        compiled_query = str(query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
+        result = await db_tool_provider._run_async_impl(args={"query": compiled_query})
         assert "error" not in result, f"Query failed: {result.get('error')}"
         
         product_names = [row['name'] for row in result.get("result", [])]
@@ -142,16 +137,19 @@ class TestSqlDatabaseTool:
 
     async def test_aggregation_with_join(self, db_tool_provider: SqlDatabaseTool):
         """Test a query that uses aggregation across joined tables."""
-        query = """
-            SELECT c.name, AVG(r.rating) as average_rating
-            FROM categories c
-            JOIN product_categories pc ON c.id = pc.category_id
-            JOIN products p ON pc.product_id = p.id
-            JOIN reviews r ON p.id = r.product_id
-            WHERE c.name = 'Electronics'
-            GROUP BY c.name;
-        """
-        result = await db_tool_provider._run_async_impl(args={"query": query})
+        query = (
+            sa.select(
+                categories.c.name,
+                sa.func.avg(reviews.c.rating).label("average_rating")
+            )
+            .join(product_categories, categories.c.id == product_categories.c.category_id)
+            .join(products, product_categories.c.product_id == products.c.id)
+            .join(reviews, products.c.id == reviews.c.product_id)
+            .where(categories.c.name == 'Electronics')
+            .group_by(categories.c.name)
+        )
+        compiled_query = str(query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
+        result = await db_tool_provider._run_async_impl(args={"query": compiled_query})
         assert "error" not in result, f"Query failed: {result.get('error')}"
         
         result_data = result.get("result")

@@ -1,60 +1,60 @@
 import sqlalchemy as sa
 from datetime import datetime
 
+metadata = sa.MetaData()
+
+# Define tables using SQLAlchemy's generic types
+users = sa.Table('users', metadata,
+    sa.Column('id', sa.Integer, primary_key=True),
+    sa.Column('name', sa.String(100)),
+    sa.Column('email', sa.String(100), unique=True),
+    sa.Column('created_at', sa.DateTime)
+)
+
+categories = sa.Table('categories', metadata,
+    sa.Column('id', sa.Integer, primary_key=True),
+    sa.Column('name', sa.String(100), unique=True)
+)
+
+products = sa.Table('products', metadata,
+    sa.Column('id', sa.Integer, primary_key=True),
+    sa.Column('name', sa.String(100)),
+    sa.Column('description', sa.Text),
+    sa.Column('price', sa.Float)
+)
+
+product_categories = sa.Table('product_categories', metadata,
+    sa.Column('product_id', sa.Integer, sa.ForeignKey('products.id', ondelete='CASCADE'), primary_key=True),
+    sa.Column('category_id', sa.Integer, sa.ForeignKey('categories.id', ondelete='CASCADE'), primary_key=True)
+)
+
+orders = sa.Table('orders', metadata,
+    sa.Column('id', sa.Integer, primary_key=True),
+    sa.Column('user_id', sa.Integer, sa.ForeignKey('users.id', ondelete='CASCADE')),
+    sa.Column('order_date', sa.Date),
+    sa.Column('status', sa.String(50))
+)
+
+order_items = sa.Table('order_items', metadata,
+    sa.Column('id', sa.Integer, primary_key=True),
+    sa.Column('order_id', sa.Integer, sa.ForeignKey('orders.id', ondelete='CASCADE')),
+    sa.Column('product_id', sa.Integer, sa.ForeignKey('products.id', ondelete='CASCADE')),
+    sa.Column('quantity', sa.Integer),
+    sa.Column('price_per_unit', sa.Float)
+)
+
+reviews = sa.Table('reviews', metadata,
+    sa.Column('id', sa.Integer, primary_key=True),
+    sa.Column('product_id', sa.Integer, sa.ForeignKey('products.id', ondelete='CASCADE')),
+    sa.Column('user_id', sa.Integer, sa.ForeignKey('users.id', ondelete='CASCADE')),
+    sa.Column('rating', sa.Integer),
+    sa.Column('comment', sa.Text),
+    sa.Column('created_at', sa.DateTime),
+    sa.CheckConstraint('rating >= 1 AND rating <= 5')
+)
+
 def populate_db(engine):
     """Creates and populates a 7-table relational schema using a SQLAlchemy Engine."""
-    metadata = sa.MetaData()
-
-    # Define tables using SQLAlchemy's generic types
-    users = sa.Table('users', metadata,
-        sa.Column('id', sa.Integer, primary_key=True),
-        sa.Column('name', sa.String(100)),
-        sa.Column('email', sa.String(100), unique=True),
-        sa.Column('created_at', sa.DateTime)
-    )
-
-    categories = sa.Table('categories', metadata,
-        sa.Column('id', sa.Integer, primary_key=True),
-        sa.Column('name', sa.String(100), unique=True)
-    )
-
-    products = sa.Table('products', metadata,
-        sa.Column('id', sa.Integer, primary_key=True),
-        sa.Column('name', sa.String(100)),
-        sa.Column('description', sa.Text),
-        sa.Column('price', sa.Float)
-    )
-
-    product_categories = sa.Table('product_categories', metadata,
-        sa.Column('product_id', sa.Integer, sa.ForeignKey('products.id', ondelete='CASCADE'), primary_key=True),
-        sa.Column('category_id', sa.Integer, sa.ForeignKey('categories.id', ondelete='CASCADE'), primary_key=True)
-    )
-
-    orders = sa.Table('orders', metadata,
-        sa.Column('id', sa.Integer, primary_key=True),
-        sa.Column('user_id', sa.Integer, sa.ForeignKey('users.id', ondelete='CASCADE')),
-        sa.Column('order_date', sa.Date),
-        sa.Column('status', sa.String(50))
-    )
-
-    order_items = sa.Table('order_items', metadata,
-        sa.Column('id', sa.Integer, primary_key=True),
-        sa.Column('order_id', sa.Integer, sa.ForeignKey('orders.id', ondelete='CASCADE')),
-        sa.Column('product_id', sa.Integer, sa.ForeignKey('products.id', ondelete='CASCADE')),
-        sa.Column('quantity', sa.Integer),
-        sa.Column('price_per_unit', sa.Float)
-    )
-
-    reviews = sa.Table('reviews', metadata,
-        sa.Column('id', sa.Integer, primary_key=True),
-        sa.Column('product_id', sa.Integer, sa.ForeignKey('products.id', ondelete='CASCADE')),
-        sa.Column('user_id', sa.Integer, sa.ForeignKey('users.id', ondelete='CASCADE')),
-        sa.Column('rating', sa.Integer),
-        sa.Column('comment', sa.Text),
-        sa.Column('created_at', sa.DateTime),
-        sa.CheckConstraint('rating >= 1 AND rating <= 5')
-    )
-
     # Drop and create tables
     with engine.begin() as conn:
         metadata.drop_all(conn, checkfirst=True)
