@@ -49,5 +49,6 @@ dependencies = [
   "pytest-xdist>=3.5.0",
   "solace-agent-mesh>=1.4.9,<2.0.0",
   "testing.postgresql",
-  "psycopg2-binary"
+  "psycopg2-binary",
+  "testcontainers[mysql,postgres]>=4.4.0"
 ]
