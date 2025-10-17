@@ -14,15 +14,15 @@ version = "0.1.0"
 description = "A reusable SQL database tool for Solace Agent Mesh."
 readme = "README.md"
 authors = [
-    { name = "Hugo Pare", email = "hugo.pare@solace.com" },
+  { name = "Hugo Pare", email = "hugo.pare@solace.com" },
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "SQLAlchemy==2.0.40",
-    "PyMySQL==1.1.2",
-    "psycopg2-binary==2.9.10",
-    "pydantic==2.11.9",
-    "PyYAML==6.0.2"
+  "SQLAlchemy==2.0.40",
+  "PyMySQL==1.1.2",
+  "psycopg2-binary==2.9.10",
+  "pydantic==2.11.9",
+  "PyYAML==6.0.2"
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -49,5 +49,6 @@ dependencies = [
   "pytest-xdist>=3.5.0",
   "solace-agent-mesh>=1.4.9,<2.0.0",
   "testing.postgresql",
-  "psycopg2-binary"
+  "psycopg2-binary",
+  "testcontainers[mysql,postgres]>=4.4.0"
 ]
