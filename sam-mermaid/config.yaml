@@ -72,7 +72,10 @@ apps:
           tool_config:
             mermaid_server_url: ${MERMAID_SERVER_URL} # Get URL from environment
 
-      session_service: *default_session_service
+      session_service: 
+        type: "sql"
+        database_url: "${__COMPONENT_UPPER_SNAKE_CASE_NAME__, sqlite:///__COMPONENT_SNAKE_CASE_NAME__.db}"
+        default_behavior: "PERSISTENT"
       artifact_service: *default_artifact_service
 
       artifact_handling_mode: "embed"

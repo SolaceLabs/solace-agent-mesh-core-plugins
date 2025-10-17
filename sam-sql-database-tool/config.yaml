@@ -106,7 +106,10 @@ apps:
             schema_sample_size: 50
             cache_ttl_seconds: 1800 # 30 minutes
 
-      session_service: *default_session_service
+      session_service: 
+        type: "sql"
+        database_url: "${__COMPONENT_UPPER_SNAKE_CASE_NAME__, sqlite:///__COMPONENT_SNAKE_CASE_NAME__.db}"
+        default_behavior: "PERSISTENT"
       artifact_service: *default_artifact_service
 
       # Agent Card, Discovery, and Inter-Agent Communication
