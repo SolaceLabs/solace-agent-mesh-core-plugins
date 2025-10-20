@@ -93,7 +93,7 @@ apps:
 
       session_service: 
         type: "sql"
-        database_url: "${__COMPONENT_UPPER_SNAKE_CASE_NAME__, sqlite:///__COMPONENT_SNAKE_CASE_NAME__.db}"
+        database_url: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB_URL, sqlite:///__COMPONENT_SNAKE_CASE_NAME__.db}"
         default_behavior: "PERSISTENT"
       artifact_service: *default_artifact_service
 
