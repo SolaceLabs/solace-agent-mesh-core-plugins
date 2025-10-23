@@ -75,7 +75,10 @@ apps:
             geocoding_api_key: ${GEOCODING_API_KEY}
             weather_api_key: ${WEATHER_API_KEY}
 
-      session_service: *default_session_service
+      session_service: 
+        type: "sql"
+        database_url: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DATABASE_URL, sqlite:///__COMPONENT_SNAKE_CASE_NAME__.db}"
+        default_behavior: "PERSISTENT"
       artifact_service: *default_artifact_service
 
       artifact_handling_mode: "embed"
