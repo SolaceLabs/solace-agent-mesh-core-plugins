@@ -32,6 +32,7 @@ Before you submit your pull request consider the following guidelines:
 * Ask any question about the code or how to use Solace technologies in the [Solace community](https://solace.community).
 
 ## <a name="dco"></a> Developer Certificate of Origin
+
 Any contributions must only contain code that can legally be contributed to Solace Agent Mesh, and which the Solace Agent Mesh project can distribute under its license.
 
 Prior to contributing:
