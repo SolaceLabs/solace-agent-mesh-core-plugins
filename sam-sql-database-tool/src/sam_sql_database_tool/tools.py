@@ -189,6 +189,17 @@ class SqlDatabaseTool(DynamicTool):
                 self._connection_error = None
                 log.info("%s Database connection recovered for '%s'", log_identifier, self.tool_name)
 
+                if not self._schema_context and self.tool_config.auto_detect_schema:
+                    log.info("%s Attempting to fetch schema after recovery...", log_identifier)
+                    try:
+                        self._schema_context = self.db_service.get_optimized_schema_for_llm(
+                            max_enum_cardinality=self.tool_config.max_enum_cardinality,
+                            sample_size=self.tool_config.schema_sample_size
+                        )
+                        log.info("%s Schema successfully fetched after recovery (%d chars)", log_identifier, len(self._schema_context))
+                    except Exception as schema_error:
+                        log.warning("%s Schema fetch failed after recovery: %s", log_identifier, schema_error)
+
             return {"result": results}
         except Exception as e:
             was_healthy = self._connection_healthy
