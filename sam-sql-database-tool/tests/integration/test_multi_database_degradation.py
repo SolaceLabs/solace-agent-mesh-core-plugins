@@ -324,9 +324,10 @@ class TestMultiDatabaseDegradation:
         assert tools[0]._connection_healthy is True
         assert "Database Schema:" in tools[0].tool_description
 
-        assert tools[1]._connection_healthy is False
-        assert "Manual schema for offline DB" not in tools[1].tool_description
-        assert "❌ WARNING" in tools[1].tool_description
+        assert tools[1]._connection_healthy is True
+        assert "Manual schema for offline DB" in tools[1].tool_description
+        result = await tools[1]._run_async_impl(args={"query": "SELECT 1"})
+        assert "error" in result
 
         assert tools[2]._connection_healthy is False
         assert "❌ WARNING" in tools[2].tool_description
