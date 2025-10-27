@@ -59,6 +59,8 @@ class SqlDatabaseTool(DynamicTool):
         super().__init__(tool_config)
         self.db_service: Optional[DatabaseService] = None
         self._schema_context: Optional[str] = None
+        self._connection_healthy: bool = False
+        self._connection_error: Optional[str] = None
         self.description = self.tool_description
 
     @property
@@ -71,8 +73,15 @@ class SqlDatabaseTool(DynamicTool):
         """Return the description of what this tool does, including schema context."""
         base_description = self.tool_config.get("tool_description", "")
 
+        if not self._connection_healthy:
+            status_message = f"\n\n❌ WARNING: This database is currently UNAVAILABLE.\n"
+            if self._connection_error:
+                status_message += f"Connection Error: {self._connection_error}\n"
+            status_message += "Queries to this database will fail until connectivity is restored."
+            return f"{base_description}{status_message}"
+
         if self._schema_context:
-            return f"{base_description}\n\nDatabase Schema:\n{self._schema_context}"
+            return f"{base_description}\n\n✅ Database Connected\n\nDatabase Schema:\n{self._schema_context}"
 
         return base_description
 
@@ -102,8 +111,19 @@ class SqlDatabaseTool(DynamicTool):
                 cache_ttl_seconds=cache_ttl
             )
         except Exception as e:
-            log.error("Failed to initialize DatabaseService: %s", e)
-            raise ValueError("Invalid connection string or unsupported database dialect.") from e
+            self._connection_healthy = False
+            self._connection_error = f"Failed to create database engine: {type(e).__name__}: {str(e)}"
+            log.error(
+                "%s Failed to initialize DatabaseService: %s. Tool will be marked as unavailable.",
+                log_identifier,
+                e
+            )
+            log.warning(
+                "%s Tool '%s' initialized in DEGRADED mode. It will not accept queries until database connectivity is restored.",
+                log_identifier,
+                self.tool_name
+            )
+            return
 
         try:
             if self.tool_config.auto_detect_schema:
@@ -128,11 +148,23 @@ class SqlDatabaseTool(DynamicTool):
                     log_identifier,
                 )
 
-        except Exception as e:
-            log.exception("%s Error during schema handling: %s", log_identifier, e)
-            raise RuntimeError(f"Schema handling failed: {e}") from e
+            self._connection_healthy = True
+            self._connection_error = None
+            log.info("%s Connection for '%s' established successfully.", log_identifier, self.tool_name)
 
-        log.info("%s Connection for '%s' established.", log_identifier, self.tool_name)
+        except Exception as e:
+            self._connection_healthy = False
+            self._connection_error = f"Schema detection failed: {type(e).__name__}: {str(e)}"
+            log.error(
+                "%s Error during schema handling: %s. Tool will be marked as unavailable.",
+                log_identifier,
+                e
+            )
+            log.warning(
+                "%s Tool '%s' initialized in DEGRADED mode. It will not accept queries until database connectivity is restored.",
+                log_identifier,
+                self.tool_name
+            )
 
     async def cleanup(self, component: SamAgentComponent, tool_config: Dict):
         log_identifier = f"[{self.tool_name}:cleanup]"
@@ -144,13 +176,39 @@ class SqlDatabaseTool(DynamicTool):
     async def _run_async_impl(self, args: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         log_identifier = f"[{self.tool_name}:run]"
         query = args.get("query")
+
         if not self.db_service:
-            return {"error": f"The database connection for '{self.tool_name}' is not available."}
+            return {"error": f"The database connection for '{self.tool_name}' is not available. Database service failed to initialize."}
 
         log.info("%s Executing query on '%s': %s", log_identifier, self.tool_name, query)
         try:
             results = self.db_service.execute_query(query)
+
+            if not self._connection_healthy:
+                self._connection_healthy = True
+                self._connection_error = None
+                log.info("%s Database connection recovered for '%s'", log_identifier, self.tool_name)
+
+                if not self._schema_context and self.tool_config.auto_detect_schema:
+                    log.info("%s Attempting to fetch schema after recovery...", log_identifier)
+                    try:
+                        self._schema_context = self.db_service.get_optimized_schema_for_llm(
+                            max_enum_cardinality=self.tool_config.max_enum_cardinality,
+                            sample_size=self.tool_config.schema_sample_size
+                        )
+                        log.info("%s Schema successfully fetched after recovery (%d chars)", log_identifier, len(self._schema_context))
+                    except Exception as schema_error:
+                        log.warning("%s Schema fetch failed after recovery: %s", log_identifier, schema_error)
+
             return {"result": results}
         except Exception as e:
-            log.error("%s Error executing query: %s", log_identifier, e)
+            was_healthy = self._connection_healthy
+            self._connection_healthy = False
+            self._connection_error = f"Query error: {type(e).__name__}: {str(e)}"
+
+            if was_healthy:
+                log.error("%s Database connection lost for '%s': %s", log_identifier, self.tool_name, e)
+            else:
+                log.warning("%s Query failed on degraded database '%s': %s", log_identifier, self.tool_name, e)
+
             return {"error": str(e)}
