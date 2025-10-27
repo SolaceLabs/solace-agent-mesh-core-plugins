@@ -177,21 +177,27 @@ class SqlDatabaseTool(DynamicTool):
         log_identifier = f"[{self.tool_name}:run]"
         query = args.get("query")
 
-        if not self._connection_healthy:
-            error_msg = f"Database '{self.tool_name}' is currently unavailable."
-            if self._connection_error:
-                error_msg += f"\nReason: {self._connection_error}"
-            error_msg += "\nPlease check the database connectivity and try again later."
-            log.warning("%s Query rejected - connection unhealthy: %s", log_identifier, self._connection_error)
-            return {"error": error_msg}
-
         if not self.db_service:
-            return {"error": f"The database connection for '{self.tool_name}' is not available."}
+            return {"error": f"The database connection for '{self.tool_name}' is not available. Database service failed to initialize."}
 
         log.info("%s Executing query on '%s': %s", log_identifier, self.tool_name, query)
         try:
             results = self.db_service.execute_query(query)
+
+            if not self._connection_healthy:
+                self._connection_healthy = True
+                self._connection_error = None
+                log.info("%s Database connection recovered for '%s'", log_identifier, self.tool_name)
+
             return {"result": results}
         except Exception as e:
-            log.error("%s Error executing query: %s", log_identifier, e)
+            was_healthy = self._connection_healthy
+            self._connection_healthy = False
+            self._connection_error = f"Query error: {type(e).__name__}: {str(e)}"
+
+            if was_healthy:
+                log.error("%s Database connection lost for '%s': %s", log_identifier, self.tool_name, e)
+            else:
+                log.warning("%s Query failed on degraded database '%s': %s", log_identifier, self.tool_name, e)
+
             return {"error": str(e)}
