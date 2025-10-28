@@ -18,10 +18,10 @@ def read_document_data(db: Session) -> List[Tuple[str, str, StatusEnum, str]]:
         results = db.query(
             Document.path, Document.file, Document.status, Document.timestamp
         ).all()
-        log.info(f"Successfully read {len(results)} rows from the database")
+        log.info("Successfully read %d rows from the database", len(results))
         return results
-    except Exception as e:
-        log.error(f"Error reading from database.", trace=e)
+    except Exception:
+        log.exception("Error reading from database.")
         return []
 
 
@@ -31,7 +31,7 @@ def main():
         data = read_document_data(db)
         for path, file, status, timestamp in data:
             log.info(
-                f"Path: {path}, File: {file}, Status: {status.value}, Timestamp: {timestamp}"
+                "Path: %s, File: %s, Status: %s, Timestamp: %s", path, file, status.value, timestamp
             )
     finally:
         db.close()

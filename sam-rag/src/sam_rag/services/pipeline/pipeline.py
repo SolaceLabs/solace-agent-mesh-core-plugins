@@ -57,22 +57,23 @@ class Pipeline:
             True  # Set as daemon so it exits when main thread exits
         )
         self.ingestion_thread.start()
-        log.info(f"Started ingestion pipeline on background")
+        log.debug("Started ingestion pipeline on background")
 
     def _run(self):
         """Ingest documents into the vector database."""
-        log.info("=== PIPELINE: Starting _run method ===")
-        log.info("PIPELINE: Starting document ingestion process")
-        log.info(f"PIPELINE: File tracker state: {self.file_tracker is not None}")
+        log.info(
+            "=== PIPELINE: Starting _run method ===\nStarting document ingestion process, file tracker state: %s",
+            self.file_tracker is not None,
+        )
 
         if self.batch_mode:
-            log.info("PIPELINE: Batch mode is enabled, proceeding with scan...")
+            log.debug("PIPELINE: Batch mode is enabled, proceeding with scan...")
             # Scan for file changes
             self._scan_files()
 
             # Get new/modified/deleted files
             files = self._get_tracked_files()
-            log.info(f"PIPELINE: Found {len(files) if files else 0} files to process")
+            log.info("PIPELINE: Found %d files to process", len(files) if files else 0)
 
         else:
             log.error("PIPELINE: No file tracker is initialized.")
@@ -92,7 +93,7 @@ class Pipeline:
         Returns:
             A dictionary containing the processing results.
         """
-        log.info(f"Processing {len(file_paths)} files through the RAG pipeline")
+        log.info("Processing %d files through the RAG pipeline", len(file_paths))
 
         # Step 1: Preprocess files
         preprocessed_docs = []
@@ -103,11 +104,11 @@ class Pipeline:
                 # Handle both cloud URIs and local files
                 if self._is_cloud_uri(file_path):
                     # Cloud file - should already be downloaded to temp location by cloud provider
-                    log.debug(f"Processing cloud file: {file_path}")
+                    log.debug("Processing cloud file: %s", file_path)
                 else:
                     # Local file - verify it exists
                     if not os.path.exists(file_path):
-                        log.warning(f"Local file not found: {file_path}")
+                        log.warning("Local file not found: %s", file_path)
                         continue
 
                 # Get the document type
@@ -136,7 +137,7 @@ class Pipeline:
                     # Ensure artifact_url is preserved if it exists in the provided metadata
                     if "artifact_url" in metadata:
                         merged_metadata["artifact_url"] = metadata["artifact_url"]
-                        log.info(f"Preserved artifact URL in metadata: {metadata['artifact_url']}")
+                        log.debug("Preserved artifact URL in metadata: %s", metadata['artifact_url'])
                 else:
                     merged_metadata = file_metadata
                     source_path = file_path
@@ -149,11 +150,11 @@ class Pipeline:
                             "metadata": merged_metadata,
                         }
                     )
-                    log.info("Successfully preprocessed a file.")
+                    log.info("Successfully preprocessed a file: %s", file_path)
                 else:
                     log.warning("Failed to preprocess a file.")
             except Exception as e:
-                log.error(f"Error preprocessing file {file_path}.", trace=e)
+                log.error("Error preprocessing file %s.", file_path, exc_info=e)
 
         if not preprocessed_docs:
             log.warning("No documents were successfully preprocessed")
@@ -173,7 +174,7 @@ class Pipeline:
                 "Pipeline: Hybrid search is enabled. Refitting sparse model with actual corpus documents."
             )
             log.debug(
-                f"[HYBRID_SEARCH_DEBUG] Refitting sparse model with {len(preprocessed_docs)} actual corpus documents"
+                "[HYBRID_SEARCH_DEBUG] Refitting sparse model with %d actual corpus documents", len(preprocessed_docs)
             )
             # Use the new refit method that combines sample corpus with actual documents
             if hasattr(self.embedding_handler, "refit_sparse_model_with_corpus"):
@@ -204,7 +205,7 @@ class Pipeline:
                 chunks.extend(doc_chunks)
                 chunks_metadata.extend([meta.copy() for _ in range(len(doc_chunks))])
 
-                log.info(f"Split a document into {len(doc_chunks)} chunks")
+                log.info("Split a document into %d chunks", len(doc_chunks))
             except Exception:
                 log.error("Error splitting a document")
 
@@ -219,9 +220,9 @@ class Pipeline:
         # Step 3: Embed chunks
         try:
             embeddings = self.embedding_handler.embed_texts(chunks)
-            log.info(f"Created {len(embeddings)} embeddings")
-        except Exception as e:
-            log.error("Error embedding chunks.", trace=e)
+            log.info("Created %d embeddings", len(embeddings))
+        except Exception:
+            log.exception("Error embedding chunks.")
             return {
                 "success": False,
                 "message": "Error embedding chunks.",
@@ -234,10 +235,10 @@ class Pipeline:
             result = self.ingestion_handler.ingest_embeddings(
                 texts=chunks, embeddings=embeddings, metadata=chunks_metadata
             )
-            log.info(f"Ingestion result: {result['message']}")
+            log.info("Ingestion result: %s", result['message'])
             return result
-        except Exception as e:
-            log.error(f"Error ingesting embeddings.", trace=e)
+        except Exception:
+            log.exception("Error ingesting embeddings.")
             return {
                 "success": False,
                 "message": "Error ingesting embeddings.",
@@ -297,17 +298,17 @@ class Pipeline:
                 for i, file in enumerate(tracked_files):
                     file_path = file.get("path", None)  # Get the file path
                     if not file_path:
-                        log.warning(f"Invalid file path: {file}")
+                        log.warning("Invalid file path: %s", file)
                         continue
 
                     # Handle both cloud URIs and local files
                     if self._is_cloud_uri(file_path):
                         # Cloud files don't need local existence check
-                        log.debug(f"Cloud file detected: {file_path}")
+                        log.debug("Cloud file detected: %s", file_path)
                     else:
                         # Local files need existence check
                         if not os.path.exists(file_path):
-                            log.warning(f"Local file not found: {file_path}")
+                            log.warning("Local file not found: %s", file_path)
                             continue
 
                     file_status = file.get("status", None)  # Get the file status
@@ -316,8 +317,8 @@ class Pipeline:
 
                     files.append(file_path)
                 return files
-            except Exception as e:
-                log.error("Error getting tracked files.", trace=e)
+            except Exception:
+                log.exception("Error getting tracked files.")
                 return []
 
     def _scan_files(self) -> Dict[str, List[str]]:
@@ -342,57 +343,57 @@ class Pipeline:
             config=self.component_config,
             hybrid_search_config=self._hybrid_search_config,
         )
-        log.info("PIPELINE: Ingestion handler initialized")
+        log.debug("PIPELINE: Ingestion handler initialized")
 
         # Initialize the file tracker
         scanner_config = self.component_config.get("scanner", {})
-        log.info(f"PIPELINE: Scanner config found: {bool(scanner_config)}")
-        log.info(
-            f"PIPELINE: Scanner config keys: {list(scanner_config.keys()) if scanner_config else 'None'}"
+        log.debug("PIPELINE: Scanner config found: %s", bool(scanner_config))
+        log.debug(
+            "PIPELINE: Scanner config keys: %s", list(scanner_config.keys()) if scanner_config else 'None'
         )
 
         if scanner_config:
             # Check if batch mode is enabled
             self.batch_mode = scanner_config.get("batch", False)
-            log.info(f"PIPELINE: Batch mode: {self.batch_mode}")
+            log.debug("PIPELINE: Batch mode: %s", self.batch_mode)
 
             has_valid_source = False
             if self.batch_mode:
                 # Support both new 'sources' array format and legacy 'source' format
                 sources_config = scanner_config.get("sources", [])
 
-                log.info(f"PIPELINE: Final sources_config length: {len(sources_config)}")
+                log.debug("PIPELINE: Final sources_config length: %d", len(sources_config))
 
                 # Check if any source has valid configuration
                 for i, source in enumerate(sources_config):
                     source_type = source.get("type", "filesystem")
-                    log.info(f"PIPELINE: Checking source {i} of type '{source_type}'")
+                    log.debug("PIPELINE: Checking source %d of type '%s'", i, source_type)
 
                     if source_type == "filesystem" and "directories" in source:
                         directories = source.get("directories", [])
-                        log.info(
-                            f"PIPELINE: Filesystem source has {len(directories)} directories"
+                        log.debug(
+                            "PIPELINE: Filesystem source has %d directories", len(directories)
                         )
                         if directories:
                             has_valid_source = True
-                            log.info("PIPELINE: Valid filesystem source found")
+                            log.debug("PIPELINE: Valid filesystem source found")
                             # Continue processing other sources instead of breaking
                     elif source_type in ["google_drive", "onedrive", "s3", "cloud"]:
                         # Cloud sources don't need directories
-                        log.info(f"PIPELINE: Cloud source '{source_type}' found")
+                        log.debug("PIPELINE: Cloud source '%s' found", source_type)
                         has_valid_source = True
                         # Continue processing other sources instead of breaking
                     else:
-                        log.info(
-                            f"PIPELINE: Unknown source type '{source_type}' - skipping"
+                        log.debug(
+                            "PIPELINE: Unknown source type '%s' - skipping", source_type
                         )
 
-                log.info(f"PIPELINE: Has valid source: {has_valid_source}")
+                log.debug("PIPELINE: Has valid source: %s", has_valid_source)
 
             # If batch mode is disabled, we can proceed without valid sources
             if has_valid_source or not self.batch_mode:
                 try:
-                    log.info("PIPELINE: Attempting to create FileChangeTracker...")
+                    log.debug("PIPELINE: Attempting to create FileChangeTracker...")
                     self.file_tracker = FileChangeTracker(self.component_config, self)
                     self.use_memory_storage = scanner_config.get(
                         "use_memory_storage", False
@@ -400,27 +401,20 @@ class Pipeline:
                     
                     if has_valid_source:
                         log.info(
-                            f"PIPELINE: File tracker initialized successfully with {len(sources_config)} source(s) using "
-                            + (
-                                "memory storage"
-                                if self.use_memory_storage
-                                else "database storage"
-                            )
+                            "PIPELINE: File tracker initialized successfully with %d source(s) using %s",
+                            len(sources_config),
+                            "memory storage" if self.use_memory_storage else "database storage",
                         )
                     else:
                         log.info(
-                            f"PIPELINE: File tracker initialized without sources (batch mode disabled) using "
-                            + (
-                                "memory storage"
-                                if self.use_memory_storage
-                                else "database storage"
-                            )
+                            "PIPELINE: File tracker initialized without sources (batch mode disabled) using %s",
+                            "memory storage" if self.use_memory_storage else "database storage",
                         )
-                except Exception as e:
-                    log.error("PIPELINE: Failed to initialize file tracker.", trace=e)
+                except Exception:
+                    log.exception("PIPELINE: Failed to initialize file tracker.")
                     import traceback
 
-                    log.error(f"PIPELINE: Traceback: {traceback.format_exc()}")
+                    log.error("PIPELINE: Traceback: %s", traceback.format_exc())
                     self.file_tracker = None
             else:
                 log.error("PIPELINE: No valid sources configured for file tracking and batch mode is enabled.")
@@ -434,7 +428,7 @@ class Pipeline:
                 "No scanner configuration provided. Please check your component configuration."
             )
 
-        log.info(f"PIPELINE: File tracker final state: {self.file_tracker is not None}")
+        log.info("PIPELINE: File tracker final state: %s", self.file_tracker is not None)
         log.info("=== PIPELINE: Finished _create_handlers ===")
 
         # Initialize the preprocessing handler
@@ -443,9 +437,9 @@ class Pipeline:
         file_specific_preprocessors = preprocessor_config.get("preprocessors", {})
 
         # Log the extracted configuration for debugging
-        log.debug(f"Using default preprocessor config: {default_preprocessor}")
+        log.debug("Using default preprocessor config: %s", default_preprocessor)
         log.debug(
-            f"Using file-specific preprocessor configs: {file_specific_preprocessors}"
+            "Using file-specific preprocessor configs: %s", file_specific_preprocessors
         )
 
         # Initialize pipeline components with configuration from params
@@ -515,18 +509,18 @@ class Pipeline:
         
         # Clean up file tracker resources
         if self.file_tracker:
-            log.info("PIPELINE: Cleaning up file tracker resources")
+            log.debug("PIPELINE: Cleaning up file tracker resources")
             # No specific cleanup method for file tracker currently
             
         # Clean up vector database connections
         if self.ingestion_handler:
-            log.info("PIPELINE: Cleaning up ingestion handler resources")
+            log.debug("PIPELINE: Cleaning up ingestion handler resources")
             if hasattr(self.ingestion_handler, "cleanup"):
                 self.ingestion_handler.cleanup()
                 
         # Clean up embedding handler resources
         if self.embedding_handler:
-            log.info("PIPELINE: Cleaning up embedding handler resources")
+            log.debug("PIPELINE: Cleaning up embedding handler resources")
             if hasattr(self.embedding_handler, "cleanup"):
                 self.embedding_handler.cleanup()
                 

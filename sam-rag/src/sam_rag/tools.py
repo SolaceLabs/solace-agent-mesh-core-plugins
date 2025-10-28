@@ -360,7 +360,7 @@ async def search_documents(
                                 try:
                                     version_param_for_load = int(version_str_from_query)
                                 except ValueError:
-                                    log.warning(f"{log_identifier} Invalid version '{version_str_from_query}' in query for {current_artifact_url}. Assuming 'latest'.")
+                                    log.warning("%s Invalid version '%s' in query for %s. Assuming 'latest'.", log_identifier, version_str_from_query, current_artifact_url)
                                     version_param_for_load = "latest" # Treat invalid query version as "latest"
 
                             # Get latest version if not specified
@@ -380,7 +380,7 @@ async def search_documents(
                             retrieved_info["loaded_filename"] = filename_for_load
                             retrieved_info["loaded_version"] = str(version_param_for_load)
 
-                            log.debug(f"{log_identifier} Attempting to download artifact: {filename_for_load} version: {version_param_for_load}")
+                            log.debug("%s Attempting to download artifact: %s version: %s", log_identifier, filename_for_load, version_param_for_load)
 
                             try:
                                 # Signal downloading of the artifact
@@ -389,7 +389,7 @@ async def search_documents(
                                     "filename": filename_for_load,
                                     "version": version_param_for_load,
                                 }
-                                log.info(
+                                log.debug(
                                     "%s Signaled return request for '%s' v%d via state_delta key '%s'.",
                                     log_identifier,
                                     filename_for_load,
@@ -398,30 +398,30 @@ async def search_documents(
                                 )
 
                                 retrieved_info["status"] = "success"
-                                # log.debug(f"{log_identifier} Successfully loaded artifact: {filename_for_load} v{artifact_data.get('version')}")
+                                # log.debug("%s Successfully loaded artifact: %s v%d", log_identifier, filename_for_load, artifact_data.get('version'))
                             except Exception:
                                 retrieved_info["status"] = "error"
                                 retrieved_info["error_message"] = "Failed to load artifact."
-                                log.warning(f"{log_identifier} Failed to load artifact {filename_for_load}: {retrieved_info['error_message']}")
+                                log.warning("%s Failed to load artifact %s: %s", log_identifier, filename_for_load, retrieved_info['error_message'])
 
                         else:
                             retrieved_info["status"] = "unsupported_scheme"
                             retrieved_info["error_message"] = f"URL scheme for '{current_artifact_url}' is not 'artifact://'. Direct fetching not supported by this method."
-                            log.warning(f"{log_identifier} Unsupported artifact_url scheme for artifact_service loading: {current_artifact_url}")
+                            log.warning("%s Unsupported artifact_url scheme for artifact_service loading: %s", log_identifier, current_artifact_url)
                     
                     except FileNotFoundError as fnf_error:
                         retrieved_info["status"] = "error"
                         retrieved_info["error_message"] = f"Artifact not found ({filename_for_load}): {str(fnf_error)}"
-                        log.warning(f"{log_identifier} Artifact not found via URL {current_artifact_url}: {fnf_error}")
+                        log.warning("%s Artifact not found via URL %s: %s", log_identifier, current_artifact_url, fnf_error)
                     except ValueError as val_error: # e.g. if version parsing fails badly, though handled above
                         retrieved_info["status"] = "error"
                         retrieved_info["error_message"] = f"Invalid artifact URL format or version ({current_artifact_url}): {str(val_error)}"
-                        log.error(f"{log_identifier} Invalid artifact URL format {current_artifact_url}: {val_error}")
+                        log.error("%s Invalid artifact URL format %s: %s", log_identifier, current_artifact_url, val_error)
                     except Exception as e:
                         retrieved_info["status"] = "error"
                         retrieved_info["error_message"] = f"Unexpected error loading artifact from {current_artifact_url}: {str(e)}"
-                        log.exception(f"{log_identifier} Unexpected error loading artifact {current_artifact_url}: {e}")
-                    
+                        log.exception("%s Unexpected error loading artifact %s: %s", log_identifier, current_artifact_url, e)
+
                     processed_chunk_data["retrieved_artifact_content"] = retrieved_info
                 processed_chunks.append(processed_chunk_data)
         

@@ -94,8 +94,8 @@ async def draw(
         }
 
     except httpx.HTTPStatusError as e:
-        log.error(f"{log_identifier} HTTP error: {e.response.text}")
+        log.error("%s HTTP error: %s", log_identifier, e.response.text)
         return {"status": "error", "message": f"HTTP error: {e.response.text}"}
     except Exception as e:
-        log.exception(f"{log_identifier} Error: {e}")
+        log.exception("%s Error: %s", log_identifier, e)
         return {"status": "error", "message": str(e)}

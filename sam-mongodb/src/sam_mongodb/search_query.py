@@ -56,9 +56,9 @@ async def mongo_query(
 
     try:
         pipeline = json.loads(pipeline_str)
-        log.debug(f"{log_identifier} Pipeline: {pipeline}")
+        log.debug("%s Pipeline: %s", log_identifier, pipeline)
     except json.JSONDecodeError as e:
-        log.error(f"{log_identifier} Invalid JSON in pipeline_str: {e}")
+        log.error("%s Invalid JSON in pipeline_str: %s", log_identifier, e)
         return {
             "status": "error",
             "error_message": f"Invalid pipeline format. Expected a valid JSON string. Error: {e}",

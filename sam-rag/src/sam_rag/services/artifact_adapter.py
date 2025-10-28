@@ -53,7 +53,7 @@ class ArtifactStorageAdapter:
         """
         # Check if artifact service is available
         if not self.artifact_service:
-            log.error(f"{self.log_identifier} No artifact service available for upload_from_file")
+            log.error("%s No artifact service available for upload_from_file", self.log_identifier)
             return None
             
         # Determine file name and mime type
@@ -84,7 +84,7 @@ class ArtifactStorageAdapter:
             )
             
             if save_result["status"] != "success":
-                log.error(f"{self.log_identifier} Failed to save artifact: {save_result.get('message', 'Unknown error')}")
+                log.error("%s Failed to save artifact: %s", self.log_identifier, save_result.get('message', 'Unknown error'))
                 return None
             
             # Return artifact URL and metadata
@@ -99,9 +99,9 @@ class ArtifactStorageAdapter:
                 }
             }
         except Exception as e:
-            log.exception(f"{self.log_identifier} Error in upload_from_file: {e}")
+            log.exception("%s Error in upload_from_file: %s", self.log_identifier, e)
             # Return a fallback URL for testing purposes
-            log.info(f"{self.log_identifier} Generating fallback artifact URL for {file_path}")
+            log.warning("%s Generating fallback artifact URL for %s", self.log_identifier, file_path)
             return {
                 "artifact_url": f"artifact://{self.app_name}/{self.default_user_id}/{session_id}/{filename}?version=fallback",
                 "name": filename,
@@ -162,7 +162,7 @@ class ArtifactStorageAdapter:
             
             return True
         except Exception as e:
-            log.exception(f"{self.log_identifier} Error in download_to_file: {e}")
+            log.exception("%s Error in download_to_file: %s", self.log_identifier, e)
             raise
     
     async def get_metadata(self, file_url):
@@ -210,7 +210,7 @@ class ArtifactStorageAdapter:
                 "version": result["version"]
             }
         except Exception as e:
-            log.exception(f"{self.log_identifier} Error in get_metadata: {e}")
+            log.exception("%s Error in get_metadata: %s", self.log_identifier, e)
             raise
     
     # Synchronous wrapper methods for backward compatibility
