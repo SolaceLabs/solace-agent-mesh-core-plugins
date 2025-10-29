@@ -94,11 +94,11 @@ class SlackAdapter(GatewayAdapter):
         """Stop the Slack listener and all message queues."""
         # Stop all message queues
         for task_id, queue in list(self.message_queues.items()):
-            log.info(f"Stopping message queue for task {task_id}")
+            log.info("Stopping message queue for task %s", task_id)
             try:
                 await queue.stop()
             except Exception as e:
-                log.error(f"Error stopping queue for task {task_id}: {e}")
+                log.error("Error stopping queue for task %s: %s", task_id, e)
         self.message_queues.clear()
 
         # Stop Slack listener
@@ -344,10 +344,16 @@ class SlackAdapter(GatewayAdapter):
         if not slack_user_id or not slack_team_id:
             log.warning(
                 "Could not determine Slack user_id or team_id from event. "
-                f"Event keys: {list(external_input.keys())}, "
-                f"user fields checked: user={external_input.get('user')}, user_id={external_input.get('user_id')}, "
-                f"team fields checked: team={external_input.get('team')}, team_id={external_input.get('team_id')}, "
-                f"team_domain={external_input.get('team_domain')}"
+                "Event keys: %s, "
+                "user fields checked: user=%s, user_id=%s, "
+                "team fields checked: team=%s, team_id=%s, "
+                "team_domain=%s",
+                list(external_input.keys()),
+                external_input.get("user"),
+                external_input.get("user_id"),
+                external_input.get("team"),
+                external_input.get("team_id"),
+                external_input.get("team_domain"),
             )
             return None
 
@@ -526,7 +532,6 @@ class SlackAdapter(GatewayAdapter):
         # Wait for the message queue to finish processing all pending operations
         if task_id in self.message_queues:
             queue = self.message_queues[task_id]
-            log.info(f"Waiting for message queue to complete for task {task_id}")
             await queue.wait_until_complete()
 
         # First, update the status message to show completion.
@@ -565,7 +570,7 @@ class SlackAdapter(GatewayAdapter):
 
         # Stop and cleanup the message queue for this task
         if task_id in self.message_queues:
-            log.info(f"Stopping and cleaning up message queue for task {task_id}")
+            log.info("Stopping and cleaning up message queue for task %s", task_id)
             await self.message_queues[task_id].stop()
             del self.message_queues[task_id]
 
@@ -579,12 +584,11 @@ class SlackAdapter(GatewayAdapter):
         if task_id in self.message_queues:
             queue = self.message_queues[task_id]
             try:
-                log.info(
-                    f"Waiting for message queue to complete before showing error for task {task_id}"
-                )
                 await asyncio.wait_for(queue.wait_until_complete(), timeout=10.0)
             except asyncio.TimeoutError:
-                log.warning(f"Timeout waiting for queue to complete for task {task_id}")
+                log.warning(
+                    "Timeout waiting for queue to complete for task %s", task_id
+                )
 
         if status_ts:
             error_text = f"❌ Error: {error.message}"
@@ -599,12 +603,13 @@ class SlackAdapter(GatewayAdapter):
         # Stop and cleanup the message queue for this task
         if task_id in self.message_queues:
             log.info(
-                f"Stopping and cleaning up message queue after error for task {task_id}"
+                "Stopping and cleaning up message queue after error for task %s",
+                task_id,
             )
             try:
                 await self.message_queues[task_id].stop()
             except Exception as e:
-                log.error(f"Error stopping queue for task {task_id}: {e}")
+                log.error("Error stopping queue for task %s: %s", task_id, e)
             del self.message_queues[task_id]
 
     # --- Private Helper Methods ---
@@ -633,7 +638,7 @@ class SlackAdapter(GatewayAdapter):
             )
             await queue.start()
             self.message_queues[task_id] = queue
-            log.info(f"Created and started message queue for task {task_id}")
+            log.info("Created and started message queue for task %s", task_id)
 
         return self.message_queues[task_id]
 
@@ -732,10 +737,6 @@ class SlackAdapter(GatewayAdapter):
                     )
 
                     try:
-                        log.info(
-                            "Artifact '%s' creation complete. Fetching content for upload.",
-                            filename,
-                        )
                         version = part.data.get("version")
                         content_bytes = await self.context.load_artifact_content(
                             context=context, filename=filename, version=version
@@ -782,7 +783,8 @@ class SlackAdapter(GatewayAdapter):
                         )
                 else:
                     log.warning(
-                        f"Could not find message TS for completing artifact '{filename}'"
+                        "Could not find message TS for completing artifact '%s'",
+                        filename,
                     )
 
             elif status == "failed":

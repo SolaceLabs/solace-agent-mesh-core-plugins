@@ -31,7 +31,7 @@ def register_command(name: str) -> Callable[[CommandHandler], CommandHandler]:
     """Decorator to register a new bot command."""
 
     def decorator(func: CommandHandler) -> CommandHandler:
-        log.info(f"Registering Slack command: !{name}")
+        log.info("Registering Slack command: !%s", name)
         COMMAND_REGISTRY[name] = func
         return func
 
@@ -64,9 +64,7 @@ async def handle_artifacts_command(
 
         user_id = auth_claims.id
         # Session ID is based on the thread if it exists, otherwise the channel.
-        session_id = utils.create_slack_session_id(
-            channel_id, event.get("thread_ts")
-        )
+        session_id = utils.create_slack_session_id(channel_id, event.get("thread_ts"))
 
         response_context = ResponseContext(
             task_id=f"slack-cmd-{event.get('trigger_id') or event.get('ts')}",
@@ -127,9 +125,7 @@ async def handle_artifacts_command(
             blocks.append(
                 {
                     "type": "context",
-                    "elements": [
-                        {"type": "mrkdwn", "text": f"🗓️ {last_modified_str}"}
-                    ],
+                    "elements": [{"type": "mrkdwn", "text": f"🗓️ {last_modified_str}"}],
                 }
             )
 
@@ -231,7 +227,7 @@ async def handle_slack_message(adapter: "SlackAdapter", event: Dict, say: Any):
         "message_changed",
         "message_deleted",
     ]:
-        log.debug(f"Ignoring event with subtype: {event.get('subtype')}")
+        log.debug("Ignoring event with subtype: %s", event.get("subtype"))
         return
 
     channel_type = event.get("channel_type")

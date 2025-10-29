@@ -237,7 +237,7 @@ async def upload_slack_file(
             initial_comment=comment,
         )
 
-        log.info(
+        log.debug(
             "%s Successfully uploaded file '%s' (%d bytes) to channel %s (Thread: %s)",
             log_id_prefix,
             filename,

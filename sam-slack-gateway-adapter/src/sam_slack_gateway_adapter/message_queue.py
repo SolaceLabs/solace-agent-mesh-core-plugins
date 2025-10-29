@@ -9,7 +9,7 @@ are posted, preventing race conditions and out-of-order message appearance.
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from slack_sdk.web.async_client import AsyncWebClient
 
@@ -122,7 +122,7 @@ class SlackMessageQueue:
         self.current_text_message_ts: Optional[str] = None
         self.text_buffer: str = ""
 
-        log.debug(f"[Queue:{task_id}] Initialized for channel {channel_id}")
+        log.debug("[Queue:%s] Initialized for channel %s", task_id, channel_id)
 
     async def start(self):
         """Start the background queue processor."""
@@ -130,33 +130,32 @@ class SlackMessageQueue:
             self.processor_task = asyncio.create_task(
                 self._process_queue(), name=f"slack-queue-{self.task_id}"
             )
-            log.info(f"[Queue:{self.task_id}] Started queue processor")
 
     async def stop(self):
         """Stop the queue processor and wait for completion."""
         if self.processor_task and not self.processor_task.done():
-            log.info(f"[Queue:{self.task_id}] Stopping queue processor")
             await self.queue.put(StopSignal())
             try:
                 await asyncio.wait_for(self.processor_task, timeout=60.0)
             except asyncio.TimeoutError:
                 log.error(
-                    f"[Queue:{self.task_id}] Timeout waiting for queue to stop, cancelling"
+                    "[Queue:%s] Timeout waiting for queue to stop, cancelling",
+                    self.task_id,
                 )
                 self.processor_task.cancel()
-            log.info(f"[Queue:{self.task_id}] Queue processor stopped")
+            log.info("[Queue:%s] Queue processor stopped", self.task_id)
 
     async def wait_until_complete(self):
         """Wait for all queued operations to be processed."""
         await self.queue.join()
-        log.debug(f"[Queue:{self.task_id}] All operations complete")
+        log.debug("[Queue:%s] All operations complete", self.task_id)
 
     # --- Queue Operation Methods ---
 
     async def queue_text_update(self, text: str):
         """Queue a text update to be appended to the current message."""
         await self.queue.put(TextUpdateOp(text=text))
-        log.debug(f"[Queue:{self.task_id}] Queued text update: {text[:50]}...")
+        log.debug("[Queue:%s] Queued text update: %s...", self.task_id, text[:50])
 
     async def queue_file_upload(
         self, filename: str, content_bytes: bytes, initial_comment: Optional[str] = None
@@ -170,37 +169,39 @@ class SlackMessageQueue:
             )
         )
         log.debug(
-            f"[Queue:{self.task_id}] Queued file upload: {filename} ({len(content_bytes)} bytes)"
+            "[Queue:%s] Queued file upload: %s (%d bytes)",
+            self.task_id,
+            filename,
+            len(content_bytes),
         )
 
     async def queue_message_post(self, text: str, blocks: Optional[List[Dict]] = None):
         """Queue posting a new message."""
         await self.queue.put(MessagePostOp(text=text, blocks=blocks))
-        log.debug(f"[Queue:{self.task_id}] Queued message post: {text[:50]}...")
+        log.debug("[Queue:%s] Queued message post: %s...", self.task_id, text[:50])
 
     async def queue_message_update(
         self, ts: str, text: str, blocks: Optional[List[Dict]] = None
     ):
         """Queue updating an existing message."""
         await self.queue.put(MessageUpdateOp(ts=ts, text=text, blocks=blocks))
-        log.debug(f"[Queue:{self.task_id}] Queued message update for ts={ts}")
+        log.debug("[Queue:%s] Queued message update for ts=%s", self.task_id, ts)
 
     async def queue_message_delete(self, ts: str):
         """Queue deleting a message."""
         await self.queue.put(MessageDeleteOp(ts=ts))
-        log.debug(f"[Queue:{self.task_id}] Queued message delete for ts={ts}")
+        log.debug("[Queue:%s] Queued message delete for ts=%s", self.task_id, ts)
 
     # --- Queue Processor ---
 
     async def _process_queue(self):
         """Background task that processes queue operations sequentially."""
-        log.info(f"[Queue:{self.task_id}] Queue processor started")
         try:
             while True:
                 operation = await self.queue.get()
 
                 if isinstance(operation, StopSignal):
-                    log.debug(f"[Queue:{self.task_id}] Received stop signal")
+                    log.debug("[Queue:%s] Received stop signal", self.task_id)
                     self.queue.task_done()
                     break
 
@@ -217,12 +218,17 @@ class SlackMessageQueue:
                         await self._handle_message_delete(operation)
                     else:
                         log.warning(
-                            f"[Queue:{self.task_id}] Unknown operation type: {type(operation)}"
+                            "[Queue:%s] Unknown operation type: %s",
+                            self.task_id,
+                            type(operation),
                         )
 
                 except Exception as e:
                     log.error(
-                        f"[Queue:{self.task_id}] Error processing operation {operation}: {e}",
+                        "[Queue:%s] Error processing operation %s: %s",
+                        self.task_id,
+                        operation,
+                        e,
                         exc_info=True,
                     )
                     # Continue processing despite error
@@ -232,17 +238,21 @@ class SlackMessageQueue:
 
         except Exception as e:
             log.error(
-                f"[Queue:{self.task_id}] Fatal error in queue processor: {e}",
+                "[Queue:%s] Fatal error in queue processor: %s",
+                self.task_id,
+                e,
                 exc_info=True,
             )
         finally:
-            log.info(f"[Queue:{self.task_id}] Queue processor stopped")
+            log.info("[Queue:%s] Queue processor stopped", self.task_id)
 
     # --- Operation Handlers ---
 
     async def _handle_text_update(self, op: TextUpdateOp):
         """Handle appending text to the current message buffer."""
-        log.debug(f"[Queue:{self.task_id}] Processing text update: {op.text[:50]}...")
+        log.debug(
+            "[Queue:%s] Processing text update: %s...", self.task_id, op.text[:50]
+        )
 
         # Append RAW text to buffer
         self.text_buffer += op.text
@@ -252,27 +262,25 @@ class SlackMessageQueue:
 
         if not self.current_text_message_ts:
             # Post a new message with formatted text
-            log.info(f"[Queue:{self.task_id}] Posting new text message")
             response = await self.client.chat_postMessage(
                 channel=self.channel_id,
                 thread_ts=self.thread_ts,
                 text=formatted_text,
             )
             self.current_text_message_ts = response.get("ts")
-            log.info(
-                f"[Queue:{self.task_id}] Posted new message with ts={self.current_text_message_ts}"
-            )
         else:
             # Update existing message with formatted text
             log.debug(
-                f"[Queue:{self.task_id}] Updating text message ts={self.current_text_message_ts}"
+                "[Queue:%s] Updating text message ts=%s",
+                self.task_id,
+                self.current_text_message_ts,
             )
             await self.client.chat_update(
                 channel=self.channel_id,
                 ts=self.current_text_message_ts,
                 text=formatted_text,
             )
-            log.debug(f"[Queue:{self.task_id}] Updated message")
+            log.debug("[Queue:%s] Updated message", self.task_id)
 
     async def _handle_file_upload(self, op: FileUploadOp):
         """
@@ -280,13 +288,9 @@ class SlackMessageQueue:
 
         This is the critical operation that prevents race conditions.
         """
-        log.info(f"[Queue:{self.task_id}] Processing file upload: {op.filename}")
 
         # Step 1: Finalize any pending text message
         if self.text_buffer and self.current_text_message_ts:
-            log.info(
-                f"[Queue:{self.task_id}] Finalizing text message before file upload"
-            )
             await self.client.chat_update(
                 channel=self.channel_id,
                 ts=self.current_text_message_ts,
@@ -301,7 +305,9 @@ class SlackMessageQueue:
         try:
             # Step 3a: Get upload URL
             log.debug(
-                f"[Queue:{self.task_id}] Step 1: Getting upload URL for {op.filename}"
+                "[Queue:%s] Step 1: Getting upload URL for %s",
+                self.task_id,
+                op.filename,
             )
             upload_url_response = await self.client.files_getUploadURLExternal(
                 filename=op.filename, length=len(op.content_bytes)
@@ -314,7 +320,9 @@ class SlackMessageQueue:
 
             # Step 3b: Upload content to temporary URL
             log.debug(
-                f"[Queue:{self.task_id}] Step 2: Uploading {len(op.content_bytes)} bytes"
+                "[Queue:%s] Step 2: Uploading %d bytes",
+                self.task_id,
+                len(op.content_bytes),
             )
             import requests
 
@@ -324,7 +332,7 @@ class SlackMessageQueue:
             upload_response.raise_for_status()
 
             # Step 3c: Complete the upload
-            log.debug(f"[Queue:{self.task_id}] Step 3: Completing external upload")
+            log.debug("[Queue:%s] Step 3: Completing external upload", self.task_id)
             comment = op.initial_comment or f"Attached file: {op.filename}"
             await self.client.files_completeUploadExternal(
                 files=[{"id": file_id, "title": op.filename}],
@@ -332,18 +340,16 @@ class SlackMessageQueue:
                 thread_ts=self.thread_ts,
                 initial_comment=comment,
             )
-            log.info(f"[Queue:{self.task_id}] Upload request completed for {op.filename}")
 
-            # Step 4: CRITICAL - Poll files.info until file is visible
-            log.info(f"[Queue:{self.task_id}] Step 4: Polling for file visibility...")
+            # Step 4: - Poll files.info until file is visible
             await self._wait_for_file_visible(file_id, timeout_seconds=30)
-            log.info(
-                f"[Queue:{self.task_id}] ✅ File {op.filename} is now visible in channel"
-            )
 
         except Exception as e:
             log.error(
-                f"[Queue:{self.task_id}] Failed to upload file {op.filename}: {e}",
+                "[Queue:%s] Failed to upload file %s: %s",
+                self.task_id,
+                op.filename,
+                e,
                 exc_info=True,
             )
             # Post error message
@@ -355,7 +361,7 @@ class SlackMessageQueue:
 
     async def _handle_message_post(self, op: MessagePostOp):
         """Handle posting a new message."""
-        log.debug(f"[Queue:{self.task_id}] Posting new message: {op.text[:50]}...")
+        log.debug("[Queue:%s] Posting new message: %s...", self.task_id, op.text[:50])
         await self.client.chat_postMessage(
             channel=self.channel_id,
             thread_ts=self.thread_ts,
@@ -365,14 +371,14 @@ class SlackMessageQueue:
 
     async def _handle_message_update(self, op: MessageUpdateOp):
         """Handle updating an existing message."""
-        log.debug(f"[Queue:{self.task_id}] Updating message ts={op.ts}")
+        log.debug("[Queue:%s] Updating message ts=%s", self.task_id, op.ts)
         await self.client.chat_update(
             channel=self.channel_id, ts=op.ts, text=op.text, blocks=op.blocks
         )
 
     async def _handle_message_delete(self, op: MessageDeleteOp):
         """Handle deleting a message."""
-        log.debug(f"[Queue:{self.task_id}] Deleting message ts={op.ts}")
+        log.debug("[Queue:%s] Deleting message ts=%s", self.task_id, op.ts)
         await self.client.chat_delete(channel=self.channel_id, ts=op.ts)
 
     # --- Polling Helper ---
@@ -418,30 +424,39 @@ class SlackMessageQueue:
                     # Check if file is in our channel (could be in either public or private)
                     if self.channel_id in public_shares:
                         log.debug(
-                            f"[Queue:{self.task_id}] File {file_id} confirmed in public channel"
+                            "[Queue:%s] File %s confirmed in public channel",
+                            self.task_id,
+                            file_id,
                         )
                         return
                     elif self.channel_id in private_shares:
                         log.debug(
-                            f"[Queue:{self.task_id}] File {file_id} confirmed in private/DM channel"
+                            "[Queue:%s] File %s confirmed in private/DM channel",
+                            self.task_id,
+                            file_id,
                         )
                         return
                     else:
                         log.debug(
-                            f"[Queue:{self.task_id}] File {file_id} has shares but not in target channel. "
-                            f"Public: {list(public_shares.keys())}, Private: {list(private_shares.keys())}"
+                            "[Queue:%s] File %s has shares but not in target channel. "
+                            "Public: %s, Private: %s",
+                            self.task_id,
+                            file_id,
+                            list(public_shares.keys()),
+                            list(private_shares.keys()),
                         )
 
                 # Not ready yet, wait with exponential backoff
                 log.debug(
-                    f"[Queue:{self.task_id}] File {file_id} not yet shared. Waiting {backoff_delay:.2f}s..."
+                    "[Queue:%s] File %s not yet shared. Waiting %.2fs...",
+                    self.task_id,
+                    file_id,
+                    backoff_delay,
                 )
                 await asyncio.sleep(backoff_delay)
                 backoff_delay = min(backoff_delay * 1.5, max_backoff)
 
             except Exception as e:
-                log.warning(
-                    f"[Queue:{self.task_id}] Error checking file info: {e}"
-                )
+                log.warning("[Queue:%s] Error checking file info: %s", self.task_id, e)
                 await asyncio.sleep(backoff_delay)
                 backoff_delay = min(backoff_delay * 1.5, max_backoff)
