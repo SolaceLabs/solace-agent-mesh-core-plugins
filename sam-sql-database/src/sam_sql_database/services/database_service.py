@@ -76,7 +76,7 @@ class DatabaseService(ABC):
                 self.engine.dispose()
                 log.info("Database engine disposed successfully.")
             except Exception as e:
-                log.error("Error disposing database engine: %s", e, exc_info=True)
+                log.exception("Error disposing database engine: %s", e)
         else:
             log.warning("No database engine to dispose.")
 
@@ -99,7 +99,7 @@ class DatabaseService(ABC):
             connection = self.engine.connect()
             yield connection
         except SQLAlchemyError as e:
-            log.error("Database connection error: %s", str(e), exc_info=True)
+            log.exception("Database connection error: %s", str(e))
             raise
         finally:
             if connection:
@@ -139,7 +139,7 @@ class DatabaseService(ABC):
                         }
                     ]
         except SQLAlchemyError as e:
-            log.error("Query execution error: %s", str(e), exc_info=True)
+            log.exception("Query execution error: %s", str(e))
             raise
 
     def get_tables(self) -> List[str]:

@@ -99,12 +99,12 @@ class SlackGatewayComponent(BaseGatewayComponent):
 
         if not SLACK_BOLT_AVAILABLE:
             log.error(
-                f"{self.log_identifier} Slack Bolt library not found. Please install 'slack_bolt' (`pip install slack_bolt`)."
+                "%s Slack Bolt library not found. Please install 'slack_bolt' (`pip install slack_bolt`).", self.log_identifier
             )
             raise ImportError("Slack Bolt library not found.")
         if not requests:
             log.error(
-                f"{self.log_identifier} Requests library not found. Please install 'requests' (`pip install requests`)."
+                "%s Requests library not found. Please install 'requests' (`pip install requests`).", self.log_identifier
             )
             raise ImportError("Requests library not found.")
 
@@ -127,7 +127,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
 
             if not self.slack_bot_token or not self.slack_app_token:
                 raise ValueError("Slack Bot Token and App Token are required.")
-            log.info("%s Slack-specific configuration retrieved.", self.log_identifier)
+            log.debug("%s Slack-specific configuration retrieved.", self.log_identifier)
         except Exception as e:
             log.error(
                 "%s Failed to retrieve Slack-specific configuration: %s",
@@ -160,7 +160,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
             async def handle_cancel_request_button_wrapper(
                 ack, body, client, logger_bolt
             ):
-                log.info(
+                log.debug(
                     "%s Received '%s' action.",
                     self.log_identifier,
                     CANCEL_BUTTON_ACTION_ID,
@@ -204,7 +204,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
                 )
                 await handlers.handle_slack_mention(self, event, say, client)
 
-            log.info("%s Slack event handlers registered.", self.log_identifier)
+            log.debug("%s Slack event handlers registered.", self.log_identifier)
         except Exception as e:
             log.exception(
                 "%s Slack-specific initialization failed: %s", self.log_identifier, e
@@ -340,7 +340,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
                 )
                 return
 
-            log.info(
+            log.debug(
                 "%s Processing cancel request for Task ID: %s, Agent: %s, Channel: %s, Message TS: %s",
                 log_id_prefix,
                 task_id,
@@ -364,7 +364,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
                     status_text_for_update,
                     blocks=updated_blocks,
                 )
-                log.info(
+                log.debug(
                     "%s Updated Slack message to 'Cancelling...' for task %s.",
                     log_id_prefix,
                     task_id,
@@ -388,7 +388,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
                 self.publish_a2a_message(
                     topic=target_topic, payload=payload, user_properties=user_properties
                 )
-                log.info(
+                log.debug(
                     "%s A2A CancelTaskRequest sent for task %s to agent %s.",
                     log_id_prefix,
                     task_id,
@@ -518,7 +518,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
             user_email = profile_response.get("profile", {}).get("email")
 
             if user_email:
-                log.info(
+                log.debug(
                     "%s Successfully fetched email for user %s: %s",
                     log_id_prefix,
                     slack_user_id,
@@ -580,7 +580,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
             and callable(self.slack_handler.stop)
         ):
             try:
-                log.info(
+                log.debug(
                     "%s Calling AsyncSocketModeHandler.stop()...", self.log_identifier
                 )
                 self.slack_handler.stop()
@@ -622,7 +622,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
             )
             response.raise_for_status()
             content_bytes = response.content
-            log.info("%s Successfully downloaded %d bytes.", log_id, len(content_bytes))
+            log.debug("%s Successfully downloaded %d bytes.", log_id, len(content_bytes))
             return {"name": file_name, "content": content_bytes, "mime_type": mime_type}
         except requests.exceptions.RequestException as e:
             log.error("%s Failed to download file: %s", log_id, e)
@@ -670,7 +670,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
         if not channel_id or not message_ts or not slack_user_id or not slack_team_id:
             log.warning("%s Missing critical context in event: %s", log_id, event)
             raise ValueError("Missing critical Slack context (channel, ts, user, team)")
-        log.info(
+        log.debug(
             "%s Translating event from User: %s, Team: %s, Channel: %s, MsgTS: %s (ThreadTS: %s)",
             log_id,
             slack_user_id,
@@ -690,16 +690,13 @@ class SlackGatewayComponent(BaseGatewayComponent):
         file_metadata_summary_parts: List[str] = []
         processed_text_for_a2a = resolved_text
         if files_info and self.shared_artifact_service:
-            log.info("%s Found %d file(s). Processing...", log_id, len(files_info))
+            log.debug("%s Found %d file(s). Processing...", log_id, len(files_info))
             user_id_for_artifacts = authenticated_user_identity.get("id")
             for file_info_slack in files_info:
                 download_result = await self._download_slack_file_content(
                     file_info_slack
                 )
                 if "error" in download_result:
-                    log.error(
-                        "%s File download failed: %s", log_id, download_result["error"]
-                    )
                     continue
                 content_bytes = download_result["content"]
                 original_filename = download_result["name"]
@@ -729,7 +726,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
                         },
                         timestamp=datetime.now(timezone.utc),
                     )
-                    if save_result["status"] in ["success", "partial_success"]:
+                    if save_result["status"] in ["success", "_success"]:
                         data_version = save_result.get("data_version", 0)
                         artifact_uri = f"artifact://{self.gateway_id}/{user_id_for_artifacts}/{a2a_session_id}/{original_filename}?version={data_version}"
                         file_part = a2a.create_file_part_from_uri(
@@ -741,7 +738,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
                         file_metadata_summary_parts.append(
                             f"- {original_filename} ({mime_type}, {len(content_bytes)} bytes, URI: {artifact_uri})"
                         )
-                        log.info(
+                        log.debug(
                             "%s Created URI for uploaded file: %s", log_id, artifact_uri
                         )
                     else:
@@ -842,7 +839,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
             )
 
             for data_content in data_parts_for_slack:
-                log.info("%s Sending DataPart content as separate message.", log_id)
+                log.debug("%s Sending DataPart content as separate message.", log_id)
                 await send_slack_message(self, channel_id, thread_ts, data_content)
 
             for file_info in file_infos_for_slack:
@@ -866,7 +863,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
                 if status_signal_text and "Error" in status_signal_text
                 else ":checkered_flag: Task complete."
             )
-            log.info(
+            log.debug(
                 "%s Setting final status text: '%s'", log_id, effective_status_text
             )
 
@@ -994,7 +991,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
             final_buffered_content = self.get_content_buffer(task_id)
             final_content_ts = self.get_content_ts(task_id)
             if final_buffered_content:
-                log.info(
+                log.debug(
                     "%s Flushing final content buffer (%d chars) to content message (TS: %s).",
                     log_id,
                     len(final_buffered_content),
@@ -1332,7 +1329,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
             self.content_message_ts.clear()
             self.content_message_buffer.clear()
             self.current_status_text.clear()
-        log.info(
+        log.debug(
             "%s Cleared Slack-specific internal state maps and buffers.",
             self.log_identifier,
         )
@@ -1484,7 +1481,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
                 )
 
                 if resolved_text != text or signals_found:
-                    log.info(
+                    log.debug(
                         "%s Embed/signal resolution complete (Processed Index: %d, Signals: %d).",
                         log_id,
                         processed_until_index,

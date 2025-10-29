@@ -26,7 +26,7 @@ class AWSSessionManager:
         """
         if cls._session is None:
             log.info(
-                f"[AWSSessionManager] Initializing AWS session with config: {boto3_config}, endpoint_url: {endpoint_url}"
+                "[AWSSessionManager] Initializing AWS session with config: %s, endpoint_url: %s", boto3_config, endpoint_url
             )
             cls._boto3_config = boto3_config
             cls._endpoint_url = endpoint_url
@@ -44,16 +44,16 @@ class AWSSessionManager:
                     "[AWSSessionManager] AWS session and Bedrock Agent Runtime client initialized successfully."
                 )
             except Exception as e:
-                log.error(
-                    f"[AWSSessionManager] Failed to initialize AWS session or client: {e}",
-                    exc_info=True,
+                log.exception(
+                    "[AWSSessionManager] Failed to initialize AWS session or client: %s",
+                    e,
                 )
                 cls._session = None
                 cls._bedrock_agent_runtime_client = None
                 cls._instance = None
                 raise
         else:
-            log.warn(
+            log.warning(
                 "[AWSSessionManager] AWS session already initialized. Skipping re-initialization."
             )
 
@@ -73,7 +73,7 @@ class AWSSessionManager:
 
         if cls._bedrock_agent_runtime_client is None:
             if cls._boto3_config:
-                log.warn(
+                log.warning(
                     "[AWSSessionManager] Bedrock client not available, attempting re-initialization."
                 )
                 cls._initialize_session(cls._boto3_config, cls._endpoint_url)

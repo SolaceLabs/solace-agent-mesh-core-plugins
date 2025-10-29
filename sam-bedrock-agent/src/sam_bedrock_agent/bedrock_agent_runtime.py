@@ -42,7 +42,12 @@ class BedrockAgentRuntime:
         :return: Inference response from the model as a string.
         """
         log.debug(
-            f"[BedrockAgentRuntime] Invoking agent {agent_id} (alias {agent_alias_id}) for session {session_id} with prompt: '{prompt[:100]}...' and session_state: {'Set' if session_state else 'Not set'}"
+            "[BedrockAgentRuntime] Invoking agent %s (alias %s) for session %s with prompt: '%s...' and session_state: %s",
+            agent_id,
+            agent_alias_id,
+            session_id,
+            prompt[:100],
+            'Set' if session_state else 'Not set'
         )
         try:
             response = self.agents_runtime_client.invoke_agent(
@@ -61,17 +66,20 @@ class BedrockAgentRuntime:
                     completion += chunk["bytes"].decode("utf-8", errors="replace")
 
             log.debug(
-                f"[BedrockAgentRuntime] Agent {agent_id} invocation successful. Response length: {len(completion)}"
+                "[BedrockAgentRuntime] Agent %s invocation successful. Response length: %d",
+                agent_id,
+                len(completion)
             )
             return completion
 
         except ClientError as e:
-            log.error(f"Couldn't invoke agent {agent_id}. Error: {e}", exc_info=True)
+            log.exception("Couldn't invoke agent %s. Error: %s", agent_id, e)
             raise e
         except Exception as e:
-            log.error(
-                f"An unexpected error occurred while invoking agent {agent_id}: {e}",
-                exc_info=True,
+            log.exception(
+                "An unexpected error occurred while invoking agent %s: %s",
+                agent_id,
+                e,
             )
             raise e
 
@@ -88,7 +96,9 @@ class BedrockAgentRuntime:
         Return: Response from the flow as a string.
         """
         log.debug(
-            f"[BedrockAgentRuntime] Invoking flow {flow_id} (alias {flow_alias_id}) with input: {input_data}"
+            "[BedrockAgentRuntime] Invoking flow %s (alias %s)",
+            flow_id,
+            flow_alias_id,
         )
         try:
             response = self.agents_runtime_client.invoke_flow(
@@ -108,7 +118,7 @@ class BedrockAgentRuntime:
                 elif "flowOutputEvent" in event:
                     output_event = event["flowOutputEvent"]
                     log.debug(
-                        f"[BedrockAgentRuntime] Flow output event: {output_event}"
+                        "[BedrockAgentRuntime] Flow output event: %s", output_event
                     )
                     if "content" in output_event and isinstance(
                         output_event["content"], dict
@@ -123,16 +133,19 @@ class BedrockAgentRuntime:
                         result_stream_content += str(output_event) + "\n"
 
             log.debug(
-                f"[BedrockAgentRuntime] Flow {flow_id} invocation successful. Raw result: {result_stream_content[:500]}..."
+                "[BedrockAgentRuntime] Flow %s invocation successful. Raw result: %s...",
+                flow_id,
+                result_stream_content[:500],
             )
             return result_stream_content
 
         except ClientError as e:
-            log.error(f"Couldn't invoke flow {flow_id}. Error: {e}", exc_info=True)
+            log.exception("Couldn't invoke flow %s. Error: %s", flow_id, e)
             raise e
         except Exception as e:
-            log.error(
-                f"An unexpected error occurred while invoking flow {flow_id}: {e}",
-                exc_info=True,
+            log.exception(
+                "An unexpected error occurred while invoking flow %s: %s",
+                flow_id,
+                e,
             )
             raise e

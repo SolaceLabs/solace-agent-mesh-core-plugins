@@ -215,17 +215,17 @@ async def invoke_bedrock_agent(
     """
     plugin_name = "sam-bedrock-agent"
     log_identifier = f"[{plugin_name}:invoke_bedrock_agent]"
-    log.info(f"{log_identifier} Received request. Input text: '{input_text[:100]}...'")
+    log.info("%s Received request. Input text: '%s...'", log_identifier, input_text[:100])
 
     if not tool_context or not tool_context._invocation_context:
-        log.error(f"{log_identifier} ToolContext or InvocationContext is missing.")
+        log.error("%s ToolContext or InvocationContext is missing.", log_identifier)
         return {
             "status": "error",
             "message": "ToolContext or InvocationContext is missing.",
         }
 
     if not tool_config:
-        log.error(f"{log_identifier} Tool configuration (tool_config) is missing.")
+        log.error("%s Tool configuration (tool_config) is missing.", log_identifier)
         return {"status": "error", "message": "Tool configuration is missing."}
 
     bedrock_agent_id = tool_config.get("bedrock_agent_id")
@@ -235,7 +235,8 @@ async def invoke_bedrock_agent(
 
     if not bedrock_agent_id or not bedrock_agent_alias_id:
         log.error(
-            f"{log_identifier} Missing bedrock_agent_id or bedrock_agent_alias_id in tool_config."
+            "%s Missing bedrock_agent_id or bedrock_agent_alias_id in tool_config.",
+            log_identifier
         )
         return {
             "status": "error",
@@ -244,7 +245,7 @@ async def invoke_bedrock_agent(
 
     if not amazon_bedrock_runtime_config:
         log.error(
-            f"{log_identifier} Missing amazon_bedrock_runtime_config in agent configuration."
+            "%s Missing amazon_bedrock_runtime_config in agent configuration.", log_identifier
         )
         return {
             "status": "error",
@@ -256,7 +257,7 @@ async def invoke_bedrock_agent(
 
     if not boto3_config:
         log.error(
-            f"{log_identifier} Missing boto3_config in amazon_bedrock_runtime_config."
+            "%s Missing boto3_config in amazon_bedrock_runtime_config.", log_identifier
         )
         return {
             "status": "error",
@@ -274,8 +275,10 @@ async def invoke_bedrock_agent(
         session_state_for_bedrock = {"files": []}
         if allow_files_config:
             if files and isinstance(files, list) and len(files) > 0:
-                log.info(
-                    f"{log_identifier} File processing enabled by config and files provided. Processing {len(files)} files."
+                log.debug(
+                    "%s File processing enabled by config and files provided. Processing %d files.",
+                    log_identifier,
+                    len(files)
                 )
                 file_processing_result = await _process_files_for_bedrock(
                     files, tool_context, log_identifier
@@ -283,35 +286,48 @@ async def invoke_bedrock_agent(
 
                 if file_processing_result.get("status") == "error":
                     log.error(
-                        f"{log_identifier} Error processing files: {file_processing_result.get('message')}"
+                        "%s Error processing files: %s",
+                        log_identifier,
+                        file_processing_result.get("message")
                     )
                     return file_processing_result
 
                 processed_payload = file_processing_result.get("bedrock_files_payload")
                 if processed_payload:
                     session_state_for_bedrock["files"] = processed_payload
-                    log.info(
-                        f"{log_identifier} Files processed successfully for Bedrock session state."
+                    log.debug(
+                        "%s Files processed successfully for Bedrock session state.",
+                        log_identifier
                     )
                 else:
-                    log.info(
-                        f"{log_identifier} No files were processed or payload was empty, session_state will be None."
+                    log.debug(
+                        "%s No files were processed or payload was empty, session_state will be None.",
+                        log_identifier
                     )
             elif files:
                 log.warning(
-                    f"{log_identifier} 'files' parameter provided but is not a valid list or is empty. Ignoring files. Value: {files}"
+                    "%s 'files' parameter provided but is not a valid list or is empty. Ignoring files. Value: %s",
+                    log_identifier,
+                    files
                 )
             else:
-                log.info(
-                    f"{log_identifier} File processing enabled, but no files provided by user."
+                log.debug(
+                    "%s File processing enabled, but no files provided by user.",
+                    log_identifier
                 )
         elif files:
             log.warning(
-                f"{log_identifier} Files provided by user, but 'allow_files' is false in tool_config. Ignoring files."
+                "%s Files provided by user, but 'allow_files' is false in tool_config. Ignoring files.",
+                log_identifier
             )
 
-        log.info(
-            f"{log_identifier} Invoking Bedrock agent {bedrock_agent_id} (alias {bedrock_agent_alias_id}) for session {session_id}. Session state: {'Set' if session_state_for_bedrock else 'Not set'}"
+        log.debug(
+            "%s Invoking Bedrock agent %s (alias %s) for session %s. Session state: %s",
+            log_identifier,
+            bedrock_agent_id,
+            bedrock_agent_alias_id,
+            session_id,
+            'Set' if session_state_for_bedrock else 'Not set'
         )
         response_text = bedrock_runtime.invoke_agent(
             agent_id=bedrock_agent_id,
@@ -321,7 +337,9 @@ async def invoke_bedrock_agent(
             session_state=session_state_for_bedrock,
         )
         log.info(
-            f"{log_identifier} Successfully invoked Bedrock agent. Response length: {len(response_text)}"
+            "%s Successfully invoked Bedrock agent. Response length: %d",
+            log_identifier,
+            len(response_text)
         )
         return {
             "status": "success",
@@ -331,13 +349,18 @@ async def invoke_bedrock_agent(
         }
 
     except RuntimeError as r_err:
-        log.error(
-            f"{log_identifier} Runtime error during Bedrock agent invocation: {r_err}",
-            exc_info=True,
+        log.exception(
+            "%s Runtime error during Bedrock agent invocation: %s",
+            log_identifier,
+            r_err,
         )
         return {"status": "error", "message": f"Runtime error: {r_err}"}
     except Exception as e:
-        log.error(f"{log_identifier} Error invoking Bedrock agent: {e}", exc_info=True)
+        log.exception(
+            "%s Error invoking Bedrock agent: %s",
+            log_identifier,
+            e,
+        )
         return {
             "status": "error",
             "message": f"Failed to invoke Bedrock agent: {str(e)}",

@@ -164,7 +164,7 @@ async def execute_sql_query(
         # Ensure correct extension
         artifact_filename = ensure_correct_extension(base_filename, file_extension)
 
-        log.info(
+        log.debug(
             "%s Result size (%d bytes) or inline_result=False. Saving as artifact: %s",
             log_identifier,
             len(content_bytes),

@@ -190,8 +190,10 @@ async def broker_request_response(
 
     if response_format not in ["json", "yaml", "text", "none"]:
         log.error(
-            f"{log_identifier} Invalid response_format '{response_format}'. "
-            "Must be one of: json, yaml, text, none"
+            "%s Invalid response_format '%s'. "
+            "Must be one of: json, yaml, text, none",
+            log_identifier,
+            response_format
         )
         return {
             "status": "error",
@@ -200,14 +202,14 @@ async def broker_request_response(
 
     validation_error = _validate_topic_template(topic_template, config_params)
     if validation_error:
-        log.error(f"{log_identifier} Topic validation failed: {validation_error}")
+        log.error("%s Topic validation failed: %s", log_identifier, validation_error)
         return {
             "status": "error",
             "message": f"Invalid topic template: {validation_error}",
         }
 
     if not isinstance(params, dict):
-        log.error(f"{log_identifier} Invalid params type: {type(params)}. Expected dict.")
+        log.error("%s Invalid params type: %s. Expected dict.", log_identifier, type(params))
         return {
             "status": "error",
             "message": f"Invalid params type: {type(params)}. Expected dict.",
@@ -227,7 +229,7 @@ async def broker_request_response(
         try:
             topic = _fill_topic_template(topic_template, defaulted_params)
         except ValueError as e:
-            log.error(f"{log_identifier} Error filling topic template: {str(e)}")
+            log.error("%s Error filling topic template: %s", log_identifier, str(e))
             return {
                 "status": "error",
                 "message": f"Error filling topic template: {str(e)}",
@@ -244,7 +246,7 @@ async def broker_request_response(
             tool_context._invocation_context.agent, "host_component", None
         )
         if not host_component:
-            log.error(f"{log_identifier} Host component not found")
+            log.error("%s Host component not found", log_identifier)
             return {
                 "status": "error",
                 "error_message": "Host component not found, cannot access request response functionality.",
@@ -252,7 +254,7 @@ async def broker_request_response(
 
         if not host_component.is_broker_request_response_enabled():
             log.error(
-                f"{log_identifier} Broker request/response is not enabled for this agent"
+                "%s Broker request/response is not enabled for this agent", log_identifier
             )
             return {
                 "status": "error",

@@ -153,8 +153,8 @@ class Pipeline:
                     log.info("Successfully preprocessed a file: %s", file_path)
                 else:
                     log.warning("Failed to preprocess a file.")
-            except Exception as e:
-                log.error("Error preprocessing file %s.", file_path, exc_info=e)
+            except Exception:
+                log.exception("Error preprocessing file %s.", file_path)
 
         if not preprocessed_docs:
             log.warning("No documents were successfully preprocessed")
