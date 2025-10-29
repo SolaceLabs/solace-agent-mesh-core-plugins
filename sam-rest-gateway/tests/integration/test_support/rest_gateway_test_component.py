@@ -66,7 +66,7 @@ class RestGatewayTestComponent:
                     log.info("REST Gateway test client initialized successfully")
                     return
             except Exception as e:
-                log.debug(f"Exception while accessing fastapi_app: {e}")
+                log.warning("Exception while accessing fastapi_app: %s", e)
             time.sleep(0.1)
         
         raise RuntimeError("Failed to initialize REST Gateway test client - FastAPI app not ready")
@@ -135,10 +135,8 @@ class RestGatewayTestComponent:
         else:
             raise ValueError(f"Unsupported HTTP method: {method}")
 
-        log.debug(
-            f"REST Gateway test request: {method} {endpoint} -> {response.status_code}"
-        )
-        
+        log.debug("REST Gateway test request: %s %s -> %s", method, endpoint, response.status_code)
+
         return response
 
     async def make_authenticated_request(
@@ -173,7 +171,7 @@ class RestGatewayTestComponent:
         
         if token:
             auth_headers["Authorization"] = f"Bearer {token}"
-            log.debug(f"REST Gateway authenticated request: Adding Bearer token {token[:10]}...")
+            log.debug("REST Gateway authenticated request: Adding Bearer token %s...", token[:10])
         
         return await self.make_request(
             method=method,

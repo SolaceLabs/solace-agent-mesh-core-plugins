@@ -86,14 +86,14 @@ class WebhookGatewayComponent(BaseGatewayComponent):
                 "webhook_endpoints", []
             )
 
-            log.info(
+            log.debug(
                 "%s Webhook server config: Host=%s, Port=%d, CORS Origins=%s",
                 self.log_identifier,
                 self.webhook_server_host,
                 self.webhook_server_port,
                 self.cors_allowed_origins,
             )
-            log.info(
+            log.debug(
                 "%s Loaded %d webhook endpoint configurations.",
                 self.log_identifier,
                 len(self.webhook_endpoints_config),
@@ -145,7 +145,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
                         status_code=status.HTTP_401_UNAUTHORIZED,
                         detail="Authentication failed or not permitted for this endpoint.",
                     )
-                log.info(
+                log.debug(
                     "%s Authenticated user identity: %s",
                     log_id_prefix,
                     user_identity.get("id", "unknown"),
@@ -156,7 +156,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
                         request, endpoint_config, user_identity
                     )
                 )
-                log.info(
+                log.debug(
                     "%s Input translated. Target agent: %s, A2A Parts: %d",
                     log_id_prefix,
                     target_agent_name,
@@ -170,7 +170,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
                     user_identity=user_identity,
                     is_streaming=False,
                 )
-                log.info(
+                log.debug(
                     "%s A2A task submitted successfully. TaskID: %s",
                     log_id_prefix,
                     task_id,
@@ -192,18 +192,17 @@ class WebhookGatewayComponent(BaseGatewayComponent):
                 )
                 raise http_exc
             except ValueError as ve:
-                log.error(
-                    "%s Value error in handler: %s", log_id_prefix, ve, exc_info=True
+                log.exception(
+                    "%s Value error in handler: %s", log_id_prefix, ve
                 )
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve)
                 )
             except PermissionError as pe:
-                log.error(
+                log.exception(
                     "%s Permission error in handler: %s",
                     log_id_prefix,
                     pe,
-                    exc_info=True,
                 )
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN, detail=str(pe)
@@ -276,7 +275,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
                             tags=["Dynamic Webhooks"],
                             summary=f"Webhook for {endpoint_config.get('target_agent_name', 'agent')}",
                         )
-                        log.info(
+                        log.debug(
                             "%s Added dynamic route: %s %s -> target: %s",
                             self.log_identifier,
                             method,
@@ -285,12 +284,11 @@ class WebhookGatewayComponent(BaseGatewayComponent):
                         )
 
                     except Exception as route_err:
-                        log.error(
+                        log.exception(
                             "%s Error processing endpoint config %s: %s",
                             self.log_identifier,
                             endpoint_config.get("path", "<unknown_path>"),
                             route_err,
-                            exc_info=True,
                         )
             else:
                 log.error(
@@ -311,7 +309,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
             async_loop = self.get_async_loop()
 
             if async_loop:
-                log.info(
+                log.debug(
                     "%s Scheduling Uvicorn server on existing async_loop: %s",
                     self.log_identifier,
                     async_loop,
@@ -352,10 +350,6 @@ class WebhookGatewayComponent(BaseGatewayComponent):
         GDK Hook: Signals the Uvicorn server to shut down.
         This method is called by BaseGatewayComponent.cleanup().
         """
-        log.info(
-            "%s _stop_listener called. Signaling Uvicorn server to exit...",
-            self.log_identifier,
-        )
         if self.uvicorn_server:
             self.uvicorn_server.should_exit = True
         log.info("%s Uvicorn server signaled to exit.", self.log_identifier)
@@ -384,7 +378,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
         if auth_type == "none":
             user_id = assumed_identity_str or "webhook_anonymous_user"
             claims = {"id": user_id, "source": "webhook_anonymous"}
-            log.info(
+            log.debug(
                 "%s Authentication type 'none'. Using claims: %s", log_id_prefix, claims
             )
             return claims
@@ -430,7 +424,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
             if secrets.compare_digest(received_token, expected_token_value):
                 user_id = assumed_identity_str or f"token_user:{token_name}"
                 claims = {"id": user_id, "source": "webhook_token"}
-                log.info(
+                log.debug(
                     "%s Token authentication successful. Using claims: %s",
                     log_id_prefix,
                     claims,
@@ -481,7 +475,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
                         "username": username,
                         "source": "webhook_basic_auth",
                     }
-                    log.info(
+                    log.debug(
                         "%s Basic authentication successful for user '%s'. Using claims: %s",
                         log_id_prefix,
                         username,

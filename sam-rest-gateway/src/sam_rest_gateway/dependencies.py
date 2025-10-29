@@ -89,7 +89,7 @@ def get_user_id(
     if not enforce_auth:
         default_identity = component.get_config("default_user_identity")
         if default_identity:
-            log.info(
+            log.debug(
                 "%s No authenticated user; using default_user_identity: '%s'",
                 log_id_prefix,
                 default_identity,

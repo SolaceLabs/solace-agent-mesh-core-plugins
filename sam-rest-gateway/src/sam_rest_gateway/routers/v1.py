@@ -77,7 +77,7 @@ async def invoke_task_sync(
         api_version="v1",
     )
 
-    log.info(
+    log.debug(
         "%sTask %s submitted. Waiting for synchronous result...", log_prefix, task_id
     )
 

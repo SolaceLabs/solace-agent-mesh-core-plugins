@@ -178,7 +178,7 @@ class RestGatewayComponent(BaseGatewayComponent):
         if not enforce_auth:
             default_identity = self.get_config("default_user_identity")
             if default_identity:
-                log.info(
+                log.debug(
                     "%s No authenticated user; using default_user_identity: '%s'",
                     log_id_prefix,
                     default_identity,
@@ -360,14 +360,14 @@ class RestGatewayComponent(BaseGatewayComponent):
         # If there are aggregated artifacts from streaming, update the main task object.
         if context and "aggregated_artifacts" in context:
             task_data.artifacts = context["aggregated_artifacts"]
-            log.info(
+            log.debug(
                 "%s Injected %d aggregated artifacts into final task object.",
                 log_id_prefix,
                 len(task_data.artifacts),
             )
 
         api_version = context.get("api_version", "v2") if context else "v2"
-        log.info(
+        log.debug(
             "%s Processing final response for API version: %s",
             log_id_prefix,
             api_version,
@@ -381,7 +381,7 @@ class RestGatewayComponent(BaseGatewayComponent):
             with self.sync_wait_lock:
                 wait_context = self.sync_wait_events.get(task_id)
             if wait_context:
-                log.info(
+                log.debug(
                     "%s Synchronous v1 call detected. Setting event with resolved task.",
                     log_id_prefix,
                 )
@@ -394,7 +394,7 @@ class RestGatewayComponent(BaseGatewayComponent):
                     task_id,
                 )
         else:  # api_version == "v2"
-            log.info(
+            log.debug(
                 "%s Storing final task result in cache for v2 polling.", log_id_prefix
             )
             self.result_cache.set(task_id, final_task_dict, ttl=600)
@@ -417,7 +417,7 @@ class RestGatewayComponent(BaseGatewayComponent):
         log_id_prefix = f"{self.log_identifier}[SendError:{task_id}]"
         context = self.task_context_manager.get_context(task_id)
         api_version = context.get("api_version", "v2") if context else "v2"
-        log.info(
+        log.debug(
             "%s Processing error response for API version: %s",
             log_id_prefix,
             api_version,

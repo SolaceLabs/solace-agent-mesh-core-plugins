@@ -210,7 +210,7 @@ class EventMeshTool(DynamicTool):
             tool_context._invocation_context.agent, "host_component", None
         )
         if not host_component:
-            log.error(f"{log_identifier} Host component not found.")
+            log.error("%s Host component not found.", log_identifier)
             return {
                 "status": "error",
                 "message": "Host component not found, cannot access request/response functionality.",
@@ -218,7 +218,7 @@ class EventMeshTool(DynamicTool):
 
         if not self.session_id:
             log.error(
-                f"{log_identifier} Session not initialized. Tool's init() method may have failed."
+                "%s Session not initialized. Tool's init() method may have failed.", log_identifier
             )
             return {
                 "status": "error",
@@ -239,9 +239,7 @@ class EventMeshTool(DynamicTool):
             topic = _fill_topic_template(topic_template, resolved_params)
 
             if not topic:
-                log.error(
-                    f"{log_identifier} Topic is empty after template resolution. Check 'topic' configuration."
-                )
+                log.error("%s Topic is empty after template resolution. Check 'topic' configuration.", log_identifier)
                 return {
                     "status": "error",
                     "message": "Configuration error: Resulting topic is empty. Please define a 'topic' in the tool's configuration.",
@@ -274,9 +272,7 @@ class EventMeshTool(DynamicTool):
             }
 
         except Exception as e:
-            log.error(
-                f"{log_identifier} Error during tool execution: {e}", exc_info=True
-            )
+            log.exception("%s Error during tool execution: %s", log_identifier, e)
             return {
                 "status": "error",
                 "message": f"An unexpected error occurred: {str(e)}",

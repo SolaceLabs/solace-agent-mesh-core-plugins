@@ -80,9 +80,9 @@ class MockAuthServer:
                 )
             
             token = auth_header[7:]  # Remove "Bearer " prefix
-            
-            log.debug(f"Mock Auth Server: Validating token: {token[:10]}...")
-            
+
+            log.debug("Mock Auth Server: Validating token: %s...", token[:10])
+
             if token in self.unauthorized_tokens:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -90,10 +90,10 @@ class MockAuthServer:
                 )
             
             if token in self.valid_tokens and self.valid_tokens[token] is not None:
-                log.debug(f"Mock Auth Server: Token validation successful for {token[:10]}...")
+                log.debug("Mock Auth Server: Token validation successful for %s...", token[:10])
                 return {"valid": True, "provider": validation_request.provider}
-            
-            log.debug(f"Mock Auth Server: Token validation failed for {token[:10]}...")
+
+            log.debug("Mock Auth Server: Token validation failed for %s...", token[:10])
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired token"
@@ -114,9 +114,9 @@ class MockAuthServer:
                 )
             
             token = auth_header[7:]  # Remove "Bearer " prefix
-            
-            log.debug(f"Mock Auth Server: Getting user info for token: {token[:10]}...")
-            
+
+            log.debug("Mock Auth Server: Getting user info for token: %s...", token[:10])
+
             if token in self.unauthorized_tokens:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -125,15 +125,15 @@ class MockAuthServer:
             
             user_info = self.valid_tokens.get(token)
             if user_info is not None:
-                log.debug(f"Mock Auth Server: User info retrieved for {user_info['email']}")
+                log.debug("Mock Auth Server: User info retrieved for %s", user_info['email'])
                 return {
                     "email": user_info["email"],
                     "name": user_info["name"],
                     "provider": provider,
                     "roles": user_info.get("roles", [])
                 }
-            
-            log.debug(f"Mock Auth Server: User info not found for token {token[:10]}...")
+
+            log.debug("Mock Auth Server: User info not found for token %s...", token[:10])
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired token"
@@ -147,7 +147,7 @@ class MockAuthServer:
         @self.app.exception_handler(Exception)
         async def generic_exception_handler(request: Request, exc: Exception):
             """Handle unexpected exceptions."""
-            log.exception(f"Mock Auth Server: Unhandled exception: {exc}")
+            log.exception("Mock Auth Server: Unhandled exception: %s", exc)
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content={"detail": "Internal server error"}
@@ -159,8 +159,8 @@ class MockAuthServer:
             log.warning("Mock Auth Server: Already started")
             return
 
-        log.info(f"Mock Auth Server: Starting server on {self.url}")
-        
+        log.info("Mock Auth Server: Starting server on %s", self.url)
+
         config = uvicorn.Config(
             app=self.app,
             host=self.host,
@@ -191,7 +191,7 @@ class MockAuthServer:
                     response = client.get(f"{self.url}/health", timeout=1.0)
                     if response.status_code == 200:
                         self.started = True
-                        log.info(f"Mock Auth Server: Started successfully on {self.url}")
+                        log.info("Mock Auth Server: Started successfully on %s", self.url)
                         return
             except Exception:
                 pass
@@ -217,13 +217,13 @@ class MockAuthServer:
     def add_test_token(self, token: str, user_info: Dict[str, Any]):
         """Add a test token with associated user information."""
         self.valid_tokens[token] = user_info
-        log.debug(f"Mock Auth Server: Added test token for {user_info.get('email', 'unknown')}")
+        log.debug("Mock Auth Server: Added test token for %s", user_info.get('email', 'unknown'))
 
     def remove_test_token(self, token: str):
         """Remove a test token."""
         if token in self.valid_tokens:
             del self.valid_tokens[token]
-            log.debug(f"Mock Auth Server: Removed test token {token[:10]}...")
+            log.debug("Mock Auth Server: Removed test token %s...", token[:10])
 
     def clear_test_tokens(self):
         """Clear all test tokens except the default ones."""

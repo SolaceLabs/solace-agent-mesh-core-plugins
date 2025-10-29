@@ -207,7 +207,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
         log_id_prefix = f"{self.log_identifier}[DataPlaneClient]"
         async with self.data_plane_client_lock:
             if self.data_plane_internal_app is not None:
-                log.info(
+                log.warning(
                     "%s Data plane client (internal app) already started.",
                     log_id_prefix,
                 )
@@ -409,7 +409,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     self.data_plane_broker_input = None
                     self.data_plane_broker_output = None
             else:
-                log.info(
+                log.warning(
                     "%s Data plane client (internal app) already stopped or not started.",
                     log_id_prefix,
                 )
@@ -448,7 +448,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                         topic_str,
                     )
                 else:
-                    log.info(
+                    log.debug(
                         "%s Successfully added subscription '%s' to data plane BrokerInput.",
                         log_id_prefix,
                         topic_str,
@@ -467,7 +467,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
         Consumes SolaceMessages from data_plane_message_queue and processes them.
         """
         log_id_prefix = f"{self.log_identifier}[DataPlaneProcessor]"
-        log.info("%s Starting data plane message processor loop...", log_id_prefix)
+        log.debug("%s Starting data plane message processor loop...", log_id_prefix)
         loop = asyncio.get_running_loop()
 
         while not self.stop_signal.is_set():
@@ -478,7 +478,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 )
 
                 if solace_msg is None:
-                    log.info(
+                    log.debug(
                         "%s Received shutdown signal for data plane processor loop.",
                         log_id_prefix,
                     )
@@ -498,7 +498,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             except queue.Empty:
                 continue
             except asyncio.CancelledError:
-                log.info(
+                log.debug(
                     "%s Data plane message processor loop cancelled.", log_id_prefix
                 )
                 break
@@ -515,7 +515,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 if solace_msg is not None and self.data_plane_message_queue is not None:
                     self.data_plane_message_queue.task_done()
 
-        log.info("%s Data plane message processor loop finished.", log_id_prefix)
+        log.debug("%s Data plane message processor loop finished.", log_id_prefix)
 
     async def _extract_initial_claims(
         self, external_event_data: Dict[str, Any]
@@ -563,7 +563,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             )
             return None
 
-        log.info(
+        log.debug(
             "%s Extracted initial claims with id: %s", log_id_prefix, user_identity_str
         )
         return {"id": user_identity_str, "source": source}
@@ -909,7 +909,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             )
             return
 
-        log.info(
+        log.debug(
             "%s Processing final response for task %s using output_handler '%s'",
             log_id_prefix,
             task_data.id,
