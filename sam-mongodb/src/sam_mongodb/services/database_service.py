@@ -121,7 +121,7 @@ class MongoDatabaseService:
         Detects the database schema and generates a YAML summary for the LLM.
         """
         log_identifier = "[MongoDatabaseService:get_schema_summary_for_llm]"
-        log.debug("%s Starting schema detection...", log_identifier)
+        log.info("%s Starting schema detection...", log_identifier)
 
         schema_representation = {}
         collections = collections_to_scan or self.get_collections()
@@ -141,5 +141,5 @@ class MongoDatabaseService:
 
             schema_representation[collection_name] = field_details
 
-        log.debug("%s Schema detection complete.", log_identifier)
+        log.info("%s Schema detection complete.", log_identifier)
         return yaml.dump(schema_representation, sort_keys=False, allow_unicode=True)

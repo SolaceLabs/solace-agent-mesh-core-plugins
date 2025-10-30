@@ -697,6 +697,9 @@ class SlackGatewayComponent(BaseGatewayComponent):
                     file_info_slack
                 )
                 if "error" in download_result:
+                    log.error(
+                        "%s File download failed: %s", log_id, download_result["error"]
+                    )
                     continue
                 content_bytes = download_result["content"]
                 original_filename = download_result["name"]

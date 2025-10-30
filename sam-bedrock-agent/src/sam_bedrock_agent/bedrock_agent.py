@@ -275,7 +275,7 @@ async def invoke_bedrock_agent(
         session_state_for_bedrock = {"files": []}
         if allow_files_config:
             if files and isinstance(files, list) and len(files) > 0:
-                log.debug(
+                log.info(
                     "%s File processing enabled by config and files provided. Processing %d files.",
                     log_identifier,
                     len(files)
@@ -295,12 +295,12 @@ async def invoke_bedrock_agent(
                 processed_payload = file_processing_result.get("bedrock_files_payload")
                 if processed_payload:
                     session_state_for_bedrock["files"] = processed_payload
-                    log.debug(
+                    log.info(
                         "%s Files processed successfully for Bedrock session state.",
                         log_identifier
                     )
                 else:
-                    log.debug(
+                    log.info(
                         "%s No files were processed or payload was empty, session_state will be None.",
                         log_identifier
                     )
@@ -311,7 +311,7 @@ async def invoke_bedrock_agent(
                     files
                 )
             else:
-                log.debug(
+                log.info(
                     "%s File processing enabled, but no files provided by user.",
                     log_identifier
                 )
