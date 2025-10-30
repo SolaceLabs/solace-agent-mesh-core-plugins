@@ -86,7 +86,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
                 "webhook_endpoints", []
             )
 
-            log.debug(
+            log.info(
                 "%s Webhook server config: Host=%s, Port=%d, CORS Origins=%s",
                 self.log_identifier,
                 self.webhook_server_host,
@@ -275,7 +275,7 @@ class WebhookGatewayComponent(BaseGatewayComponent):
                             tags=["Dynamic Webhooks"],
                             summary=f"Webhook for {endpoint_config.get('target_agent_name', 'agent')}",
                         )
-                        log.debug(
+                        log.info(
                             "%s Added dynamic route: %s %s -> target: %s",
                             self.log_identifier,
                             method,

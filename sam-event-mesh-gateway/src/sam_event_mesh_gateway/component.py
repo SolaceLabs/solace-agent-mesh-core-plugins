@@ -478,7 +478,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 )
 
                 if solace_msg is None:
-                    log.debug(
+                    log.info(
                         "%s Received shutdown signal for data plane processor loop.",
                         log_id_prefix,
                     )
@@ -498,7 +498,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             except queue.Empty:
                 continue
             except asyncio.CancelledError:
-                log.debug(
+                log.info(
                     "%s Data plane message processor loop cancelled.", log_id_prefix
                 )
                 break

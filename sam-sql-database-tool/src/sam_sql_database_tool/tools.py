@@ -187,7 +187,7 @@ class SqlDatabaseTool(DynamicTool):
             if not self._connection_healthy:
                 self._connection_healthy = True
                 self._connection_error = None
-                log.debug("%s Database connection recovered for '%s'", log_identifier, self.tool_name)
+                log.info("%s Database connection recovered for '%s'", log_identifier, self.tool_name)
 
                 if not self._schema_context and self.tool_config.auto_detect_schema:
                     log.debug("%s Attempting to fetch schema after recovery...", log_identifier)

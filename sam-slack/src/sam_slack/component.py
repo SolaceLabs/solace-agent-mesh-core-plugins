@@ -726,7 +726,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
                         },
                         timestamp=datetime.now(timezone.utc),
                     )
-                    if save_result["status"] in ["success", "_success"]:
+                    if save_result["status"] in ["success", "partial_success"]:
                         data_version = save_result.get("data_version", 0)
                         artifact_uri = f"artifact://{self.gateway_id}/{user_id_for_artifacts}/{a2a_session_id}/{original_filename}?version={data_version}"
                         file_part = a2a.create_file_part_from_uri(
