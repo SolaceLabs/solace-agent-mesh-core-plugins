@@ -181,7 +181,7 @@ def setup_dependencies(component: "RestGatewayComponent"):
                     raise exc
                 except Exception as exc:
                     log.exception(
-                        "An unexpected error occurred in auth middleware: %s",
+                        "An unexpected error occurred in auth middleware: %s", exc
                     )
                     response = JSONResponse(
                         status_code=500,
