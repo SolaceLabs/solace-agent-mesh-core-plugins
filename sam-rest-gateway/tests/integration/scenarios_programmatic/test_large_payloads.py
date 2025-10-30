@@ -60,7 +60,7 @@ async def test_v2_large_text_payload(
         )
         if response.status_code == 200:
             break
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1.0)
     else:
         pytest.fail(f"Task {task_id} did not complete in time.")
 
