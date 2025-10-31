@@ -15,17 +15,17 @@ async def invoke_bedrock_flow(
 ) -> Dict[str, Any]:
     plugin_name = "sam-bedrock-agent"
     log_identifier = f"[{plugin_name}:invoke_bedrock_flow]"
-    log.info(f"{log_identifier} Received request. Input text: '{input_text[:100]}...'")
+    log.info("%s Received request. Input text: '%s...'", log_identifier, input_text[:100])
 
     if not tool_context or not tool_context._invocation_context:
-        log.error(f"{log_identifier} ToolContext or InvocationContext is missing.")
+        log.error("%s ToolContext or InvocationContext is missing.", log_identifier)
         return {
             "status": "error",
             "message": "ToolContext or InvocationContext is missing.",
         }
 
     if not tool_config:
-        log.error(f"{log_identifier} Tool configuration (tool_config) is missing.")
+        log.error("%s Tool configuration (tool_config) is missing.", log_identifier)
         return {"status": "error", "message": "Tool configuration is missing."}
 
     bedrock_flow_id = tool_config.get("bedrock_flow_id")
@@ -36,7 +36,8 @@ async def invoke_bedrock_flow(
 
     if not bedrock_flow_id or not bedrock_flow_alias_id:
         log.error(
-            f"{log_identifier} Missing bedrock_flow_id or bedrock_flow_alias_id in tool_config."
+            "%s Missing bedrock_flow_id or bedrock_flow_alias_id in tool_config.",
+            log_identifier,
         )
         return {
             "status": "error",
@@ -45,7 +46,7 @@ async def invoke_bedrock_flow(
 
     if not amazon_bedrock_runtime_config:
         log.error(
-            f"{log_identifier} Missing amazon_bedrock_runtime_config in agent configuration."
+            "%s Missing amazon_bedrock_runtime_config in agent configuration.", log_identifier
         )
         return {
             "status": "error",
@@ -57,7 +58,7 @@ async def invoke_bedrock_flow(
 
     if not boto3_config:
         log.error(
-            f"{log_identifier} Missing boto3_config in amazon_bedrock_runtime_config."
+            "%s Missing boto3_config in amazon_bedrock_runtime_config.", log_identifier
         )
         return {
             "status": "error",
@@ -77,10 +78,13 @@ async def invoke_bedrock_flow(
             }
         ]
 
-        log.info(
-            f"{log_identifier} Invoking Bedrock flow {bedrock_flow_id} (alias {bedrock_flow_alias_id})."
+        log.debug(
+            "%s Invoking Bedrock flow %s (alias %s).",
+            log_identifier,
+            bedrock_flow_id,
+            bedrock_flow_alias_id,
         )
-        log.debug(f"{log_identifier} Flow input data: {json.dumps(flow_input_data)}")
+        log.debug("%s Flow input data: %s", log_identifier, json.dumps(flow_input_data))
 
         response_text = bedrock_runtime.invoke_flow(
             flow_id=bedrock_flow_id,
@@ -88,7 +92,9 @@ async def invoke_bedrock_flow(
             input_data=flow_input_data,
         )
         log.info(
-            f"{log_identifier} Successfully invoked Bedrock flow. Response length: {len(response_text)}"
+            "%s Successfully invoked Bedrock flow. Response length: %d",
+            log_identifier,
+            len(response_text),
         )
 
         try:
@@ -96,7 +102,7 @@ async def invoke_bedrock_flow(
             final_response = parsed_response
         except json.JSONDecodeError:
             log.debug(
-                f"{log_identifier} Flow response is not JSON, returning as plain text."
+                "%s Flow response is not JSON, returning as plain text.", log_identifier
             )
             final_response = response_text
 
@@ -107,13 +113,14 @@ async def invoke_bedrock_flow(
         }
 
     except RuntimeError as r_err:
-        log.error(
-            f"{log_identifier} Runtime error during Bedrock flow invocation: {r_err}",
-            exc_info=True,
+        log.exception(
+            "%s Runtime error during Bedrock flow invocation: %s",
+            log_identifier,
+            r_err,
         )
         return {"status": "error", "message": f"Runtime error: {r_err}"}
     except Exception as e:
-        log.error(f"{log_identifier} Error invoking Bedrock flow: {e}", exc_info=True)
+        log.exception("%s Error invoking Bedrock flow: %s", log_identifier, e)
         return {
             "status": "error",
             "message": f"Failed to invoke Bedrock flow: {str(e)}",

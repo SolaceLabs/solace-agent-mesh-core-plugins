@@ -52,7 +52,7 @@ async def _process_slack_event(
                 )
             return
 
-        log.info(
+        log.debug(
             "%s Authenticated Slack user identity: %s",
             log_id,
             user_identity.get("id", "unknown"),
@@ -66,7 +66,7 @@ async def _process_slack_event(
         target_agent_name, a2a_parts, external_request_context = (
             await component._translate_external_input(event_with_identity)
         )
-        log.info(
+        log.debug(
             "%s Translation complete. Target: %s, Parts: %d",
             log_id,
             target_agent_name,
@@ -80,7 +80,7 @@ async def _process_slack_event(
             user_identity=user_identity,
             is_streaming=True,
         )
-        log.info(
+        log.debug(
             "%s Submitted A2A task %s for agent %s via GDK.",
             log_id,
             task_id_for_ack,

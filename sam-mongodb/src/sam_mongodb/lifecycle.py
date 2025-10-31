@@ -71,7 +71,7 @@ def initialize_mongo_agent(host_component: Any, init_config: MongoAgentInitConfi
 
     try:
         db_service = MongoDatabaseService(connection_params, init_config.query_timeout)
-        log.info(
+        log.debug(
             "%s DatabaseService for MongoDB initialized successfully.", log_identifier
         )
     except Exception as e:
@@ -80,7 +80,7 @@ def initialize_mongo_agent(host_component: Any, init_config: MongoAgentInitConfi
 
     schema_summary_for_llm = ""
     if init_config.auto_detect_schema:
-        log.info("%s Auto-detecting database schema...", log_identifier)
+        log.debug("%s Auto-detecting database schema...", log_identifier)
         collections_to_scan = (
             [init_config.database_collection]
             if init_config.database_collection
@@ -89,7 +89,7 @@ def initialize_mongo_agent(host_component: Any, init_config: MongoAgentInitConfi
         schema_summary_for_llm = db_service.get_schema_summary_for_llm(
             collections_to_scan
         )
-        log.info("%s Schema auto-detection complete.", log_identifier)
+        log.debug("%s Schema auto-detection complete.", log_identifier)
     else:
         log.warning(
             "%s Schema auto-detection is disabled. The LLM will rely solely on the data description.",
@@ -104,7 +104,7 @@ def initialize_mongo_agent(host_component: Any, init_config: MongoAgentInitConfi
         host_component.set_agent_specific_state(
             "max_inline_results", init_config.max_inline_results
         )
-        log.info(
+        log.debug(
             "%s Stored database handler and schema information in agent_specific_state.",
             log_identifier,
         )
@@ -135,15 +135,16 @@ def initialize_mongo_agent(host_component: Any, init_config: MongoAgentInitConfi
 
         final_system_instruction = "\n".join(instruction_parts)
         host_component.set_agent_system_instruction_string(final_system_instruction)
-        log.info(
+        log.debug(
             "%s System instruction string for MongoDB agent has been set.",
             log_identifier,
         )
 
     except Exception as e:
-        log.error(
-            f"{log_identifier} Failed to construct or set system instruction for MongoDB agent: {e}",
-            exc_info=True,
+        log.exception(
+            "%s Failed to construct or set system instruction for MongoDB agent: %s",
+            log_identifier,
+            e,
         )
 
     log.info("%s MongoDB Agent initialization completed successfully.", log_identifier)
@@ -163,10 +164,10 @@ def cleanup_mongo_agent_resources(host_component: Any):
     if db_service:
         try:
             db_service.close()
-            log.info("%s DatabaseService closed successfully.", log_identifier)
+            log.debug("%s DatabaseService closed successfully.", log_identifier)
         except Exception as e:
-            log.error(
-                f"{log_identifier} Error closing DatabaseService: {e}", exc_info=True
+            log.exception(
+                "%s Error closing DatabaseService: %s", log_identifier, e
             )
     else:
         log.info(

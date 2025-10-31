@@ -24,7 +24,7 @@ async def city_to_timezone(
     """
     plugin_name = "sam-geo-information"
     log_identifier = f"[{plugin_name}:city_to_timezone]"
-    log.info(f"{log_identifier} Received city: '{city}'")
+    log.info("%s Received city: '%s'", log_identifier, city)
 
     if not tool_config:
         return {"status": "error", "message": "Tool configuration is missing."}
@@ -68,5 +68,5 @@ async def city_to_timezone(
         return {"status": "success", "message": message, "results": results}
 
     except Exception as e:
-        log.exception(f"{log_identifier} Error looking up timezone: {e}")
+        log.exception("%s Error looking up timezone: %s", log_identifier, e)
         return {"status": "error", "message": f"Error looking up timezone: {str(e)}"}

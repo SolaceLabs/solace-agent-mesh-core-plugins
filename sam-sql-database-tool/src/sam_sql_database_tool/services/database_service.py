@@ -43,7 +43,7 @@ class DatabaseService:
                 self.engine.dialect.name,
             )
         except Exception as e:
-            log.error("Failed to create database engine: %s", e, exc_info=True)
+            log.exception("Failed to create database engine: %s", e)
             raise
 
     def _is_cache_valid(self) -> bool:
@@ -56,12 +56,12 @@ class DatabaseService:
         """Manually clear the schema cache."""
         self._schema_cache = None
         self._cache_timestamp = None
-        log.info("Schema cache cleared")
+        log.debug("Schema cache cleared")
 
     def _refresh_schema_background(self, max_enum_cardinality: int, sample_size: int) -> None:
         """Background task to refresh expired schema cache."""
         try:
-            log.info("Background schema refresh started...")
+            log.debug("Background schema refresh started...")
             schema = self._compute_schema(max_enum_cardinality, sample_size)
 
             with self._refresh_lock:
@@ -69,9 +69,9 @@ class DatabaseService:
                 self._cache_timestamp = datetime.now()
                 self._refresh_in_progress = False
 
-            log.info("Background schema refresh completed")
+            log.debug("Background schema refresh completed")
         except Exception as e:
-            log.error("Background schema refresh failed: %s", e, exc_info=True)
+            log.exception("Background schema refresh failed: %s", e)
             with self._refresh_lock:
                 self._refresh_in_progress = False
 
@@ -93,7 +93,7 @@ class DatabaseService:
                 self.engine.dispose()
                 log.info("Database engine disposed successfully.")
             except Exception as e:
-                log.error("Error disposing database engine: %s", e, exc_info=True)
+                log.exception("Error disposing database engine: %s", e)
         else:
             log.warning("No database engine to dispose.")
 
@@ -108,7 +108,7 @@ class DatabaseService:
             connection = self.engine.connect()
             yield connection
         except SQLAlchemyError as e:
-            log.error("Database connection error: %s", str(e), exc_info=True)
+            log.exception("Database connection error: %s", str(e))
             raise
         finally:
             if connection:
@@ -137,7 +137,7 @@ class DatabaseService:
                         }
                     ]
         except SQLAlchemyError as e:
-            log.error("Query execution error: %s", str(e), exc_info=True)
+            log.exception("Query execution error: %s", str(e))
             raise
 
     def get_tables(self) -> List[str]:
@@ -190,7 +190,7 @@ class DatabaseService:
                 result = conn.execute(query)
                 return [dict(row._mapping) for row in result]
         except Exception as e:
-            log.error("Error sampling table %s: %s", table_name, e, exc_info=True)
+            log.exception("Error sampling table %s: %s", table_name, e)
             return []
 
     def _get_complete_enum_values(self, table_name: str, col_name: str, limit: int = 50) -> List[Any]:
@@ -382,14 +382,14 @@ class DatabaseService:
             return table_info
 
         except Exception as e:
-            log.error("Error processing table %s: %s", table_name, e, exc_info=True)
+            log.exception("Error processing table %s: %s", table_name, e)
             return {'columns': {}, '_error': str(e)}
 
     def _compute_schema(self, max_enum_cardinality: int, sample_size: int) -> str:
         """Compute schema without caching logic."""
         log.info("Starting schema detection...")
         tables = self.get_tables()
-        log.info("Processing %d tables in parallel with 5 workers...", len(tables))
+        log.debug("Processing %d tables in parallel with 5 workers...", len(tables))
         schema = {}
 
         with ThreadPoolExecutor(max_workers=5) as executor:
@@ -413,7 +413,7 @@ class DatabaseService:
                 enum_columns_to_fetch.append((table_name, col_name))
 
         if enum_columns_to_fetch:
-            log.info("Fetching complete enum values for %d columns in parallel...", len(enum_columns_to_fetch))
+            log.debug("Fetching complete enum values for %d columns in parallel...", len(enum_columns_to_fetch))
             enum_values = self._get_complete_enum_values_batch(enum_columns_to_fetch)
         else:
             enum_values = {}
@@ -475,7 +475,7 @@ class DatabaseService:
         self._sample_size = sample_size
 
         if self._is_cache_valid():
-            log.info("Using cached schema (age: %s)", datetime.now() - self._cache_timestamp)
+            log.debug("Using cached schema (age: %s)", datetime.now() - self._cache_timestamp)
             return self._schema_cache
 
         cache_expired = self._schema_cache is not None
@@ -484,7 +484,7 @@ class DatabaseService:
             with self._refresh_lock:
                 if not self._refresh_in_progress:
                     self._refresh_in_progress = True
-                    log.info("Cache expired. Starting background refresh, serving stale cache...")
+                    log.debug("Cache expired. Starting background refresh, serving stale cache...")
                     refresh_thread = threading.Thread(
                         target=self._refresh_schema_background,
                         args=(max_enum_cardinality, sample_size),
@@ -498,6 +498,6 @@ class DatabaseService:
 
         self._schema_cache = schema_yaml
         self._cache_timestamp = datetime.now()
-        log.info("Schema cached with TTL of %s", self._cache_ttl)
+        log.debug("Schema cached with TTL of %s", self._cache_ttl)
 
         return schema_yaml

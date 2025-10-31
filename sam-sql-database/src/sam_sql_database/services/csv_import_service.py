@@ -61,7 +61,7 @@ class CsvImportService:
                     )
 
         if not all_files_to_process:
-            log.info("No CSV files specified or found for import.")
+            log.warning("No CSV files specified or found for import.")
             return
 
         log.info(
@@ -159,7 +159,7 @@ class CsvImportService:
                 table = sa.Table(table_name, metadata_obj, *columns_for_table)
 
                 with self.db_service.get_connection() as conn:
-                    log.info(
+                    log.debug(
                         "Creating table '%s' for CSV file '%s'.", table_name, file_path
                     )
                     metadata_obj.create_all(conn)

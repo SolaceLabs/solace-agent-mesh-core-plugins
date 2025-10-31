@@ -44,7 +44,7 @@ def init_db(config: Dict = {}):
         raise ValueError("Database configuration not found.") from None
 
     try:
-        log.info("Initializing the database...")
+        log.debug("Initializing the database...")
         engine = create_engine(db_url)
         Base.metadata.create_all(bind=engine)
     except Exception:

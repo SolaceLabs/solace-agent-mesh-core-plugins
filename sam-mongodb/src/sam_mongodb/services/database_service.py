@@ -55,11 +55,11 @@ class MongoDatabaseService:
                 port,
             )
         except ConnectionFailure as e:
-            log.error(f"{log_identifier} MongoDB connection failed: {e}")
+            log.error("%s MongoDB connection failed: %s", log_identifier, e)
             raise
         except Exception as e:
             log.error(
-                f"{log_identifier} An unexpected error occurred during connection: {e}"
+                "%s An unexpected error occurred during connection: %s", log_identifier, e
             )
             raise
 
@@ -110,7 +110,7 @@ class MongoDatabaseService:
         """Executes a MongoDB aggregation pipeline."""
         if self.db is None:
             raise RuntimeError("Database not connected.")
-        log.debug(f"Executing pipeline on collection '{collection_name}': {pipeline}")
+        log.debug("Executing pipeline on collection '%s': %s", collection_name, pipeline)
         collection = self.db[collection_name]
         return list(collection.aggregate(pipeline))
 
@@ -127,7 +127,7 @@ class MongoDatabaseService:
         collections = collections_to_scan or self.get_collections()
 
         for collection_name in collections:
-            log.debug(f"{log_identifier} Analyzing collection: {collection_name}")
+            log.debug("%s Analyzing collection: %s", log_identifier, collection_name)
             fields = self.get_fields(collection_name)
             field_details = {}
             for field in fields:
@@ -141,5 +141,5 @@ class MongoDatabaseService:
 
             schema_representation[collection_name] = field_details
 
-        log.info(f"{log_identifier} Schema detection complete.")
+        log.info("%s Schema detection complete.", log_identifier)
         return yaml.dump(schema_representation, sort_keys=False, allow_unicode=True)

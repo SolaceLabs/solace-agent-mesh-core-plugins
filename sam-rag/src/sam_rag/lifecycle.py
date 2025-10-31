@@ -75,18 +75,18 @@ def initialize_rag_agent(host_component: Any, init_config: RagAgentConfig):
         config_dict["host_component"] = host_component
         
         # Log host_component details for debugging
-        log.info(f"{log_identifier} host_component type: {type(host_component)}")
+        log.debug("%s host_component type: %s", log_identifier, type(host_component))
         
         # The A2A ADK Host is responsible for initializing and providing the artifact_service
         # on the host_component if it's configured in the host's main YAML.
         # This plugin should not attempt to create it.
         if hasattr(host_component, "artifact_service") and host_component.artifact_service is not None:
-            log.info(f"{log_identifier} ArtifactService is available on host_component: {host_component.artifact_service}")
+            log.debug("%s ArtifactService is available on host_component: %s", log_identifier, host_component.artifact_service)
         else:
-            log.warning(f"{log_identifier} ArtifactService is NOT available on host_component. "
+            log.warning("%s ArtifactService is NOT available on host_component. "
                         "If RAG background processes require artifact storage, "
                         "ensure artifact_service is configured in the A2A ADK Host's main YAML "
-                        "and provided to this agent's host_component by the framework.")
+                        "and provided to this agent's host_component by the framework.", log_identifier)
 
         # Create pipeline with configuration
         # The pipeline and its sub-services will access host_component.artifact_service if needed.
@@ -137,9 +137,9 @@ def cleanup_rag_agent_resources(host_component: Any):
         if pipeline:
             # Clean up pipeline resources
             pipeline.cleanup()
-            log.info("%s Pipeline resources cleaned up successfully.", log_identifier)
+            log.debug("%s Pipeline resources cleaned up successfully.", log_identifier)
         else:
-            log.info("%s No pipeline found in agent_specific_state.", log_identifier)
+            log.debug("%s No pipeline found in agent_specific_state.", log_identifier)
             
         log.info("%s RAG Agent resource cleanup finished.", log_identifier)
         

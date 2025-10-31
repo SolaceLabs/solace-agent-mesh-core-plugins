@@ -28,7 +28,11 @@ async def get_weather(
     plugin_name = "sam-geo-information"
     log_identifier = f"[{plugin_name}:get_weather]"
     log.info(
-        f"{log_identifier} Received location: '{location}', units: {units}, forecast_days: {forecast_days}"
+        "%s Received location: '%s', units: %s, forecast_days: %s",
+        log_identifier,
+        location,
+        units,
+        forecast_days,
     )
 
     if not tool_config:
@@ -99,7 +103,7 @@ async def get_weather(
         return {"status": "success", "message": message, "result": result}
 
     except Exception as e:
-        log.exception(f"{log_identifier} Error getting weather information: {e}")
+        log.exception("%s Error getting weather information: %s", log_identifier, e)
         return {
             "status": "error",
             "message": f"Error getting weather information: {str(e)}",

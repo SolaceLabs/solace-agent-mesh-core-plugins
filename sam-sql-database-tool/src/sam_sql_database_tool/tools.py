@@ -127,20 +127,20 @@ class SqlDatabaseTool(DynamicTool):
 
         try:
             if self.tool_config.auto_detect_schema:
-                log.info("%s Auto-detecting database schema...", log_identifier)
+                log.debug("%s Auto-detecting database schema...", log_identifier)
                 self._schema_context = self.db_service.get_optimized_schema_for_llm(
                     max_enum_cardinality=self.tool_config.max_enum_cardinality,
                     sample_size=self.tool_config.schema_sample_size
                 )
-                log.info("%s Schema cached in memory (%d chars)", log_identifier, len(self._schema_context))
+                log.debug("%s Schema cached in memory (%d chars)", log_identifier, len(self._schema_context))
             else:
-                log.info("%s Using provided schema overrides.", log_identifier)
+                log.debug("%s Using provided schema overrides.", log_identifier)
                 if not self.tool_config.schema_summary_override:
                     raise ValueError(
                         "schema_summary_override is required when auto_detect_schema is false."
                     )
                 self._schema_context = self.tool_config.schema_summary_override
-                log.info("%s Schema overrides applied.", log_identifier)
+                log.debug("%s Schema overrides applied.", log_identifier)
 
             if not self._schema_context:
                 log.warning(
@@ -190,13 +190,13 @@ class SqlDatabaseTool(DynamicTool):
                 log.info("%s Database connection recovered for '%s'", log_identifier, self.tool_name)
 
                 if not self._schema_context and self.tool_config.auto_detect_schema:
-                    log.info("%s Attempting to fetch schema after recovery...", log_identifier)
+                    log.debug("%s Attempting to fetch schema after recovery...", log_identifier)
                     try:
                         self._schema_context = self.db_service.get_optimized_schema_for_llm(
                             max_enum_cardinality=self.tool_config.max_enum_cardinality,
                             sample_size=self.tool_config.schema_sample_size
                         )
-                        log.info("%s Schema successfully fetched after recovery (%d chars)", log_identifier, len(self._schema_context))
+                        log.debug("%s Schema successfully fetched after recovery (%d chars)", log_identifier, len(self._schema_context))
                     except Exception as schema_error:
                         log.warning("%s Schema fetch failed after recovery: %s", log_identifier, schema_error)
 

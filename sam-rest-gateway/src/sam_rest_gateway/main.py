@@ -159,7 +159,7 @@ def setup_dependencies(component: "RestGatewayComponent"):
                         request.state.user = user_profile
 
                 except httpx.RequestError as exc:
-                    log.error(f"Error calling auth service: {exc}")
+                    log.error("Error calling auth service: %s", exc)
                     response = JSONResponse(
                         status_code=503,
                         content={"detail": "Authentication service is unavailable."},
@@ -168,7 +168,9 @@ def setup_dependencies(component: "RestGatewayComponent"):
                     return
                 except httpx.HTTPStatusError as exc:
                     log.warning(
-                        f"Auth service returned an error: {exc.response.status_code} {exc.response.text}"
+                        "Auth service returned an error: %s %s",
+                        exc.response.status_code,
+                        exc.response.text,
                     )
                     response = JSONResponse(
                         status_code=401, content={"detail": "Authentication failed."}
@@ -179,7 +181,7 @@ def setup_dependencies(component: "RestGatewayComponent"):
                     raise exc
                 except Exception as exc:
                     log.exception(
-                        f"An unexpected error occurred in auth middleware: {exc}"
+                        "An unexpected error occurred in auth middleware: %s", exc
                     )
                     response = JSONResponse(
                         status_code=500,

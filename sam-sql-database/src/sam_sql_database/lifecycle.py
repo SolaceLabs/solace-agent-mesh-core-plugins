@@ -177,7 +177,7 @@ def initialize_sql_agent(host_component: Any, init_config: SqlAgentInitConfigMod
         raise RuntimeError(f"DatabaseService initialization failed: {e}") from e
 
     if init_config.csv_files or init_config.csv_directories:
-        log.info(
+        log.debug(
             "%s Starting CSV data import (before schema handling)...", log_identifier
         )
         try:
@@ -202,7 +202,7 @@ def initialize_sql_agent(host_component: Any, init_config: SqlAgentInitConfigMod
 
     try:
         if init_config.auto_detect_schema:
-            log.info("%s Auto-detecting database schema...", log_identifier)
+            log.debug("%s Auto-detecting database schema...", log_identifier)
             schema_summary_for_llm = db_service.get_schema_summary_for_llm()
             detailed_schema_dict = db_service.get_detailed_schema_representation()
             detailed_schema_yaml = yaml.dump(
@@ -210,7 +210,7 @@ def initialize_sql_agent(host_component: Any, init_config: SqlAgentInitConfigMod
             )
             log.info("%s Schema auto-detection complete.", log_identifier)
         else:
-            log.info("%s Using provided schema overrides.", log_identifier)
+            log.debug("%s Using provided schema overrides.", log_identifier)
             if (
                 not init_config.schema_summary_override
                 or not init_config.database_schema_override
@@ -249,7 +249,7 @@ def initialize_sql_agent(host_component: Any, init_config: SqlAgentInitConfigMod
         host_component.set_agent_specific_state(
             "max_inline_result_size_bytes", init_config.max_inline_result_size_bytes
         )
-        log.info(
+        log.debug(
             "%s Stored database handler and schema information in agent_specific_state.",
             log_identifier,
         )
@@ -321,17 +321,16 @@ def initialize_sql_agent(host_component: Any, init_config: SqlAgentInitConfigMod
 
         final_system_instruction = "\n".join(instruction_parts)
         host_component.set_agent_system_instruction_string(final_system_instruction)
-        log.info(
+        log.debug(
             "%s System instruction string for SQL agent has been set on host_component.",
             log_identifier,
         )
 
     except Exception as e_instr:
-        log.error(
+        log.exception(
             "%s Failed to construct or set system instruction for SQL agent: %s",
             log_identifier,
             e_instr,
-            exc_info=True,
         )
 
 
