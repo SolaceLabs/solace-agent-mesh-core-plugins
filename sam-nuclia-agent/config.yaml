@@ -1,7 +1,7 @@
 # Plugin Metadata:
 # Name: sam-nuclia-agent
 # Version: 0.1.0
-# Description: A plugin for connecting to RAG and retrieving relevant documents from Nulcia
+# Description: A plugin that enables agents to connect to the Nuclia RAG platform
 # Author: SolaceLabs <solacelabs@solace.com>
 # 
 # --- Start of Agent Configuration Template ---
@@ -65,25 +65,19 @@ apps:
       model: *general_model 
 
       instruction: |
-        You're __COMPONENT_SPACED_CAPITALIZED_NAME__ agent.
+        You are the __COMPONENT_SPACED_CAPITALIZED_NAME__ agent, designed to provide accurate answers using the Nuclia RAG platform.
 
-         **Search with context:** Call the `generate_answer_with_citations` tool.
-          - Pass the original user query to the `query` parameter.
-          - **If you successfully determined a CLA label** from the decision tree, pass it to the `cla` parameter.
-          - **If you could NOT determine a CLA label** (e.g., the decision tree returned no result or the user's profile doesn't match any CLA), do NOT pass the `cla` parameter. The search will proceed without CLA filtering.
-          - Pass the user's country to the `country` parameter.
+        **Your workflow:**
+        1. **Query Processing**: When a user asks a question, use the `generate_answer_with_citations` tool with their original query as the `query` parameter.
+        
+        2. **Answer Presentation**: The tool returns a `response_artifact` containing the complete, final answer with citations. Present this artifact exactly as returned using the artifact embed format below. Do not modify, summarize, or add commentary to the response.
 
-        **Present the final answer.** The `generate_answer_with_citations` tool will return a single artifact (`response_artifact`) that contains the COMPLETE and FINAL answer. Your final response to the user MUST present the contents of this artifact using an `artifact_content` embed exactly as provided. Do NOT modify, summarize, add to, or interpret the answer in any way. Use this exact markdown structure:
+        **Required response format:**
         ```markdown
         «artifact_content:{{response_artifact.filename}}:{{response_artifact.version}}»
         ```
-        
-        **IMPORTANT:** If you were unable to determine a CLA label in step 2b, you MUST add a disclaimer to your response BEFORE the artifact embed:
-        ```markdown
-        ⚠️ **Note:** I was unable to determine your specific Collective Labour Agreement (CLA) from your profile. The information provided below may not be fully accurate for your situation. Please consult HR directly for CLA-specific questions.
-        
-        «artifact_content:{{response_artifact.filename}}:{{response_artifact.version}}»
-        ```
+
+        Always use the tool for information retrieval and present results using the artifact embed format.
 
       tools:
         # Example configuration for a RAG tool connecting to Nuclia
@@ -101,7 +95,7 @@ apps:
             top_k: ${NUCLIA_TOP_K}
 
             # --- Artifact Configuration ---
-            output_filename_base: "hr_answer"
+            output_filename_base: "nuclia_answer"
             artifact_description_query_max_length: 150
             inline_citation_links: true
 
@@ -109,7 +103,7 @@ apps:
             prompt_rephrasing:
               template: |
                 <context>
-                For the following search, ensure that you answer the question using the {param_a} document. For questions that are related to country, the question relates to an employee residing in {country}.
+                Consider the user's {region} and focus on {category} related information when answering the question.
                 </context>
 
                 <query>
@@ -117,14 +111,14 @@ apps:
                 </query>
 
             template_parameters:
-              - name: "param_a"
-                description: "Parameter A description"
+              - name: "region"
+                description: "Geographic region or location context for the query"
                 type: "string"
                 required: false
                 nullable: true
                 default: ""
-              - name: "country"
-                description: "The country of the user, extracted from context"
+              - name: "category"
+                description: "Document category or type to focus the search"
                 type: "string"
                 required: false
                 nullable: true
@@ -141,16 +135,17 @@ apps:
               field:
                 or:
                   - prop: label
-                    labelset: "param_a"
-                    label: "{param_a}"
+                    labelset: "category"
+                    label: "{category}"
                   - not:
                       prop: label
-                      labelset: "param_a"
+                      labelset: "category"
 
             audit_metadata:
               enabled: true
               fields:
-                param_a: "{param_a}"
+                region: "{region}"
+                category: "{category}"
                 user_id: "{user_id}"
 
         - group_name: artifact_management
@@ -164,7 +159,7 @@ apps:
       enable_artifact_content_instruction: true
 
       agent_card:
-        description: "A plugin for connecting to RAG and retrieving relevant documents from Nulcia"
+        description: "An agent that enables agents to connect to the Nuclia RAG platform"
         defaultInputModes: ["text"]
         defaultOutputModes: ["text"]
         skills:
