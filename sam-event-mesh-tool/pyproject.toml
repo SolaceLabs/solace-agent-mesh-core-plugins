@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [tool.sam_event_mesh_tool.metadata]
-type = "sam_event_mesh_tool"
+type = "tool"
 
 [project]
 name = "sam_event_mesh_tool"

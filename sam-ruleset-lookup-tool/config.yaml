@@ -1,0 +1,42 @@
+# Plugin Metadata:
+# Name: sam-ruleset-lookup-tool
+# Version: 0.1.0
+# Description: a configuration-driven tool that provides text-based rulesets to LLM agents for reasoning.
+# Author: SolaceLabs <solacelabs@solace.com>
+# 
+# --- Start of Custom Configuration Template ---
+# Solace Agent Mesh: Custom Configuration Template
+#
+# This file serves as a template for creating new custom configurations from this plugin.
+# Use placeholders like __COMPONENT_KEBAB_CASE_NAME__, __COMPONENT_PASCAL_CASE_NAME__,
+# and __COMPONENT_UPPER_SNAKE_CASE_NAME__ where the specific component name should be inserted.
+
+# To use the `shared_config.yaml` file, uncomment the following line and remove the `shared_config` section below.
+# !include ../shared_config.yaml
+
+tools:
+  - tool_type: python
+    component_module: sam_ruleset_lookup_tool.ruleset_lookup_tool
+    component_base_path: .
+    tool_config:
+      decision_data: 
+        name: "hr_policies"
+        description: "HR policy rulesets for employee questions"
+        grouping_parameter: "country"
+        input_parameters:
+          - name: "country"
+            type: "string"
+            required: true
+            description: "Employee's country"
+        decision_tree_groups:
+          netherlands:
+            decision_trees:
+              - name: "Leave Policy"
+                description: "Annual leave calculation rules"
+                decision_logic: |
+                  IF employment_years >= 5:
+                    RETURN 25 + (employment_years - 5) * 0.5 days (max 30)
+                  ELSE:
+                    RETURN 20 + employment_years days
+      include_topics_in_description: true
+      include_groups_in_description: true
