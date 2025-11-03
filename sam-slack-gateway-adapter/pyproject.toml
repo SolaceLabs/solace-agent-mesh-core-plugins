@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.sam_slack_gateway_adapter.metadata]
+type = "gateway"
+
+[project]
+name = "sam_slack_gateway_adapter"
+version = "0.1.0"
+authors = [
+  { name="SolaceLabs", email="solacelabs@solace.com" },
+]
+description = "Solace Agent Mesh gateway adapter for Slack using the new gateway framework"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "slack_bolt==1.25.0",
+    "requests>=2.31.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sam_slack_gateway_adapter"]
+src-path = "src"
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/sam_slack_gateway_adapter" = "sam_slack_gateway_adapter/"
+"config.yaml" = "sam_slack_gateway_adapter/config.yaml"
+"README.md" = "sam_slack_gateway_adapter/README.md"
+"pyproject.toml" = "sam_slack_gateway_adapter/pyproject.toml"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "--tb=short --strict-markers --disable-warnings -p pytest_asyncio"
+markers = []
+
+[tool.hatch.envs.hatch-test]
+dependencies = [
+  "a2a-sdk[http-server]>=0.3.1",
+  "pytest-asyncio",
+  "pytest>=8.0.0",
+  "pytest-mock>=3.0.0",
+  "pytest-cov>=4.0.0",
+  "pytest-xdist>=3.5.0",
+  "solace_agent_mesh>=1.1.0,<2.0.0",
+  "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure"
+]
