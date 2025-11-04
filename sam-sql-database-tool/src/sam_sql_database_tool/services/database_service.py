@@ -99,20 +99,16 @@ class DatabaseService:
 
     @contextmanager
     def get_connection(self) -> Generator[Connection, None, None]:
-        """Get a database connection from the pool."""
+        """Get a database connection from the pool with automatic transaction management."""
         if not self.engine:
             raise RuntimeError("Database engine is not initialized.")
 
-        connection: Optional[Connection] = None
         try:
-            connection = self.engine.connect()
-            yield connection
+            with self.engine.begin() as connection:
+                yield connection
         except SQLAlchemyError as e:
             log.exception("Database connection error: %s", str(e))
             raise
-        finally:
-            if connection:
-                connection.close()
 
     def execute_query(self, query: str) -> List[Dict[str, Any]]:
         """Execute a SQL query."""
