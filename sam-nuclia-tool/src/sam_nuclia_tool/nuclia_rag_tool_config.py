@@ -138,6 +138,11 @@ class NucliaRagToolConfig(BaseModel):
     This model validates all configuration options and provides sensible defaults
     where appropriate.
     """
+    tool_name: str = Field(
+        default="NucliaRagTool",
+        description="The name of the tool as it will appear to the agent.",
+        min_length=1,
+    )
 
     # --- Required Nuclia Connection Details ---
     base_url: str = Field(
