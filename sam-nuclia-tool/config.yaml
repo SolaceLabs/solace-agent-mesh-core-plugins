@@ -4,6 +4,7 @@ tools:
     component_module: sam_nuclia_tool.nuclia_rag_tool
     class_name: NucliaRagTool
     tool_config:
+      tool_name: generate_answer_with_citations # Optional, required if using multiple instance of the tool in the same agent
       # --- Nuclia Connection Details ---
       base_url: ${NUCLIA_BASE_URL}
       kb_id: ${NUCLIA_KB_ID}
