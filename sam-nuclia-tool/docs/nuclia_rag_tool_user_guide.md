@@ -65,7 +65,7 @@ This configuration will:
 ### Basic Usage in Agent Instructions
 
 ```markdown
-When the user asks a question, use the `generate_answer_with_citations` tool:
+When the user asks a question, use the `NucliaRagTool` tool:
 1. Pass the user's query to the `query` parameter
 2. The tool will return a `response_artifact`
 3. Present the answer using an artifact embed:
@@ -89,7 +89,7 @@ When the user asks a question, use the `generate_answer_with_citations` tool:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `tool_name` | String | "generate_answer_with_citations" | Tool name, required if using multiple instance of the tool in the same agent |
+| `tool_name` | String | "NucliaRagTool" | Tool name, required if using multiple instance of the tool in the same agent |
 | `top_k` | Integer | `5` | Maximum paragraphs to retrieve (1-200) |
 | `output_filename_base` | String | `"nuclia_answer"` | Base name for output artifacts |
 | `artifact_description_query_max_length` | Integer | `150` | Max query length in artifact description |
@@ -103,7 +103,7 @@ tools:
     component_module: sam_nuclia_tool.nuclia_rag_tool
     class_name: NucliaRagTool
     tool_config:
-      tool_name: generate_answer_with_citations # Optional, required if using multiple instance of the tool in the same agent
+      tool_name: NucliaRagTool # Optional, required if using multiple instance of the tool in the same agent
       # Connection
       base_url: "${NUCLIA_BASE_URL}"
       kb_id: "${NUCLIA_KB_ID}"
@@ -463,7 +463,7 @@ audit_metadata:
 Update your agent instructions to extract and pass audit parameters:
 
 ```markdown
-When calling the `generate_answer_with_citations` tool, always include:
+When calling the `NucliaRagTool` tool, always include:
 
 **Required for filtering and context:**
 - `region`: The user's region
