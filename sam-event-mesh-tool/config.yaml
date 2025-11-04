@@ -1,12 +1,72 @@
-# Solace Agent Mesh: Event Mesh Tool Configuration Example
-#
-# This file serves as a template demonstrating how to use the Event Mesh Tool plugin.
-# You should copy the 'tools' block into your own agent's configuration file.
+# Plugin Metadata:
+# Name: sam-event-mesh-tool
+# Version: 0.1.0
+# Description: A tool to allow an agent to send requests to a Solace broker and wait for a reply. It can also be configured to send 'fire-and-forget' events to the broker
+# Author: SolaceLabs solacelabs@solace.com
 
-# --- Start of Example Agent Configuration ---
-# This is just a tools section from an agent config file.
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: __COMPONENT_KEBAB_CASE_NAME__.log
+
+# To use the `shared_config.yaml` file, uncomment the following line and remove the `shared_config` section below.
+# !include ../shared_config.yaml
+shared_config:
+  - broker_connection: &broker_connection
+      dev_mode: ${SOLACE_DEV_MODE, false}
+      broker_url: ${SOLACE_BROKER_URL, ws://localhost:8008}
+      broker_username: ${SOLACE_BROKER_USERNAME, default}
+      broker_password: ${SOLACE_BROKER_PASSWORD, default}
+      broker_vpn: ${SOLACE_BROKER_VPN, default}
+      temporary_queue: ${USE_TEMPORARY_QUEUES, true}
+
+  - models:
+    general: &general_model
+      # This dictionary structure tells ADK to use the LiteLlm wrapper.
+      # 'model' uses the specific model identifier your endpoint expects.
+      model: ${LLM_SERVICE_GENERAL_MODEL_NAME} # Use env var for model name
+      # 'api_base' tells LiteLLM where to send the request.
+      api_base: ${LLM_SERVICE_ENDPOINT} # Use env var for endpoint URL
+      # 'api_key' provides authentication.
+      api_key: ${LLM_SERVICE_API_KEY} # Use env var for API key
+
+  - services:
+    # Default session service configuration
+    session_service: &default_session_service
+      type: "memory"
+      default_behavior: "PERSISTENT"
+    
+    # Default artifact service configuration
+    artifact_service: &default_artifact_service
+      type: "filesystem"
+      base_path: "/tmp/samv2"
+      artifact_scope: namespace # Or "namespace", "app", "custom"
+
+apps:
+  - name: __COMPONENT_KEBAB_CASE_NAME__-app
+    app_base_path: . 
+    app_module: solace_agent_mesh.agent.sac.app 
+    broker:
+      <<: *broker_connection
+
+    # App Level Config
+    app_config:
+      namespace: ${NAMESPACE} 
+      supports_streaming: true 
+      agent_name: "__COMPONENT_PASCAL_CASE_NAME__" 
+      display_name: "__COMPONENT_SPACED_CAPITALIZED_NAME__ Agent"
+      model: *general_model 
+
+      instruction: |
+        You are an agent equipped with tools to interact with a Solace event mesh.
+        You can send requests to the event mesh and wait for replies, or send fire-and-forget events.
+        Use the configured tools to communicate with external services through the Solace broker.
+        When making requests, ensure you provide all required parameters and handle responses appropriately.
 
       tools:
+        - group_name: artifact_management
+          tool_type: builtin-group
+
         # --- Example Event Mesh Tool Configuration ---
         - tool_type: python
           component_module: "sam_event_mesh_tool.tools"
@@ -47,3 +107,24 @@
             topic: "acme/weather/request/{{ request_id }}"
             wait_for_response: true
 
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+
+      artifact_handling_mode: "reference"
+      enable_embed_resolution: true
+      enable_artifact_content_instruction: true
+
+      agent_card:
+        description: "A SAM plugin that enables agents to interact with a Solace event mesh. Can send requests and wait for replies, or send fire-and-forget events to the broker."
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text"]
+        skills:
+          - id: "GetWeather"
+            name: "Get Weather"
+            description: "Gets the current weather for a specific city using the event mesh."
+
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: false }
+      inter_agent_communication:
+        allow_list: []
+        request_timeout_seconds: 30
