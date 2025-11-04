@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.sam_ruleset_lookup_tool.metadata]
+type = "tool"
+
+[project]
+name = "sam_ruleset_lookup_tool"
+version = "0.1.0"
+authors = [
+  { name="SolaceLabs", email="solacelabs@solace.com" },
+]
+description = "a configuration-driven tool that provides text-based rulesets to LLM agents for reasoning."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sam_ruleset_lookup_tool"]
+src-path = "src"
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/sam_ruleset_lookup_tool" = "sam_ruleset_lookup_tool/"
+"config.yaml" = "sam_ruleset_lookup_tool/config.yaml"
+"README.md" = "sam_ruleset_lookup_tool/README.md"
+"pyproject.toml" = "sam_ruleset_lookup_tool/pyproject.toml"
