@@ -1,6 +1,6 @@
 # SAM Nuclia Agent Plugin
 
-A plugin for connecting to RAG and retrieving relevant documents from [Nulcia](https://nuclia.com).
+A plugin for connecting to RAG and retrieving relevant documents from [Nuclia](https://nuclia.com).
 
 This is a plugin for Solace Agent Mesh (SAM).
 
