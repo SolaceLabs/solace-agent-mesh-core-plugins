@@ -49,6 +49,7 @@ class NucliaRagTool(DynamicTool):
         super().__init__(tool_config)
         if isinstance(tool_config, dict):
             self.tool_config = NucliaRagToolConfig(**tool_config)
+
         self.log_identifier = "[NucliaRagTool]"
         log.info(
             "%s Initialized with validated configuration for KB: %s",
@@ -59,7 +60,7 @@ class NucliaRagTool(DynamicTool):
     @property
     def tool_name(self) -> str:
         """Returns the tool's name."""
-        return self.tool_config.get("tool_name", "generate_answer_with_citations")
+        return self.tool_config.tool_name
 
     @property
     def tool_description(self) -> str:
