@@ -10,7 +10,6 @@ The `RulesetLookupTool` is a configuration-driven tool that provides text-based 
 - **Retrieves** text-based rulesets organized by groups
 - **Provides** structured IF/ELSE logic for LLM evaluation
 - **Supports** multiple ruleset topics within each group
-- **Enables** dynamic tool naming and schema generation
 
 ### What It Doesn't Do
 - **Execute** decision logic (the LLM does this)
@@ -23,7 +22,7 @@ The `RulesetLookupTool` is a configuration-driven tool that provides text-based 
 
 ```yaml
 - tool_type: python
-  component_module: jde_hr_agent.ruleset_lookup_tool
+  component_module: sam_ruleset_lookup_tool.ruleset_lookup_tool
   component_base_path: .
   tool_config:
     decision_data: 
@@ -60,12 +59,12 @@ The `decision_data` must contain the following structure:
     }
   ],
   "decision_tree_groups": {
-    "netherlands": {
+    "example_group": {
       "decision_trees": [
         {
-          "name": "CLA (Collective Labour Agreement)",
-          "description": "Determines applicable CLA based on employee profile",
-          "decision_logic": "IF employeeGroup == 'internal employee' AND jobGrade contains 'CT':\n  RETURN 'NLD_LOC_C&T'\nELSE IF employeeGroup == 'internal employee' AND jobGrade contains 'SE':\n  RETURN 'NLD_LOC_SER'\nELSE:\n  RETURN 'No applicable CLA found'"
+          "name": "Generic Policy",
+          "description": "Demonstrates a simple ruleset for example purposes",
+          "decision_logic": "IF parameter1 == 'value1' AND parameter2 > 10:\n  RETURN 'Result A'\nELSE IF parameter1 == 'value2':\n  RETURN 'Result B'\nELSE:\n  RETURN 'Default result'"
         }
       ]
     },
@@ -114,7 +113,7 @@ The `decision_data` must contain the following structure:
 # Agent configuration
 tools:
   - tool_type: python
-    component_module: jde_hr_agent.ruleset_lookup_tool
+    component_module: sam_ruleset_lookup_tool.ruleset_lookup_tool
     component_base_path: .
     tool_config:
       decision_data: 
@@ -270,30 +269,3 @@ instruction: |
   3. Apply the IF/ELSE logic using the user's profile data
   4. Use the result to inform your response
 ```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Tool not found**: Check `component_module` path and class import
-2. **Invalid group**: Verify group keys match your data structure
-3. **Missing parameters**: Ensure all required parameters are provided
-4. **Logic errors**: LLM misinterprets the decision logic format
-
-### Error Messages
-
-- `"Tool config must contain 'decision_data'"`: Missing required configuration
-- `"'decision_data' is missing required key: 'X'"`: Invalid data structure
-- `"No ruleset logic found for group 'X'"`: Group not found and no default
-- `"The required parameter 'X' was not provided"`: Missing required parameter
-
-## Migration from DecisionTreeTool
-
-If migrating from the old `DecisionTreeTool`:
-
-1. Update import: `jde_hr_agent.decision_tree_tool` → `jde_hr_agent.ruleset_lookup_tool`
-2. Update function calls: `get_decision_trees_*` → `get_rulesets_*`
-3. Update documentation references
-4. Configuration structure remains the same
-
-The tool maintains backward compatibility with existing `decision_data` structures.

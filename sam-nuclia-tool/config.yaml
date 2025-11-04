@@ -1,0 +1,68 @@
+tools:
+  # Example configuration for a RAG tool connecting to Nuclia
+  - tool_type: python
+    component_module: sam_nuclia_tool.nuclia_rag_tool
+    class_name: NucliaRagTool
+    tool_config:
+      # --- Nuclia Connection Details ---
+      base_url: ${NUCLIA_BASE_URL}
+      kb_id: ${NUCLIA_KB_ID}
+      token: ${NUCLIA_USER_TOKEN}
+      api_key: ${NUCLIA_API_KEY}
+
+      # --- Performance & Cost Control ---
+      top_k: ${NUCLIA_TOP_K}
+
+      # --- Artifact Configuration ---
+      output_filename_base: "nuclia_answer"
+      artifact_description_query_max_length: 150
+      inline_citation_links: true
+
+      # --- Dynamic Prompt/Context Configuration ---
+      prompt_rephrasing:
+        template: |
+          <context>
+          Consider the user's {region} and focus on {category} related information when answering the question.
+          </context>
+
+          <query>
+          {query}
+          </query>
+
+      template_parameters:
+        - name: "region"
+          description: "Geographic region or location context for the query"
+          type: "string"
+          required: false
+          nullable: true
+          default: ""
+        - name: "category"
+          description: "Document category or type to focus the search"
+          type: "string"
+          required: false
+          nullable: true
+          default: ""
+        - name: "user_id"
+          description: "User ID extracted from context for audit logging"
+          type: "string"
+          context_expression: a2a_user_config.user_profile.id
+          required: false
+          nullable: true
+          default: ""
+
+      filter_expression_template:
+        field:
+          or:
+            - prop: label
+              labelset: "category"
+              label: "{category}"
+            - not:
+                prop: label
+                labelset: "category"
+
+      audit_metadata:
+        enabled: true
+        fields:
+          region: "{region}"
+          category: "{category}"
+          user_id: "{user_id}"

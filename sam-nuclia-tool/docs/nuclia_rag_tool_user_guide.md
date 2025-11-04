@@ -46,7 +46,7 @@ Here's the simplest possible configuration to get started:
 ```yaml
 tools:
   - tool_type: python
-    component_module: sam_nuclia_agent.nuclia_rag_tool
+    component_module: sam_nuclia_tool.nuclia_rag_tool
     class_name: NucliaRagTool
     tool_config:
       # Required: Nuclia connection details
@@ -99,7 +99,7 @@ When the user asks a question, use the `generate_answer_with_citations` tool:
 ```yaml
 tools:
   - tool_type: python
-    component_module: sam_nuclia_agent.nuclia_rag_tool
+    component_module: sam_nuclia_tool.nuclia_rag_tool
     class_name: NucliaRagTool
     tool_config:
       # Connection
