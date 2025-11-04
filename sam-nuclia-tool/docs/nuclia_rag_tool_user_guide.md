@@ -89,6 +89,7 @@ When the user asks a question, use the `generate_answer_with_citations` tool:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
+| `tool_name` | String | "generate_answer_with_citations" | Tool name, required if using multiple instance of the tool in the same agent |
 | `top_k` | Integer | `5` | Maximum paragraphs to retrieve (1-200) |
 | `output_filename_base` | String | `"nuclia_answer"` | Base name for output artifacts |
 | `artifact_description_query_max_length` | Integer | `150` | Max query length in artifact description |
@@ -102,6 +103,7 @@ tools:
     component_module: sam_nuclia_tool.nuclia_rag_tool
     class_name: NucliaRagTool
     tool_config:
+      tool_name: generate_answer_with_citations # Optional, required if using multiple instance of the tool in the same agent
       # Connection
       base_url: "${NUCLIA_BASE_URL}"
       kb_id: "${NUCLIA_KB_ID}"
