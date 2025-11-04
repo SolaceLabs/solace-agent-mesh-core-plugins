@@ -59,7 +59,7 @@ class NucliaRagTool(DynamicTool):
     @property
     def tool_name(self) -> str:
         """Returns the tool's name."""
-        return self.tool_config.get("tool_name", "generate_answer_with_citations")
+        return self.tool_config.tool_name
 
     @property
     def tool_description(self) -> str:
