@@ -14,7 +14,7 @@ version = "0.1.0"
 authors = [
   { name="SolaceLabs", email="solacelabs@solace.com" },
 ]
-description = "A plugin for connecting to RAG and retrieving relevant documents from Nulcia"
+description = "A plugin for connecting to RAG and retrieving relevant documents from Nuclia"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
