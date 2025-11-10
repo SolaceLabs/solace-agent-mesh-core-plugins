@@ -589,7 +589,7 @@ scanner:
     # Local file system source
     - type: filesystem
       directories:
-        - "${LOCAL_DOCUMENTS_PATH}"  # e.g. "/path/to/local/documents"
+        - "${DOCUMENTS_PATH}"  # e.g. "/path/to/local/documents"
       filters:
         file_formats:
           - ".txt"
@@ -687,7 +687,7 @@ scanner:
 
 Set the following environment variables for the aforementioned sources:
 - **Filesystem Sources:**
-  - `LOCAL_DOCUMENTS_PATH`: Path to local documents directory for batch scanning documents.
+  - `DOCUMENTS_PATH`: Path to local documents directory for batch scanning documents.
   
   - **Google Drive:**
     - `GOOGLE_DRIVE_CREDENTIALS_PATH`: Path to Google Drive credentials file (for OAuth2)
