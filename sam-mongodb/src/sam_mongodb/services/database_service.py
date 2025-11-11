@@ -98,9 +98,28 @@ class MongoDatabaseService:
             raise RuntimeError("Database not connected.")
         collection = self.db[collection_name]
         try:
-            distinct_values = collection.distinct(field)
-            if len(distinct_values) > limit:
-                return distinct_values[:limit], False
+            pipeline = [
+                {"$sample": {"size": 5}},
+                {"$match": {field: {"$exists": True}}},
+                {"$project": {field: 1, "_id": 0}}
+            ]
+            
+            results = list(collection.aggregate(pipeline))
+            distinct_values = []
+            seen_str_representations = set()
+            
+            for doc in results:
+                if field in doc:
+                    value = doc.get(field)
+                    # Convert to string representation for comparison
+                    value_str = str(value)
+                    if value_str not in seen_str_representations:
+                        seen_str_representations.add(value_str)
+                        distinct_values.append(value)
+                        
+                        # Stop if we've reached the limit
+                        if len(distinct_values) > limit:
+                            return distinct_values, False
             return distinct_values, True
         except OperationFailure as e:
             log.warning("Could not get distinct values for field '%s': %s", field, e)
