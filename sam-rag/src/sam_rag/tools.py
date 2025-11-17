@@ -8,9 +8,9 @@ import tempfile
 import asyncio
 import datetime
 import mimetypes
-import base64 
 import inspect
 import json
+from datetime import datetime, timezone
 from urllib.parse import urlparse, parse_qs
 
 from google.adk.tools import ToolContext
@@ -164,7 +164,7 @@ async def ingest_document(
             "file_type": mime_type,
             "file_name": final_name,  # Add file_name for reference in search results
             "source": "upload_file",
-            "ingestion_timestamp": datetime.datetime.now().isoformat(),
+            "ingestion_timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         # Create artifact URL for the document
@@ -199,7 +199,7 @@ async def ingest_document(
             content_bytes=input_bytes,
             mime_type=mime_type,
             metadata_dict=document_metadata,
-            timestamp=datetime.datetime.now()
+            timestamp=datetime.now(timezone.utc)
         )
         
         log.info("%s Stored document as artifact in %s: %s", log_identifier, original_session_id, artifact_result)

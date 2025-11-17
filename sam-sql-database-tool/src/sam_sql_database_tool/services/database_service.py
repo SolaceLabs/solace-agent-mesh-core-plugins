@@ -3,7 +3,7 @@
 from contextlib import contextmanager
 from typing import List, Dict, Any, Generator, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import threading
 
 from sqlalchemy.engine import Engine, Connection
@@ -50,7 +50,7 @@ class DatabaseService:
         """Check if the schema cache is still valid."""
         if self._schema_cache is None or self._cache_timestamp is None:
             return False
-        return datetime.now() - self._cache_timestamp < self._cache_ttl
+        return datetime.now(timezone.utc) - self._cache_timestamp < self._cache_ttl
 
     def clear_cache(self) -> None:
         """Manually clear the schema cache."""
@@ -66,7 +66,7 @@ class DatabaseService:
 
             with self._refresh_lock:
                 self._schema_cache = schema
-                self._cache_timestamp = datetime.now()
+                self._cache_timestamp = datetime.now(timezone.utc)
                 self._refresh_in_progress = False
 
             log.debug("Background schema refresh completed")
@@ -471,7 +471,7 @@ class DatabaseService:
         self._sample_size = sample_size
 
         if self._is_cache_valid():
-            log.debug("Using cached schema (age: %s)", datetime.now() - self._cache_timestamp)
+            log.debug("Using cached schema (age: %s)", datetime.now(timezone.utc) - self._cache_timestamp)
             return self._schema_cache
 
         cache_expired = self._schema_cache is not None
@@ -493,7 +493,7 @@ class DatabaseService:
         schema_yaml = self._compute_schema(max_enum_cardinality, sample_size)
 
         self._schema_cache = schema_yaml
-        self._cache_timestamp = datetime.now()
+        self._cache_timestamp = datetime.now(timezone.utc)
         log.debug("Schema cached with TTL of %s", self._cache_ttl)
 
         return schema_yaml

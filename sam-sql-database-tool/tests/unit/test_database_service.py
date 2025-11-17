@@ -81,18 +81,18 @@ class TestDatabaseService:
         mock_db_service._schema_cache = "test_schema"
         assert not mock_db_service._is_cache_valid()
 
-        from datetime import datetime, timedelta
-        mock_db_service._cache_timestamp = datetime.now()
+        from datetime import datetime, timedelta, timezone
+        mock_db_service._cache_timestamp = datetime.now(timezone.utc)
         assert mock_db_service._is_cache_valid()
 
-        mock_db_service._cache_timestamp = datetime.now() - timedelta(seconds=11)
+        mock_db_service._cache_timestamp = datetime.now(timezone.utc) - timedelta(seconds=11)
         assert not mock_db_service._is_cache_valid()
 
     def test_clear_cache(self, mock_db_service):
         """Test manual cache clearing."""
-        from datetime import datetime
+        from datetime import datetime, timezone
         mock_db_service._schema_cache = "test_schema"
-        mock_db_service._cache_timestamp = datetime.now()
+        mock_db_service._cache_timestamp = datetime.now(timezone.utc)
 
         mock_db_service.clear_cache()
 
