@@ -8,5 +8,8 @@ To install one of the official core plugins into your solace-agent-mesh project,
 solace-agent-mesh plugin add YOUR_COMPONENT_NAME --plugin PLUGIN_NAME
 ```
 
+
+
+
 * replace PLUGIN_NAME with the plugin name (the sub directory name)
 
