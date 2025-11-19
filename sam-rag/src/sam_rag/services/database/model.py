@@ -3,7 +3,7 @@ import logging
 from typing import Dict
 from sqlalchemy import create_engine, Column, String, Enum, DateTime
 from sqlalchemy.ext.declarative import declarative_base
-from datetime import datetime
+from datetime import datetime, timezone
 
 Base = declarative_base()
 
@@ -21,7 +21,7 @@ class Document(Base):
     path = Column(String, primary_key=True)
     file = Column(String, nullable=False)
     status = Column(Enum(StatusEnum), nullable=False)
-    timestamp = Column(DateTime, default=datetime.now())
+    timestamp = Column(DateTime, default=datetime.now(timezone.utc))
 
 
 def config_db(config: Dict = {}):

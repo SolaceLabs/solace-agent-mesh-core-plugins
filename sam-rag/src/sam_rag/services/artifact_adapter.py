@@ -8,9 +8,9 @@ import os
 import mimetypes
 import datetime
 import asyncio
-from typing import Dict, Any, Optional
 
 # Import artifact helpers
+from datetime import datetime, timezone
 from solace_agent_mesh.agent.utils.artifact_helpers import (
     save_artifact_with_metadata,
     load_artifact_content_or_metadata
@@ -78,9 +78,9 @@ class ArtifactStorageAdapter:
                     "description": f"Document from {data_source or 'unknown source'}",
                     "source": file_path,
                     "original_path": file_path,
-                    "ingestion_timestamp": datetime.datetime.now().isoformat()
+                    "ingestion_timestamp": datetime.now(timezone.utc).isoformat()
                 },
-                timestamp=datetime.datetime.now()
+                timestamp=datetime.now(timezone.utc)
             )
             
             if save_result["status"] != "success":

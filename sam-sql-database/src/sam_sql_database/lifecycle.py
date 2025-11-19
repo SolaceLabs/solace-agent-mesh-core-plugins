@@ -3,11 +3,11 @@ Lifecycle functions (initialization and cleanup) and Pydantic configuration mode
 for the SQL Database Agent Plugin.
 """
 
-import datetime
 import logging
 from typing import Any, Dict, List, Optional, Literal
 import yaml
 
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field, SecretStr, model_validator
 
 from .services.database_service import (
@@ -289,7 +289,7 @@ def initialize_sql_agent(host_component: Any, init_config: SqlAgentInitConfigMod
                     example_parts.append(f"Natural Language: {nl}\nSQL Query: {sql}")
             if example_parts:
                 formatted_query_examples = "\n\n".join(example_parts)
-        current_timestamp = datetime.datetime.now().isoformat()
+        current_timestamp = datetime.now(timezone.utc).isoformat()
         instruction_parts = [
             f"You are an SQL assistant for a {db_type_for_prompt} database.",
             f"The current date and time are available as: {current_timestamp}",

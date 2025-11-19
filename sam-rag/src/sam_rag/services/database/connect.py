@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from sqlalchemy import inspect
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sam_rag.services.database.model import Document, StatusEnum, config_db
 
@@ -23,7 +23,7 @@ def get_db() -> Session:
 
 
 def insert_document(db: Session, path: str, file: str, status: StatusEnum) -> Document:
-    doc = Document(path=path, file=file, status=status, timestamp=datetime.now())
+    doc = Document(path=path, file=file, status=status, timestamp=datetime.now(timezone.utc))
     db.add(doc)
     db.commit()
     db.refresh(doc)
@@ -34,7 +34,7 @@ def update_document(db: Session, path: str, status: StatusEnum) -> Document:
     doc = db.query(Document).filter(Document.path == path).first()
     if doc:
         doc.status = status
-        doc.timestamp = datetime.now()
+        doc.timestamp = datetime.now(timezone.utc)
         db.commit()
         db.refresh(doc)
     return doc

@@ -140,7 +140,7 @@ class DataSource(ABC):
             A dictionary containing file metadata.
         """
         import os
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         metadata = {
             "file_path": file_path,
@@ -148,7 +148,7 @@ class DataSource(ABC):
             if "/" in file_path or "\\" in file_path
             else file_path,
             "source_type": self.__class__.__name__.lower().replace("datasource", ""),
-            "ingestion_timestamp": datetime.now().isoformat(),
+            "ingestion_timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         # Add artifact URL if available
