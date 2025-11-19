@@ -19,8 +19,6 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "requests==2.32.5",
-    "timezonefinder==6.2.0",
-    "pytz==2025.2",
     "PyYAML==6.0.2"
 ]
 
