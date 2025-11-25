@@ -6,7 +6,7 @@ allowing it to store file information in memory instead of a database.
 """
 import logging
 from typing import Dict, List, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class MemoryStorage:
             file: The filename of the document.
             **kwargs: Additional metadata for the document.
         """
-        timestamp = datetime.now().isoformat()
+        timestamp = datetime.now(timezone.utc).isoformat()
         self.files[path] = {
             "path": path,
             "file": file,
@@ -59,7 +59,7 @@ class MemoryStorage:
             **kwargs: Additional metadata to update.
         """
         if path in self.files:
-            timestamp = datetime.now().isoformat()
+            timestamp = datetime.now(timezone.utc).isoformat()
             self.files[path].update(
                 {"status": status, "timestamp": timestamp, **kwargs}
             )
@@ -78,7 +78,7 @@ class MemoryStorage:
             path: The path to the document.
         """
         if path in self.files:
-            timestamp = datetime.now().isoformat()
+            timestamp = datetime.now(timezone.utc).isoformat()
             del self.files[path]
             self.changes.append(
                 {"path": path, "status": "deleted", "timestamp": timestamp}
@@ -138,7 +138,7 @@ class MemoryStorage:
 
     def set_last_scan_time(self) -> None:
         """Set the last scan time to now."""
-        self.last_scan_time = datetime.now().isoformat()
+        self.last_scan_time = datetime.now(timezone.utc).isoformat()
 
     def get_last_scan_time(self) -> Optional[str]:
         """Get the last scan time."""
