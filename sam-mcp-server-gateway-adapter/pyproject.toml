@@ -14,7 +14,7 @@ version = "0.1.0"
 authors = [
   { name="SolaceLabs", email="solacelabs@solace.com" },
 ]
-description = "A gateway adapter to make SAM accessable as a MCP server"
+description = "A gateway adapter to make SAM accessible as a MCP server"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

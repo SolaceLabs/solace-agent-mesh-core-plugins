@@ -8,8 +8,12 @@ Agents are dynamically discovered from the agent registry and exposed as callabl
 import asyncio
 import base64
 import logging
+import time
+import hashlib
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
+from starlette.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 from a2a.types import AgentCard, AgentSkill
 from fastmcp import FastMCP, Context as McpContext
@@ -22,7 +26,6 @@ from mcp.types import (
     TextContent,
     TextResourceContents,
 )
-from pydantic import BaseModel, Field
 
 from solace_agent_mesh.common.utils.mime_helpers import is_text_based_file
 from solace_agent_mesh.gateway.adapter.base import GatewayAdapter
@@ -36,7 +39,12 @@ from solace_agent_mesh.gateway.adapter.types import (
     SamTextPart,
     SamUpdate,
 )
-from .utils import sanitize_tool_name, format_agent_skill_description, should_include_tool
+
+from .utils import (
+    sanitize_tool_name,
+    format_agent_skill_description,
+    should_include_tool,
+)
 
 log = logging.getLogger(__name__)
 
@@ -102,7 +110,7 @@ class McpAdapterConfig(BaseModel):
     require_pkce: bool = Field(
         default=True,
         description="Require PKCE (Proof Key for Code Exchange, RFC 7636) for all OAuth flows. "
-                    "STRONGLY recommended for security. Disable only for legacy client compatibility.",
+        "STRONGLY recommended for security. Disable only for legacy client compatibility.",
     )
 
     # File handling configuration
@@ -137,15 +145,15 @@ class McpAdapterConfig(BaseModel):
     include_tools: List[str] = Field(
         default_factory=list,
         description="List of tool patterns to include (regex or exact match). Empty list = include all. "
-                    "Filters check agent name, skill name, and tool name. "
-                    "Examples: ['data_.*', 'fetch_user_info']"
+        "Filters check agent name, skill name, and tool name. "
+        "Examples: ['data_.*', 'fetch_user_info']",
     )
     exclude_tools: List[str] = Field(
         default_factory=list,
         description="List of tool patterns to exclude (regex or exact match). Takes priority over includes. "
-                    "Filters check agent name, skill name, and tool name. "
-                    "Priority: exclude exact > include exact > exclude regex > include regex. "
-                    "Examples: ['.*_debug', 'test_tool']"
+        "Filters check agent name, skill name, and tool name. "
+        "Priority: exclude exact > include exact > exclude regex > include regex. "
+        "Examples: ['.*_debug', 'test_tool']",
     )
 
 
@@ -252,8 +260,7 @@ class McpAdapter(GatewayAdapter):
             )
 
         self.mcp_server = FastMCP(
-            name=config.mcp_server_name,
-            instructions=server_description
+            name=config.mcp_server_name, instructions=server_description
         )
 
         # Register artifact resource template if enabled
@@ -261,7 +268,11 @@ class McpAdapter(GatewayAdapter):
             self._register_artifact_resource_template()
 
         # Register OAuth endpoints if authentication is enabled and handler is available
-        if config.enable_auth and hasattr(self.context, 'auth_handler') and self.context.auth_handler:
+        if (
+            config.enable_auth
+            and hasattr(self.context, "auth_handler")
+            and self.context.auth_handler
+        ):
             self._register_oauth_endpoints()
 
         # Register tools dynamically from agent registry
@@ -274,7 +285,7 @@ class McpAdapter(GatewayAdapter):
             "MCP Gateway Adapter initialized with %d tools", len(self.tool_to_agent_map)
         )
 
-    async def _register_tools_from_agents(self):
+    async def _register_tools_from_agents(self) -> None:
         """Query agent registry and register MCP tools for each agent's skills."""
         try:
             agents: List[AgentCard] = self.context.list_agents()
@@ -291,7 +302,7 @@ class McpAdapter(GatewayAdapter):
         except Exception as e:
             log.exception("Error registering tools from agents: %s", e)
 
-    def _register_artifact_resource_template(self):
+    def _register_artifact_resource_template(self) -> None:
         """
         Register a resource template for artifacts.
 
@@ -324,7 +335,7 @@ class McpAdapter(GatewayAdapter):
             f"Registered artifact resource template: {config.resource_uri_prefix}://{{session_id}}/{{filename}}"
         )
 
-    def _register_oauth_endpoints(self):
+    def _register_oauth_endpoints(self) -> None:
         """
         Register OAuth endpoints with the FastMCP server.
 
@@ -347,21 +358,47 @@ class McpAdapter(GatewayAdapter):
             "/oauth/authorize, /oauth/callback, /.well-known/oauth-authorization-server"
         )
 
-    def _cleanup_expired_oauth_states(self):
+    def _cleanup_expired_oauth_states(self) -> None:
         """
         Remove expired OAuth states to prevent memory leaks.
         Called at the start of each authorize request.
         """
         import time
-        now = time.time()
-        expired = [
-            state for state, data in self.oauth_states.items()
-            if now - data['created_at'] > data['ttl_seconds']
-        ]
-        for state in expired:
-            del self.oauth_states[state]
-        if expired:
-            log.debug("Cleaned up %d expired OAuth states", len(expired))
+
+        try:
+            now = time.time()
+            expired = [
+                state
+                for state, data in self.oauth_states.items()
+                if now - data["created_at"] > data["ttl_seconds"]
+            ]
+            for state in expired:
+                del self.oauth_states[state]
+            if expired:
+                log.debug("Cleaned up %d expired OAuth states", len(expired))
+        except Exception as e:
+            log.warning("Error during OAuth state cleanup: %s", e)
+
+    def _cleanup_expired_oauth_codes(self) -> None:
+        """
+        Remove expired OAuth authorization codes to prevent memory leaks.
+        Called periodically during token exchange.
+        """
+        import time
+
+        try:
+            now = time.time()
+            expired = [
+                code
+                for code, data in self.oauth_codes.items()
+                if now - data["created_at"] > data["ttl_seconds"]
+            ]
+            for code in expired:
+                del self.oauth_codes[code]
+            if expired:
+                log.debug("Cleaned up %d expired OAuth codes", len(expired))
+        except Exception as e:
+            log.warning("Error during OAuth code cleanup: %s", e)
 
     async def _handle_oauth_authorize(self, request):
         """
@@ -403,33 +440,31 @@ class McpAdapter(GatewayAdapter):
 
         if not redirect_uri:
             from starlette.responses import JSONResponse
+
             return JSONResponse(
-                {"error": "invalid_request", "error_description": "Missing redirect_uri"},
-                status_code=400
+                {
+                    "error": "invalid_request",
+                    "error_description": "Missing redirect_uri",
+                },
+                status_code=400,
             )
 
         # Enforce PKCE requirement (RFC 7636)
         if config.require_pkce:
             if not code_challenge:
                 log.error("MCP OAuth: code_challenge required but not provided")
-                return JSONResponse(
-                    {"error": "invalid_request"},
-                    status_code=400
-                )
+                return JSONResponse({"error": "invalid_request"}, status_code=400)
 
             if not code_challenge_method:
                 log.error("MCP OAuth: code_challenge_method required but not provided")
-                return JSONResponse(
-                    {"error": "invalid_request"},
-                    status_code=400
-                )
+                return JSONResponse({"error": "invalid_request"}, status_code=400)
 
             if code_challenge_method != "S256":
-                log.error("MCP OAuth: Unsupported code_challenge_method: %s", code_challenge_method)
-                return JSONResponse(
-                    {"error": "invalid_request"},
-                    status_code=400
+                log.error(
+                    "MCP OAuth: Unsupported code_challenge_method: %s",
+                    code_challenge_method,
                 )
+                return JSONResponse({"error": "invalid_request"}, status_code=400)
 
         # Clean up expired OAuth states
         self._cleanup_expired_oauth_states()
@@ -439,7 +474,7 @@ class McpAdapter(GatewayAdapter):
             log.info(
                 "MCP OAuth authorize: PKCE enforced, method=%s, redirect_uri=%s",
                 code_challenge_method,
-                redirect_uri
+                redirect_uri,
             )
 
         # Store client's OAuth request in memory for callback
@@ -447,12 +482,12 @@ class McpAdapter(GatewayAdapter):
         internal_state = secrets.token_urlsafe(32)
 
         self.oauth_states[internal_state] = {
-            'client_redirect_uri': redirect_uri,
-            'client_state': state,
-            'code_challenge': code_challenge,
-            'code_challenge_method': code_challenge_method,
-            'created_at': time.time(),
-            'ttl_seconds': 300  # 5 minutes
+            "client_redirect_uri": redirect_uri,
+            "client_state": state,
+            "code_challenge": code_challenge,
+            "code_challenge_method": code_challenge_method,
+            "created_at": time.time(),
+            "ttl_seconds": 300,  # 5 minutes
         }
 
         log.info("Stored OAuth state for internal_state=%s", internal_state)
@@ -461,16 +496,13 @@ class McpAdapter(GatewayAdapter):
         mcp_callback_uri = f"http://{config.host}:{config.port}/oauth/callback"
 
         # Redirect to WebUI OAuth proxy with internal state
-        proxy_params = {
-            "gateway_uri": mcp_callback_uri,
-            "state": internal_state
-        }
+        proxy_params = {"gateway_uri": mcp_callback_uri, "state": internal_state}
 
         proxy_url = f"{config.oauth_proxy_url}/api/v1/gateway-oauth/authorize?{urlencode(proxy_params)}"
 
         log.info(
             "MCP OAuth: Redirecting to WebUI proxy for triple-redirect flow. Client redirect_uri=%s",
-            redirect_uri
+            redirect_uri,
         )
 
         return RedirectResponse(url=proxy_url, status_code=302)
@@ -509,40 +541,43 @@ class McpAdapter(GatewayAdapter):
         if not gateway_code:
             log.error("MCP OAuth callback: Missing gateway code from WebUI")
             return JSONResponse(
-                {"error": "invalid_request", "error_description": "Missing code parameter"},
-                status_code=400
+                {
+                    "error": "invalid_request",
+                    "error_description": "Missing code parameter",
+                },
+                status_code=400,
             )
 
         # Look up OAuth state from in-memory storage
         state_data = self.oauth_states.get(returned_state)
         if not state_data:
-            log.error("MCP OAuth callback: Invalid or expired state parameter: %s", returned_state)
-            return JSONResponse(
-                {"error": "invalid_request"},
-                status_code=400
+            log.error(
+                "MCP OAuth callback: Invalid or expired state parameter: %s",
+                returned_state,
             )
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
 
         # Check expiration
-        age = time.time() - state_data['created_at']
-        if age > state_data['ttl_seconds']:
+        age = time.time() - state_data["created_at"]
+        if age > state_data["ttl_seconds"]:
             log.error("MCP OAuth callback: State expired (age=%.1fs)", age)
             del self.oauth_states[returned_state]
-            return JSONResponse(
-                {"error": "invalid_request"},
-                status_code=400
-            )
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
 
         # Get client's redirect info from stored state
-        client_redirect_uri = state_data['client_redirect_uri']
-        client_state = state_data['client_state']
-        code_challenge = state_data['code_challenge']
-        code_challenge_method = state_data['code_challenge_method']
+        client_redirect_uri = state_data["client_redirect_uri"]
+        client_state = state_data["client_state"]
+        code_challenge = state_data["code_challenge"]
+        code_challenge_method = state_data["code_challenge_method"]
 
         # Delete state (one-time use)
         del self.oauth_states[returned_state]
 
-        log.info("Retrieved OAuth state for internal_state=%s, client_redirect_uri=%s",
-                 returned_state, client_redirect_uri)
+        log.info(
+            "Retrieved OAuth state for internal_state=%s, client_redirect_uri=%s",
+            returned_state,
+            client_redirect_uri,
+        )
 
         try:
             # Exchange gateway code for actual OAuth tokens from WebUI proxy
@@ -551,22 +586,16 @@ class McpAdapter(GatewayAdapter):
             async with httpx.AsyncClient(timeout=10.0) as client:
                 exchange_response = await client.post(
                     f"{config.oauth_proxy_url}/api/v1/gateway-oauth/exchange",
-                    json={
-                        "code": gateway_code,
-                        "gateway_uri": mcp_callback_uri
-                    }
+                    json={"code": gateway_code, "gateway_uri": mcp_callback_uri},
                 )
 
                 if exchange_response.status_code != 200:
                     log.error(
                         "MCP OAuth: Gateway code exchange failed: %d %s",
                         exchange_response.status_code,
-                        exchange_response.text
+                        exchange_response.text,
                     )
-                    return JSONResponse(
-                        {"error": "server_error"},
-                        status_code=502
-                    )
+                    return JSONResponse({"error": "server_error"}, status_code=502)
 
                 tokens = exchange_response.json()
                 access_token = tokens.get("access_token")
@@ -574,10 +603,7 @@ class McpAdapter(GatewayAdapter):
 
             if not access_token:
                 log.error("MCP OAuth: No access token in exchange response")
-                return JSONResponse(
-                    {"error": "server_error"},
-                    status_code=502
-                )
+                return JSONResponse({"error": "server_error"}, status_code=502)
 
             # Generate authorization code for MCP client
             # This code will be exchanged for tokens via /oauth/token endpoint
@@ -585,12 +611,12 @@ class McpAdapter(GatewayAdapter):
 
             # Store tokens associated with this authorization code (short-lived)
             self.oauth_codes[authorization_code] = {
-                'access_token': access_token,
-                'refresh_token': refresh_token,
-                'created_at': time.time(),
-                'code_challenge': code_challenge,
-                'redirect_uri': client_redirect_uri,
-                'ttl_seconds': 300  # 5 minutes
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "created_at": time.time(),
+                "code_challenge": code_challenge,
+                "redirect_uri": client_redirect_uri,
+                "ttl_seconds": 300,  # 5 minutes
             }
 
             # Build redirect to client with authorization code
@@ -598,28 +624,24 @@ class McpAdapter(GatewayAdapter):
             if client_state:
                 params["state"] = client_state
 
-            separator = '&' if '?' in client_redirect_uri else '?'
+            separator = "&" if "?" in client_redirect_uri else "?"
             redirect_url = f"{client_redirect_uri}{separator}{urlencode(params)}"
 
             log.info(
                 "MCP OAuth: Successfully exchanged gateway code, redirecting to client at %s",
-                client_redirect_uri
+                client_redirect_uri,
             )
 
             return RedirectResponse(url=redirect_url, status_code=302)
 
         except httpx.RequestError as e:
-            log.error("MCP OAuth: Failed to connect to WebUI proxy for code exchange: %s", e)
-            return JSONResponse(
-                {"error": "server_error"},
-                status_code=503
+            log.error(
+                "MCP OAuth: Failed to connect to WebUI proxy for code exchange: %s", e
             )
+            return JSONResponse({"error": "server_error"}, status_code=503)
         except Exception as e:
             log.error("MCP OAuth callback error: %s", e, exc_info=True)
-            return JSONResponse(
-                {"error": "server_error"},
-                status_code=500
-            )
+            return JSONResponse({"error": "server_error"}, status_code=500)
 
     async def _handle_oauth_metadata(self, request):
         """
@@ -641,7 +663,11 @@ class McpAdapter(GatewayAdapter):
             "registration_endpoint": f"http://{config.host}:{config.port}/oauth/register",
             "response_types_supported": ["code"],
             "grant_types_supported": ["authorization_code", "refresh_token"],
-            "token_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic", "none"],
+            "token_endpoint_auth_methods_supported": [
+                "client_secret_post",
+                "client_secret_basic",
+                "none",
+            ],
             "code_challenge_methods_supported": ["S256"],
         }
 
@@ -727,12 +753,11 @@ class McpAdapter(GatewayAdapter):
                 "expires_in": 3600
             }
         """
-        from starlette.responses import JSONResponse
-        import time
-        import hashlib
-        import base64
 
         try:
+            # Cleanup expired codes before processing
+            self._cleanup_expired_oauth_codes()
+
             # Parse form-urlencoded body
             body = await request.form()
             grant_type = body.get("grant_type")
@@ -744,73 +769,64 @@ class McpAdapter(GatewayAdapter):
             if grant_type == "authorization_code":
                 # Validate required parameters
                 if not code:
-                    return JSONResponse(
-                        {"error": "invalid_request"},
-                        status_code=400
-                    )
+                    return JSONResponse({"error": "invalid_request"}, status_code=400)
 
                 # Look up authorization code
-                if not hasattr(self, 'oauth_codes') or code not in self.oauth_codes:
-                    log.warning("MCP OAuth token: Invalid or expired authorization code")
-                    return JSONResponse(
-                        {"error": "invalid_grant"},
-                        status_code=400
+                if not hasattr(self, "oauth_codes") or code not in self.oauth_codes:
+                    log.warning(
+                        "MCP OAuth token: Invalid or expired authorization code"
                     )
+                    return JSONResponse({"error": "invalid_grant"}, status_code=400)
 
                 code_data = self.oauth_codes[code]
 
                 # Check expiration
-                age = time.time() - code_data['created_at']
-                if age > code_data['ttl_seconds']:
-                    log.warning("MCP OAuth token: Authorization code expired (age: %.1fs)", age)
-                    del self.oauth_codes[code]
-                    return JSONResponse(
-                        {"error": "invalid_grant"},
-                        status_code=400
+                age = time.time() - code_data["created_at"]
+                if age > code_data["ttl_seconds"]:
+                    log.warning(
+                        "MCP OAuth token: Authorization code expired (age: %.1fs)", age
                     )
+                    del self.oauth_codes[code]
+                    return JSONResponse({"error": "invalid_grant"}, status_code=400)
 
                 # Validate redirect_uri matches
-                if redirect_uri != code_data['redirect_uri']:
+                if redirect_uri != code_data["redirect_uri"]:
                     log.error(
                         "MCP OAuth token: Redirect URI mismatch. Expected=%s, Got=%s",
-                        code_data['redirect_uri'],
-                        redirect_uri
+                        code_data["redirect_uri"],
+                        redirect_uri,
                     )
-                    return JSONResponse(
-                        {"error": "invalid_grant"},
-                        status_code=400
-                    )
+                    return JSONResponse({"error": "invalid_grant"}, status_code=400)
 
                 # Validate PKCE (required when require_pkce is enabled)
-                code_challenge = code_data.get('code_challenge')
+                code_challenge = code_data.get("code_challenge")
                 config: McpAdapterConfig = self.context.adapter_config
 
                 if config.require_pkce:
                     # PKCE is mandatory
                     if not code_challenge:
-                        log.error("MCP OAuth token: Authorization code missing code_challenge (config violation)")
-                        return JSONResponse(
-                            {"error": "invalid_grant"},
-                            status_code=400
+                        log.error(
+                            "MCP OAuth token: Authorization code missing code_challenge (config violation)"
                         )
+                        return JSONResponse({"error": "invalid_grant"}, status_code=400)
 
                     if not code_verifier:
                         log.error("MCP OAuth token: Missing code_verifier for PKCE")
-                        return JSONResponse(
-                            {"error": "invalid_grant"},
-                            status_code=400
-                        )
+                        return JSONResponse({"error": "invalid_grant"}, status_code=400)
 
                     # Verify code_challenge = BASE64URL(SHA256(code_verifier))
-                    verifier_hash = hashlib.sha256(code_verifier.encode('ascii')).digest()
-                    computed_challenge = base64.urlsafe_b64encode(verifier_hash).decode('ascii').rstrip('=')
+                    verifier_hash = hashlib.sha256(
+                        code_verifier.encode("ascii")
+                    ).digest()
+                    computed_challenge = (
+                        base64.urlsafe_b64encode(verifier_hash)
+                        .decode("ascii")
+                        .rstrip("=")
+                    )
 
                     if computed_challenge != code_challenge:
                         log.error("MCP OAuth token: PKCE verification failed")
-                        return JSONResponse(
-                            {"error": "invalid_grant"},
-                            status_code=400
-                        )
+                        return JSONResponse({"error": "invalid_grant"}, status_code=400)
 
                     log.info("MCP OAuth token: PKCE verification successful")
 
@@ -818,62 +834,63 @@ class McpAdapter(GatewayAdapter):
                     # PKCE is optional but was used - validate it
                     if not code_verifier:
                         log.error("MCP OAuth token: Missing code_verifier for PKCE")
-                        return JSONResponse(
-                            {"error": "invalid_grant"},
-                            status_code=400
-                        )
+                        return JSONResponse({"error": "invalid_grant"}, status_code=400)
 
                     # Verify code_challenge = BASE64URL(SHA256(code_verifier))
-                    verifier_hash = hashlib.sha256(code_verifier.encode('ascii')).digest()
-                    computed_challenge = base64.urlsafe_b64encode(verifier_hash).decode('ascii').rstrip('=')
+                    verifier_hash = hashlib.sha256(
+                        code_verifier.encode("ascii")
+                    ).digest()
+                    computed_challenge = (
+                        base64.urlsafe_b64encode(verifier_hash)
+                        .decode("ascii")
+                        .rstrip("=")
+                    )
 
                     if computed_challenge != code_challenge:
                         log.error("MCP OAuth token: PKCE verification failed")
-                        return JSONResponse(
-                            {"error": "invalid_grant"},
-                            status_code=400
-                        )
+                        return JSONResponse({"error": "invalid_grant"}, status_code=400)
 
                     log.debug("MCP OAuth token: Optional PKCE verification successful")
 
                 # Get tokens and delete code (one-time use)
-                access_token = code_data['access_token']
-                refresh_token = code_data['refresh_token']
+                access_token = code_data["access_token"]
+                refresh_token = code_data["refresh_token"]
                 del self.oauth_codes[code]
 
-                log.info("MCP OAuth: Successfully exchanged authorization code for tokens")
+                log.info(
+                    "MCP OAuth: Successfully exchanged authorization code for tokens"
+                )
 
-                return JSONResponse({
-                    "access_token": access_token,
-                    "refresh_token": refresh_token,
-                    "token_type": "Bearer",
-                    "expires_in": 3600  # 1 hour (this is just a hint, actual expiry managed by OAuth2 service)
-                })
+                return JSONResponse(
+                    {
+                        "access_token": access_token,
+                        "refresh_token": refresh_token,
+                        "token_type": "Bearer",
+                        "expires_in": 3600,  # 1 hour (this is just a hint, actual expiry managed by OAuth2 service)
+                    }
+                )
 
             elif grant_type == "refresh_token":
                 # For refresh token grant, we need to call the OAuth2 service to get new tokens
                 # This requires the WebUI proxy to support refresh token exchange
                 log.warning("MCP OAuth: Refresh token grant not yet implemented")
                 return JSONResponse(
-                    {"error": "unsupported_grant_type"},
-                    status_code=400
+                    {"error": "unsupported_grant_type"}, status_code=400
                 )
 
             else:
                 log.warning("MCP OAuth token: Unsupported grant_type: %s", grant_type)
                 return JSONResponse(
-                    {"error": "unsupported_grant_type"},
-                    status_code=400
+                    {"error": "unsupported_grant_type"}, status_code=400
                 )
 
         except Exception as e:
             log.error("MCP OAuth token error: %s", e, exc_info=True)
-            return JSONResponse(
-                {"error": "server_error"},
-                status_code=500
-            )
+            return JSONResponse({"error": "server_error"}, status_code=500)
 
-    def _register_tool_for_skill(self, agent_card: AgentCard, skill: AgentSkill):
+    def _register_tool_for_skill(
+        self, agent_card: AgentCard, skill: AgentSkill
+    ) -> None:
         """
         Register a single MCP tool for an agent skill.
 
@@ -886,12 +903,14 @@ class McpAdapter(GatewayAdapter):
 
         # Early filter check - prevents tool creation entirely
         config: McpAdapterConfig = self.context.adapter_config
-        if not self._should_register_tool(agent_card.name, skill.name, tool_name, config):
+        if not self._should_register_tool(
+            agent_card.name, skill.name, tool_name, config
+        ):
             log.debug(
                 "Skipping tool %s (agent=%s, skill=%s) due to filter configuration",
                 tool_name,
                 agent_card.name,
-                skill.name
+                skill.name,
             )
             return
 
@@ -940,11 +959,7 @@ class McpAdapter(GatewayAdapter):
         )
 
     def _should_register_tool(
-        self,
-        agent_name: str,
-        skill_name: str,
-        tool_name: str,
-        config: McpAdapterConfig
+        self, agent_name: str, skill_name: str, tool_name: str, config: McpAdapterConfig
     ) -> bool:
         """
         Determine if a tool should be registered based on filter configuration.
@@ -966,7 +981,7 @@ class McpAdapter(GatewayAdapter):
             skill_name=skill_name,
             tool_name=tool_name,
             include_patterns=config.include_tools,
-            exclude_patterns=config.exclude_tools
+            exclude_patterns=config.exclude_tools,
         )
 
     async def _handle_tool_call(
@@ -1042,7 +1057,7 @@ class McpAdapter(GatewayAdapter):
                 "skill_id": skill_id,
                 "message": message,
                 "mcp_client_id": client_id,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
             # Submit to SAM via the generic gateway with endpoint_context
@@ -1194,7 +1209,9 @@ class McpAdapter(GatewayAdapter):
             if config.enable_auth and not config.dev_mode:
                 # Provide OAuth endpoints in error message for client guidance
                 oauth_metadata_url = f"http://{config.host}:{config.port}/.well-known/oauth-authorization-server"
-                oauth_authorize_url = f"http://{config.host}:{config.port}/oauth/authorize"
+                oauth_authorize_url = (
+                    f"http://{config.host}:{config.port}/oauth/authorize"
+                )
 
                 detailed_error = (
                     f"Authentication required. This MCP server requires OAuth authentication.\n\n"
@@ -1214,11 +1231,6 @@ class McpAdapter(GatewayAdapter):
             log.exception(error_msg)
             await mcp_context.error(error_msg)
             return f"Error: {error_msg}"
-
-        finally:
-            # Cleanup queue (only if task_id was assigned)
-            if task_id and task_id in self.task_queues:
-                del self.task_queues[task_id]
 
     async def _run_mcp_server(self):
         """Start the FastMCP server with configured transport."""
@@ -1274,16 +1286,23 @@ class McpAdapter(GatewayAdapter):
 
                     # Add routes to the app
                     http_app.router.routes.extend(oauth_routes)
-                    log.info("Added OAuth endpoints to HTTP server (triple-redirect flow via WebUI proxy)")
+                    log.info(
+                        "Added OAuth endpoints to HTTP server (triple-redirect flow via WebUI proxy)"
+                    )
 
                     # Debug: Log all registered routes
                     log.info("All registered routes:")
                     for route in http_app.router.routes:
-                        if hasattr(route, 'path'):
-                            log.info("  - %s %s", getattr(route, 'methods', ['GET']), route.path)
+                        if hasattr(route, "path"):
+                            log.info(
+                                "  - %s %s",
+                                getattr(route, "methods", ["GET"]),
+                                route.path,
+                            )
 
                     # Run with uvicorn directly since we customized the app
                     import uvicorn
+
                     uvicorn_config = uvicorn.Config(
                         http_app,
                         host=config.host,
@@ -1320,6 +1339,8 @@ class McpAdapter(GatewayAdapter):
         self.task_queues.clear()
         self.session_artifacts.clear()
         self.agent_to_tools.clear()
+        self.oauth_codes.clear()
+        self.oauth_states.clear()
 
     def _cleanup_task(self, task_id: str) -> None:
         """
@@ -1595,7 +1616,7 @@ class McpAdapter(GatewayAdapter):
                 blob=base64.b64encode(content).decode("utf-8"),
             )
 
-    def _deregister_session_artifacts(self, session_id: str):
+    def _deregister_session_artifacts(self, session_id: str) -> None:
         """Clears artifact tracking for a session."""
         if session_id not in self.session_artifacts:
             return

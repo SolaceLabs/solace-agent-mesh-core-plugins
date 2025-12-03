@@ -132,8 +132,7 @@ def create_session_id(prefix: str = "mcp") -> str:
 
 
 def extract_agent_skill_from_tool_name(
-    tool_name: str,
-    separator: str = "_"
+    tool_name: str, separator: str = "_"
 ) -> Optional[tuple[str, str]]:
     """
     Parse a tool name to extract agent name and skill name.
@@ -163,7 +162,7 @@ def should_include_tool(
     skill_name: str,
     tool_name: str,
     include_patterns: list[str],
-    exclude_patterns: list[str]
+    exclude_patterns: list[str],
 ) -> bool:
     """
     Determine if a tool should be included based on filter patterns.
@@ -250,7 +249,7 @@ def _split_patterns(patterns: list[str]) -> tuple[list[str], list[str]]:
     regex = []
 
     # Regex special characters that indicate a pattern
-    regex_chars = r'.*+?[]{}()^$|\\'
+    regex_chars = r".*+?[]{}()^$|\\"
 
     for pattern in patterns:
         # Check if pattern contains regex special chars
