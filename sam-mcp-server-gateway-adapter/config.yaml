@@ -112,7 +112,7 @@ apps:
         #
         # Examples:
         #   include_tools:
-        #     - "*"                 # Include all tools that exclude filters allows
+        #     - ".*"                 # Include all tools that exclude filters allows
         #     - "data_.*"           # Regex: include tools starting with "data_"
         #     - "fetch_user_info"   # Exact: include this specific tool
         #   exclude_tools:
