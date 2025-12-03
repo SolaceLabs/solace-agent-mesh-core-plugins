@@ -75,6 +75,7 @@ The MCP adapter supports filtering which agent tools are exposed through the MCP
 adapter_config:
   # Include only data-related tools and one specific tool
   include_tools:
+    - "*"                 # Include all tools that exclude filters allows
     - "data_.*"           # Regex: any tool starting with "data_"
     - "fetch_user_info"   # Exact: specific tool name
 
@@ -140,6 +141,7 @@ Result: All production tools are exposed except `production_agent_reset` (exclud
 **Example 4: Complex filtering**
 ```yaml
 include_tools:
+  - "*"                    # Include all tools that exclude filters allows
   - "data_.*"              # Include data tools
   - "analytics_.*"         # Include analytics tools
   - "user_lookup"          # Include specific lookup tool
@@ -148,7 +150,8 @@ exclude_tools:
   - "data_agent_delete"    # Exclude specific delete tool
   - "DebugAgent"           # Exclude debug agent by name
 ```
-Result: Data and analytics tools are included, but admin operations and specific dangerous tools are excluded.
+
+Result: All unmentioned tools, Data and analytics tools are included, but admin operations and specific dangerous tools are excluded.
 
 ### Behavior Details
 
