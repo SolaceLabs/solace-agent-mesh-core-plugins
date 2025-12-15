@@ -165,11 +165,17 @@ class NucliaRagToolConfig(BaseModel):
         description="Maximum number of context paragraphs to retrieve from Nuclia (1-200)",
     )
 
+    output_response_as_artifact: bool = Field(
+        default=True,
+        description="If true, the tool's response will be output as a markdown artifact",
+    )
+
     # --- Artifact Configuration ---
     output_filename_base: str = Field(
         default="nuclia_answer",
         description="Base name for output artifacts. The tool will append '.md' extension.",
     )
+
     artifact_description_query_max_length: int = Field(
         default=150,
         ge=1,
@@ -178,6 +184,11 @@ class NucliaRagToolConfig(BaseModel):
     inline_citation_links: bool = Field(
         default=True,
         description="If true, citation markers will be rendered as clickable markdown links",
+    )
+
+    include_citations_in_tool_response: bool = Field(
+        default=False,
+        description="If true, citations are added as a main field in the tool response. (Include in the main response regardless)",
     )
 
     # --- Template-Based Configuration ---

@@ -82,10 +82,12 @@ apps:
             top_k: ${NUCLIA_TOP_K}
 
             # --- Artifact Configuration ---
-            output_filename_base: "nuclia_answer"
+            output_response_as_artifact: true
+            output_filename_base: "nuclia_answer" # only used if output_response_as_artifact is true
             artifact_description_query_max_length: 150
             inline_citation_links: true
-
+            include_citations_in_tool_response: false # If true, citations are added as a main field in the tool response. (Include in the main response regardless)
+            
             # --- Dynamic Prompt/Context Configuration ---
             prompt_rephrasing:
               template: |
