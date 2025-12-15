@@ -5,7 +5,12 @@ Utility functions for the MCP Gateway Adapter.
 import re
 from typing import Optional
 from a2a.types import AgentSkill
+from typing import Any, Dict
+import logging
 
+from solace_agent_mesh.common.middleware.registry import MiddlewareRegistry
+
+log = logging.getLogger(__name__)
 
 def sanitize_tool_name(name: str) -> str:
     """
@@ -292,3 +297,46 @@ def _matches_regex_any(pattern: str, names: list[str]) -> bool:
     except re.error:
         # If regex compilation fails, treat as exact match
         return pattern in names
+
+
+async def validate_agent_access(
+    agent_name: str, user_config: Optional[Dict[str, Any]]
+) -> bool:
+    """
+    Validate if a user has permission to access a specific agent.
+
+    Args:
+        agent_name: Name of the agent to check access for
+        user_config: User configuration with scopes (None = allow all)
+
+    Returns:
+        True if user has access, False otherwise
+    """
+    if user_config is None:
+        # No filtering when user_config is not provided
+        return True
+
+    # Get the config resolver instance
+    config_resolver = MiddlewareRegistry.get_config_resolver()
+
+    # Build operation spec for agent access validation
+    operation_spec = {
+        "operation_type": "agent_access",
+        "target_agent": agent_name,
+    }
+
+    # Validate if user has permission to access this agent
+    validation_result = config_resolver.validate_operation_config(
+        user_config, operation_spec, {"source": "mcp_tool_invocation"}
+    )
+
+    is_valid = validation_result.get("valid", False)
+
+    if not is_valid:
+        log.warning(
+            "User denied access to agent '%s'. Required scopes: %s",
+            agent_name,
+            validation_result.get("required_scopes", []),
+        )
+
+    return is_valid

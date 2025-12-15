@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from a2a.types import AgentCard, AgentSkill
 from fastmcp import FastMCP, Context as McpContext
+from fastmcp.server.middleware import Middleware, MiddlewareContext
 from mcp.types import (
     AudioContent,
     BlobResourceContents,
@@ -27,6 +28,7 @@ from mcp.types import (
     TextResourceContents,
 )
 
+from solace_agent_mesh.common.middleware.registry import MiddlewareRegistry
 from solace_agent_mesh.common.utils.mime_helpers import is_text_based_file
 from solace_agent_mesh.gateway.adapter.base import GatewayAdapter
 from solace_agent_mesh.gateway.adapter.types import (
@@ -44,6 +46,7 @@ from .utils import (
     sanitize_tool_name,
     format_agent_skill_description,
     should_include_tool,
+    validate_agent_access,
 )
 
 log = logging.getLogger(__name__)
@@ -260,7 +263,9 @@ class McpAdapter(GatewayAdapter):
             )
 
         self.mcp_server = FastMCP(
-            name=config.mcp_server_name, instructions=server_description
+            name=config.mcp_server_name,
+            instructions=server_description,
+            middleware=[ListingFilterMiddleware(self)],
         )
 
         # Register artifact resource template if enabled
@@ -984,6 +989,90 @@ class McpAdapter(GatewayAdapter):
             exclude_patterns=config.exclude_tools,
         )
 
+    async def _get_user_config_from_external_input(
+        self, external_input: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Resolve user configuration from external input (tool call).
+
+        This extracts the user identity from the authenticated external input,
+        then resolves user-specific configuration including scopes and permissions.
+
+        Args:
+            external_input: External input dict containing mcp_client_id and auth info
+
+        Returns:
+            User configuration dict with scopes, or None if filtering is disabled
+        """
+        config: McpAdapterConfig = self.context.adapter_config
+
+        # If auth is disabled, return None (no filtering possible without auth)
+        if not config.enable_auth or config.dev_mode:
+            log.debug(
+                "Authentication disabled or in dev mode, cannot perform permission filtering"
+            )
+            return None
+
+        try:
+            # Extract user_id from the external input
+            # The generic gateway's authentication flow sets this
+            user_id = external_input.get("user_id")
+
+            if not user_id:
+                # Fallback to default user if no auth user found
+                user_id = config.default_user_identity
+                log.debug("No user_id in external_input, using default: %s", user_id)
+
+            # Resolve user config using ConfigResolver
+            config_resolver = MiddlewareRegistry.get_config_resolver()
+
+            # Build gateway context for config resolution
+            gateway_context = {
+                "gateway_id": self.context.gateway_id,
+                "gateway_app_config": self.context.config,
+                "source": "mcp_adapter",
+            }
+
+            # Resolve user-specific configuration
+            user_config = await config_resolver.resolve_user_config(
+                user_id, gateway_context, self.context.config
+            )
+
+            log.debug("Resolved user config for user_id=%s", user_id)
+            return user_config
+
+        except Exception as e:
+            log.warning(
+                "Failed to resolve user config, proceeding without filtering: %s", e
+            )
+            return None
+
+    def _get_client_id(self, mcp_context: McpContext) -> str:
+        # Use FastMCP's client_id for connection-based session
+        # Note: client_id might be None for some transports, use fallback
+        client_id = None
+        try:
+            client_id = mcp_context.client_id
+        except Exception as e:
+            log.warning(f"Failed to access mcp_context.client_id: {e}")
+
+        if not client_id:
+            # Fallback: try session_id first, then generate unique ID
+            try:
+                client_id = mcp_context.session_id
+            except Exception as e:
+                log.warning(f"Failed to access mcp_context.session_id: {e}")
+
+            if not client_id:
+                # Last resort: generate a unique ID
+                import uuid
+                client_id = f"generated-{uuid.uuid4().hex[:12]}"
+
+            log.warning(
+                f"mcp_context.client_id not available, using fallback: {client_id}"
+            )
+        return client_id
+
     async def _handle_tool_call(
         self, tool_name: str, message: str, mcp_context: McpContext
     ) -> str:
@@ -1019,32 +1108,7 @@ class McpAdapter(GatewayAdapter):
         task_id = None  # Initialize to None so finally block can check it
 
         try:
-            # Use FastMCP's client_id for connection-based session
-            # Note: client_id might be None for some transports, use fallback
-            try:
-                client_id = mcp_context.client_id
-            except Exception as e:
-                log.warning(f"Failed to access mcp_context.client_id: {e}")
-                client_id = None
-
-            if not client_id:
-                # Fallback: try session_id first, then generate unique ID
-                try:
-                    client_id = mcp_context.session_id
-                except Exception as e:
-                    log.warning(f"Failed to access mcp_context.session_id: {e}")
-                    client_id = None
-
-                if not client_id:
-                    # Last resort: generate a unique ID
-                    import uuid
-
-                    client_id = f"generated-{uuid.uuid4().hex[:12]}"
-
-                log.warning(
-                    f"mcp_context.client_id not available, using fallback: {client_id}"
-                )
-
+            client_id = self._get_client_id(mcp_context)
             # Store MCP context for enterprise authentication
             # Enterprise auth extractors will access this to extract Bearer tokens
             self._current_mcp_context = mcp_context
@@ -1654,13 +1718,6 @@ class McpAdapter(GatewayAdapter):
 
         return artifacts
 
-    # --- Required GatewayAdapter Methods ---
-
-    # NOTE: extract_auth_claims() has been removed!
-    # Authentication is now handled by enterprise auth in generic gateway.
-    # The MCP adapter just stores _current_mcp_context for enterprise extractors.
-    # See: solace_agent_mesh_enterprise.gateway.auth.authenticate_request()
-
     async def prepare_task(
         self, external_input: Dict, endpoint_context: Optional[Dict[str, Any]] = None
     ) -> SamTask:
@@ -1668,11 +1725,14 @@ class McpAdapter(GatewayAdapter):
         Convert MCP tool invocation into a SamTask.
 
         Args:
-            external_input: Dict with tool_name, agent_name, skill_id, message, mcp_client_id
+            external_input: Dict with tool_name, agent_name, skill_id, message, mcp_client_id, user_id
             endpoint_context: Optional context with mcp_client_id
 
         Returns:
             SamTask ready for submission to SAM agent
+
+        Raises:
+            PermissionError: If user lacks permission to access the agent
         """
         agent_name = external_input.get("agent_name")
         message = external_input.get("message", "")
@@ -1687,6 +1747,18 @@ class McpAdapter(GatewayAdapter):
 
         if not mcp_client_id:
             raise ValueError("Missing mcp_client_id in external_input")
+
+        # Get user config for permission validation
+        user_config = await self._get_user_config_from_external_input(external_input)
+
+        # Validate that user has access to this agent
+        has_access = await validate_agent_access(agent_name, user_config)
+
+        if not has_access:
+            raise PermissionError(
+                f"Access denied: You do not have permission to access agent '{agent_name}'. "
+                f"Required scope: agent:{agent_name}:delegate"
+            )
 
         # Use connection-based session ID (persistent across tool calls)
         # This allows artifacts to accumulate and be accessible across multiple tool invocations
@@ -1982,3 +2054,100 @@ class McpAdapter(GatewayAdapter):
             "Successfully removed all tools for agent %s",
             agent_name,
         )
+
+class ListingFilterMiddleware(Middleware):
+    def __init__(self, adapter: McpAdapter):
+        super().__init__()
+        self.adapter = adapter
+
+    async def on_list_tools(self, context: MiddlewareContext, call_next):
+        """
+        Filter tools based on user permissions.
+
+        This middleware intercepts list_tools calls and filters the result
+        based on which agents the authenticated user has access to.
+        """
+        # Get the full tool list first
+        result = await call_next(context)
+        config: McpAdapterConfig = self.adapter.context.adapter_config
+
+        # If auth is disabled or dev mode, return all tools
+        if not config.enable_auth or config.dev_mode:
+            log.debug("Auth disabled or dev mode - returning all tools")
+            return result
+
+        try:
+            # Extract user identity from MCP context
+            mcp_context = context.fastmcp_context
+            user_id = None
+
+            # Try to get user_id from the MCP context metadata
+            # The auth handler should have populated this
+            try:
+                client_id = self.adapter._get_client_id(mcp_context)
+                self.adapter._current_mcp_context = mcp_context
+                external_input = {
+                    "tool_name": "None",
+                    "agent_name": "None",
+                    "skill_id": "None",
+                    "message": "None",
+                    "mcp_client_id": client_id,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+
+                user_identity = await self.adapter.context.get_user_identity(
+                    external_input, endpoint_context={"mcp_client_id": client_id}
+                )
+                user_id = user_identity.get("id")
+            except Exception as e:
+                log.warning(f"Failed to get client_id from MCP context: {e}")
+
+            # If still no user_id, use default (unauthenticated)
+            if not user_id:
+                log.warning("No user_id found in MCP context, using default identity")
+                user_id = config.default_user_identity
+
+            # Resolve user config using ConfigResolver
+            config_resolver = MiddlewareRegistry.get_config_resolver()
+
+            gateway_context = {
+                "gateway_id": self.adapter.context.gateway_id,
+                "gateway_app_config": self.adapter.context.config,
+                "source": "mcp_list_tools",
+            }
+
+            user_config = await config_resolver.resolve_user_config(
+                user_id, gateway_context, self.adapter.context.config
+            )
+
+            # Filter tools based on agent access permissions
+            filtered_tools = []
+            for tool in result:
+                # Extract agent name from tool name
+                # Tool names are in format: {agent_name}_{skill_name}
+                tool_name = tool.name
+
+                # Look up the agent for this tool
+                if tool_name in self.adapter.tool_to_agent_map:
+                    agent_name, _skill_id = self.adapter.tool_to_agent_map[tool_name]
+
+                    if await validate_agent_access(agent_name, user_config):
+                        filtered_tools.append(tool)
+
+            log.info(
+                "Filtered tools for user '%s': %d -> %d tools",
+                user_id,
+                len(result),
+                len(filtered_tools),
+            )
+
+            return filtered_tools
+
+        except Exception as e:
+            # On error, log and return unfiltered list to avoid breaking clients
+            log.error(
+                "Error filtering tools by user permissions: %s. Returning unfiltered list.",
+                e,
+                exc_info=True,
+            )
+            return result
