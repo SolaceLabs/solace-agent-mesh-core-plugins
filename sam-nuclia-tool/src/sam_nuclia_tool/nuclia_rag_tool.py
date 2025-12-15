@@ -781,7 +781,7 @@ class NucliaRagTool(DynamicTool):
                     "status": "error",
                     "message": f"Answer was generated but failed to be saved as an artifact. Reason: {save_result.get('message')}",
                 }
-            
+
             response["response_artifact"] = {
                 "filename": save_result.get("data_filename"),
                 "version": save_result.get("data_version"),
@@ -793,12 +793,10 @@ class NucliaRagTool(DynamicTool):
             )
             response["response_content"] = combined_content
 
-
-        
         # 8. Construct Final Tool Response
         if self.tool_config.include_citations_in_tool_response:
             response["citations"] = markdown_citations
-            
+
         # Add filter information to response
         if filter_expression:
             response["filter_applied"] = True

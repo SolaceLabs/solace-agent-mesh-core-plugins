@@ -100,16 +100,15 @@ class PromptRephrasingConfig(BaseModel):
 class AuditMetadataConfig(BaseModel):
     """
     Configuration for audit metadata to be included in Nuclia search requests.
-    
+
     All dynamic values must come from template_parameters. Use static strings
     for constant values.
     """
-    
+
     enabled: bool = Field(
-        default=True,
-        description="Whether to include audit metadata in requests"
+        default=True, description="Whether to include audit metadata in requests"
     )
-    
+
     fields: Dict[str, str] = Field(
         default_factory=dict,
         description=(
@@ -121,13 +120,15 @@ class AuditMetadataConfig(BaseModel):
             "\n"
             "All dynamic values must be defined in template_parameters."
         ),
-        examples=[{
-            "environment": "production",
-            "agent": "nuclia_agent",
-            "user_country": "{country}",
-            "user_email": "{user_email}",
-            "query_text": "{query}"
-        }]
+        examples=[
+            {
+                "environment": "production",
+                "agent": "nuclia_agent",
+                "user_country": "{country}",
+                "user_email": "{user_email}",
+                "query_text": "{query}",
+            }
+        ],
     )
 
 
@@ -138,6 +139,7 @@ class NucliaRagToolConfig(BaseModel):
     This model validates all configuration options and provides sensible defaults
     where appropriate.
     """
+
     tool_name: str = Field(
         default="NucliaRagTool",
         description="The name of the tool as it will appear to the agent.",
@@ -223,7 +225,7 @@ class NucliaRagToolConfig(BaseModel):
             "Configuration for audit metadata to include in Nuclia search requests. "
             "Uses template-based substitution from template_parameters. "
             "This metadata can be used for filtering and analyzing activity logs."
-        )
+        ),
     )
 
     # --- Backward Compatibility (Deprecated) ---
