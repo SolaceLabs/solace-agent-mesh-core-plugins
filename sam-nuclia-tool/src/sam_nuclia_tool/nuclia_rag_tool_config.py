@@ -188,7 +188,7 @@ class NucliaRagToolConfig(BaseModel):
 
     include_citations_in_tool_response: bool = Field(
         default=False,
-        description="If true, citations are added as a main field in the tool response. (Include in the main response regardless)",
+        description="If true, citations are included as a separate field in the tool response",
     )
 
     # --- Template-Based Configuration ---
