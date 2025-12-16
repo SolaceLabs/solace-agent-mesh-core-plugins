@@ -78,13 +78,14 @@ class NucliaRagTool(DynamicTool):
             "query": adk_types.Schema(
                 type=adk_types.Type.STRING,
                 description="The natural language query from the user.",
-            ),
-            "output_filename_base": adk_types.Schema(
+            )
+        }
+        if self.tool_config.output_response_as_artifact:
+            properties["output_filename_base"] = adk_types.Schema(
                 type=adk_types.Type.STRING,
                 description="A base name for the output artifact to make it more meaningful. The tool will append `.md`.",
                 nullable=True,
-            ),
-        }
+            )
         required = ["query"]
 
         # Add dynamic parameters from validated config
@@ -760,31 +761,41 @@ class NucliaRagTool(DynamicTool):
             ask_response
         )
 
-        # 7. Save Result as a single Artifact
-        save_result = await self._save_result_as_artifact(
-            tool_context,
-            formatted_answer,
-            markdown_citations,
-            query,
-            output_filename_base,
-        )
-
-        if save_result.get("status") != "success":
-            return {
-                "status": "error",
-                "message": f"Answer was generated but failed to be saved as an artifact. Reason: {save_result.get('message')}",
-            }
-
-        # 8. Construct Final Tool Response
         response = {
             "status": "success",
             "nuclia_learning_id": learning_id,
-            "response_artifact": {
+        }
+
+        # 7. Save Result as a single Artifact
+        if self.tool_config.output_response_as_artifact:
+            save_result = await self._save_result_as_artifact(
+                tool_context,
+                formatted_answer,
+                markdown_citations,
+                query,
+                output_filename_base,
+            )
+
+            if save_result.get("status") != "success":
+                return {
+                    "status": "error",
+                    "message": f"Answer was generated but failed to be saved as an artifact. Reason: {save_result.get('message')}",
+                }
+
+            response["response_artifact"] = {
                 "filename": save_result.get("data_filename"),
                 "version": save_result.get("data_version"),
                 "mime_type": "text/markdown",
-            },
-        }
+            }
+        else:
+            combined_content = (
+                f"{formatted_answer}\n\n**Sources:**\n{markdown_citations}"
+            )
+            response["response_content"] = combined_content
+
+        # 8. Construct Final Tool Response
+        if self.tool_config.include_citations_in_tool_response:
+            response["citations"] = markdown_citations
 
         # Add filter information to response
         if filter_expression:
