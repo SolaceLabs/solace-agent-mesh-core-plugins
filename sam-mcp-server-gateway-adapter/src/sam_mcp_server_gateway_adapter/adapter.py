@@ -102,10 +102,6 @@ class McpAdapterConfig(BaseModel):
         default="email",
         description="OAuth claim to use as user ID for SAM audit logs (options: 'email', 'sub', 'upn', 'preferred_username')",
     )
-    oauth_proxy_url: str = Field(
-        default="http://localhost:8000",
-        description="URL of WebUI gateway OAuth proxy for triple-redirect flow (MCP → WebUI → Azure)",
-    )
     session_secret_key: Optional[str] = Field(
         default=None,
         description="Secret key for session encryption (auto-generated if not provided)",
@@ -202,7 +198,6 @@ class McpAdapter(GatewayAdapter):
             {}
         )  # session_id -> {filename -> metadata}
 
-        # OAuth authorization codes for triple-redirect flow
         # Maps authorization code -> {tokens, created_at, code_challenge, redirect_uri}
         # Note: code_challenge is required when require_pkce is enabled (default)
         self.oauth_codes: Dict[str, Dict[str, Any]] = {}
@@ -407,15 +402,7 @@ class McpAdapter(GatewayAdapter):
 
     async def _handle_oauth_authorize(self, request):
         """
-        Handle GET /oauth/authorize - Initiates triple-redirect OAuth flow.
-
-        Triple-redirect flow (MCP-specific):
-        1. MCP Client → MCP /oauth/authorize
-        2. MCP → WebUI /gateway-oauth/authorize
-        3. WebUI → Azure AD (handled by WebUI)
-        4. Azure → WebUI callback
-        5. WebUI → MCP /oauth/callback (with gateway code)
-        6. MCP redirects to client's redirect_uri (with authorization code)
+        Handle GET /oauth/authorize
 
         Query params from MCP client:
             response_type: "code" (required)
@@ -501,12 +488,12 @@ class McpAdapter(GatewayAdapter):
         mcp_callback_uri = f"http://{config.host}:{config.port}/oauth/callback"
 
         # Redirect to WebUI OAuth proxy with internal state
-        proxy_params = {"gateway_uri": mcp_callback_uri, "state": internal_state}
+        proxy_params = {"gateway_uri": mcp_callback_uri, "state": internal_state, "provider": config.external_auth_provider}
 
-        proxy_url = f"{config.oauth_proxy_url}/api/v1/gateway-oauth/authorize?{urlencode(proxy_params)}"
+        proxy_url = f"{config.external_auth_service_url}/login?{urlencode(proxy_params)}"
 
         log.info(
-            "MCP OAuth: Redirecting to WebUI proxy for triple-redirect flow. Client redirect_uri=%s",
+            "MCP OAuth: Redirecting to Auth server. Client redirect_uri=%s",
             redirect_uri,
         )
 
@@ -515,14 +502,6 @@ class McpAdapter(GatewayAdapter):
     async def _handle_oauth_callback(self, request):
         """
         Handle GET /oauth/callback - OAuth callback from WebUI OAuth proxy.
-
-        This is step 5 in the triple-redirect flow:
-        1. MCP Client → MCP /oauth/authorize
-        2. MCP → WebUI /gateway-oauth/authorize
-        3. WebUI → Azure AD (handled by WebUI)
-        4. Azure → WebUI callback
-        5. **WebUI → MCP /oauth/callback (with gateway code)** ← WE ARE HERE
-        6. MCP redirects to client's redirect_uri (with authorization code)
 
         Query params from WebUI:
             code: Gateway code (single-use, short-lived)
@@ -589,9 +568,9 @@ class McpAdapter(GatewayAdapter):
             mcp_callback_uri = f"http://{config.host}:{config.port}/oauth/callback"
 
             async with httpx.AsyncClient(timeout=10.0) as client:
+                params = urlencode({"code": gateway_code, "gateway_uri": mcp_callback_uri})
                 exchange_response = await client.post(
-                    f"{config.oauth_proxy_url}/api/v1/gateway-oauth/exchange",
-                    json={"code": gateway_code, "gateway_uri": mcp_callback_uri},
+                    f"{config.external_auth_service_url}/gateway-oauth/exchange?{params}",
                 )
 
                 if exchange_response.status_code != 200:
@@ -738,9 +717,6 @@ class McpAdapter(GatewayAdapter):
     async def _handle_oauth_token(self, request):
         """
         Handle POST /oauth/token - Token exchange endpoint.
-
-        This is the final step of the triple-redirect OAuth flow where Claude Code
-        exchanges the authorization code for access/refresh tokens.
 
         Request body (form-urlencoded):
             grant_type: "authorization_code" or "refresh_token"
@@ -1309,7 +1285,6 @@ class McpAdapter(GatewayAdapter):
                 )
 
                 # Get the underlying Starlette app and add OAuth routes if auth enabled
-                # For triple-redirect flow, MCP adapter handles OAuth directly (no auth_handler needed)
                 log.info("OAuth endpoint check: enable_auth=%s", config.enable_auth)
 
                 if config.enable_auth:
@@ -1319,7 +1294,6 @@ class McpAdapter(GatewayAdapter):
                     http_app = self.mcp_server.http_app(transport="http")
 
                     # Add OAuth routes to the Starlette app
-                    # These routes implement the triple-redirect OAuth flow
                     oauth_routes = [
                         Route(
                             "/oauth/authorize",
@@ -1351,7 +1325,7 @@ class McpAdapter(GatewayAdapter):
                     # Add routes to the app
                     http_app.router.routes.extend(oauth_routes)
                     log.info(
-                        "Added OAuth endpoints to HTTP server (triple-redirect flow via WebUI proxy)"
+                        "Added OAuth endpoints to OAuth server"
                     )
 
                     # Debug: Log all registered routes
