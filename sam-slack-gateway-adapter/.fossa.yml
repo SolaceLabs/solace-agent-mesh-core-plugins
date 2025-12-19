@@ -1,0 +1,17 @@
+# Configuration used for fossa scan
+version: 3
+
+project:
+  locator: SolaceLabs_sam-slack-gateway-adapter
+  id: SolaceLabs_sam-slack-gateway-adapter
+  name: sam-slack-gateway-adapter
+  labels:
+    - solaceai
+    - solace-agent-mesh-core-plugins
+
+vendoredDependencies:
+  forceRescans: false
+  scanMethod: CLILicenseScan
+
+telemetry:
+  scope: full

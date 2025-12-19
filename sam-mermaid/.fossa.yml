@@ -1,0 +1,17 @@
+# Configuration used for fossa scan
+version: 3
+
+project:
+  locator: SolaceLabs_sam-mermaid
+  id: SolaceLabs_sam-mermaid
+  name: sam-mermaid
+  labels:
+    - solaceai
+    - solace-agent-mesh-core-plugins
+
+vendoredDependencies:
+  forceRescans: false
+  scanMethod: CLILicenseScan
+
+telemetry:
+  scope: full

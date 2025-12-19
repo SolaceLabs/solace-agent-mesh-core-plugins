@@ -44,6 +44,7 @@ jobs:
         with:
           fetch-depth: 0
           sparse-checkout: ${{ inputs.plugin_directory }}
+
       - name: Set up Python
         uses: actions/setup-python@v5.5.0
         with:
@@ -80,3 +81,14 @@ jobs:
           hatch build
           ls dist/*.tar.gz | xargs -n1 hatch run python -m twine check
           ls dist/*.whl | xargs -n1 hatch run python -m twine check
+
+      - name: sca-scan
+        uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@main
+        with:
+          scanners: "fossa"
+          additional_scan_params: |
+            fossa.branch=${{ github.event.pull_request.number && 'PR' || github.event.repository.default_branch }}
+            fossa.revision=${{ github.event.pull_request.number && github.head_ref || github.sha }}
+            fossa.project=${{ inputs.plugin_directory }}
+            fossa.path=${{ inputs.plugin_directory }}
+          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
