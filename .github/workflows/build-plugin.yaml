@@ -93,7 +93,7 @@ jobs:
             fossa.revision=${{ github.event.pull_request.number && github.head_ref || github.sha }}
             fossa.project=${{ inputs.plugin_directory }}
             fossa.path=${{ inputs.plugin_directory }}
-            fossa.config: ${{ inputs.plugin_directory }}/.fossa.yml
+            fossa.config=${{ inputs.plugin_directory }}/.fossa.yml
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
 
 
