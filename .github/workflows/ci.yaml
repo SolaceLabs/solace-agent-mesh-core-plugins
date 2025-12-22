@@ -67,3 +67,4 @@ jobs:
       plugin_directory: ${{matrix.plugin_directory}}
     secrets:
       COMMIT_KEY: ${{ secrets.COMMIT_KEY }}
+      FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
