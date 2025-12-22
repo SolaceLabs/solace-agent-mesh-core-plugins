@@ -84,8 +84,9 @@ jobs:
 
       - name: sca-scan
         uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@main
+        env:
+          FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
         with:
-          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
           scanners: "fossa"
           additional_scan_params: |
             fossa.branch=${{ github.event.pull_request.number && 'PR' || github.event.repository.default_branch }}
@@ -99,6 +100,8 @@ jobs:
         if: ${{ always() }}
         uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
         continue-on-error: true
+        env:
+          FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
         with:
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
           fossa_project_id: "${{ github.repository_owner }}_${{ inputs.plugin_directory }}"
@@ -113,6 +116,8 @@ jobs:
         if: ${{ always() }}
         uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
         continue-on-error: true
+        env:
+          FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
         with:
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
           fossa_project_id: "${{ github.repository_owner }}_${{ inputs.plugin_directory }}"
