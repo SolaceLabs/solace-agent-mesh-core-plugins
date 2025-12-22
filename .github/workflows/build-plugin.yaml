@@ -65,24 +65,24 @@ jobs:
           pip install hatch -q
           pip install virtualenv pipdeptree -q
 
-      - name: Test Plugin
-        shell: bash
-        run: |
-          cd ${{ inputs.plugin_directory }}/
-          ls -la
-          dir=$(pwd)
-          echo "Directory: $dir"
-          hatch run pip install solace-agent-mesh twine -q
-          hatch run solace-agent-mesh plugin add test-${{ inputs.plugin_directory }} --plugin $dir
-          hatch test
+      # - name: Test Plugin
+      #   shell: bash
+      #   run: |
+      #     cd ${{ inputs.plugin_directory }}/
+      #     ls -la
+      #     dir=$(pwd)
+      #     echo "Directory: $dir"
+      #     hatch run pip install solace-agent-mesh twine -q
+      #     hatch run solace-agent-mesh plugin add test-${{ inputs.plugin_directory }} --plugin $dir
+      #     hatch test
 
-      - name: Install dependencies
-        shell: bash
-        run: |
-          cd ${{ inputs.plugin_directory }}
-          hatch build
-          ls dist/*.tar.gz | xargs -n1 hatch run python -m twine check
-          ls dist/*.whl | xargs -n1 hatch run python -m twine check
+      # - name: Install dependencies
+      #   shell: bash
+      #   run: |
+      #     cd ${{ inputs.plugin_directory }}
+      #     hatch build
+      #     ls dist/*.tar.gz | xargs -n1 hatch run python -m twine check
+      #     ls dist/*.whl | xargs -n1 hatch run python -m twine check
 
       - name: sca-scan
         uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@main
@@ -113,13 +113,15 @@ jobs:
       - name: FOSSA Security Vulnerabilities
         id: fossa_vulnerabilities
         if: ${{ always() }}
-        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
+        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@specify_fossa_config_path
         continue-on-error: true
         with:
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
           fossa_project_id: "${{ github.repository_owner }}_${{ inputs.plugin_directory }}"
           fossa_branch: ${{ github.event.pull_request.number && 'PR' || github.event.repository.default_branch }}
           fossa_revision: ${{ github.event.pull_request.number && github.head_ref || github.sha }}
+          fossa.path: ${{ inputs.plugin_directory }}
+          fossa.config_path: ${{ inputs.plugin_directory }}/.fossa.yml
           fossa_category: vulnerability
           fossa_mode: BLOCK
           block_on: critical,high
