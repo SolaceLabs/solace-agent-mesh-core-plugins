@@ -85,7 +85,7 @@ jobs:
       #     ls dist/*.whl | xargs -n1 hatch run python -m twine check
 
       - name: sca-scan
-        uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@specify_fossa_config_path
+        uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@main
         with:
           scanners: "fossa"
           additional_scan_params: |
