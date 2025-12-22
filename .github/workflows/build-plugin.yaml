@@ -91,7 +91,6 @@ jobs:
           additional_scan_params: |
             fossa.branch=${{ github.event.pull_request.number && 'PR' || github.event.repository.default_branch }}
             fossa.revision=${{ github.event.pull_request.number && github.head_ref || github.sha }}
-            fossa.path=${{ inputs.plugin_directory }}
             fossa.config=${{ inputs.plugin_directory }}/.fossa.yml
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
 
