@@ -1,0 +1,25 @@
+# Configuration used for fossa scan
+version: 3
+
+project:
+  locator: SolaceLabs_solace-agent-mesh-core-plugins
+  id: SolaceLabs_solace-agent-mesh-core-plugins
+  name: solace-agent-mesh-core-plugins
+  labels:
+    - solaceai
+    - repository
+    - solace-agent-mesh-core-plugins
+
+vendoredDependencies:
+  forceRescans: false
+  scanMethod: CLILicenseScan
+  licenseScanPathFilters:
+    exclude:
+      - "./.github"
+
+paths:
+  exclude:
+    - ./.github
+
+telemetry:
+  scope: full

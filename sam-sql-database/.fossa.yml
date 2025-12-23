@@ -1,0 +1,17 @@
+# Configuration used for fossa scan
+version: 3
+
+project:
+  locator: SolaceLabs_sam-sql-database
+  id: SolaceLabs_sam-sql-database
+  name: sam-sql-database
+  labels:
+    - solaceai
+    - solace-agent-mesh-core-plugins
+
+vendoredDependencies:
+  forceRescans: false
+  scanMethod: CLILicenseScan
+
+telemetry:
+  scope: full

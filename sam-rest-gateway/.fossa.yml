@@ -1,0 +1,17 @@
+# Configuration used for fossa scan
+version: 3
+
+project:
+  locator: SolaceLabs_sam-rest-gateway
+  id: SolaceLabs_sam-rest-gateway
+  name: sam-rest-gateway
+  labels:
+    - solaceai
+    - solace-agent-mesh-core-plugins
+
+vendoredDependencies:
+  forceRescans: false
+  scanMethod: CLILicenseScan
+
+telemetry:
+  scope: full
