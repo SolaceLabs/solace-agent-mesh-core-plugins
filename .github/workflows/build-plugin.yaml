@@ -22,6 +22,8 @@ on:
           - sam-event-mesh-gateway
           - sam-mongodb
           - sam-sql-database
+          - sam-sql-database-tool
+          - sam-sql-analytics-db-tool
           - sam-geo-information
           - sam-rest-gateway
           - sam-webhook-gateway

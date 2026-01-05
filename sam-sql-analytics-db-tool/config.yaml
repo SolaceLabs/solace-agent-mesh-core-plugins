@@ -1,0 +1,45 @@
+apps:
+  - name: sam-sql-analytics-db-tool-app
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      dev_mode: ${SOLACE_DEV_MODE, false}
+      broker_url: ${SOLACE_BROKER_URL, ws://localhost:8080}
+      broker_username: ${SOLACE_BROKER_USERNAME, default}
+      broker_password: ${SOLACE_BROKER_PASSWORD, default}
+      broker_vpn: ${SOLACE_BROKER_VPN, default}
+      temporary_queue: ${USE_TEMPORARY_QUEUES, true}
+
+    app_config:
+      namespace: "${NAMESPACE}"
+      agent_name: "SQL Analytics DB Tool Agent"
+      display_name: "SQL Analytics DB Tool"
+      supports_streaming: true
+
+      tools:
+        - tool_type: python
+          component_module: "sam_sql_analytics_db_tool.tools"
+          component_base_path: .
+          class_name: "SqlAnalyticsDbTool"
+          tool_config:
+            tool_name: "analytics_db"
+            tool_description: "SQL analytics tool with schema discovery and profiling."
+            connection_string: "${DB_CONNECTION_STRING}"
+
+            # Database connection pool settings
+            pool:
+              pool_size: 5
+              max_overflow: 5
+              pool_timeout: 30
+              pool_recycle: 1800
+              pool_pre_ping: true
+            
+            # Query timeouts
+            timeouts:
+              connect_timeout: 10
+              statement_timeout_ms: 30000
+            
+            # Security settings
+            security:
+              blocked_operations: ["ALTER", "DROP", "TRUNCATE", "DELETE", "UPDATE", "GRANT", "REVOKE", "INSERT", "CREATE"]
+              warning_operations: []
+              pii_filter_level: "none"  # Options: "strict" (all PII), "moderate" (sensitive only), "none" (default)
