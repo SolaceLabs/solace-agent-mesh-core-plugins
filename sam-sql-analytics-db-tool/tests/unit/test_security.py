@@ -95,3 +95,103 @@ def test_is_read_only_blocks_actual_operations():
         "INSERT INTO insert_log (message) VALUES ('test')",
         "postgres"
     ), "Actual INSERT should be blocked"
+
+def test_filter_pii_from_results_strict():
+    """Test PII filtering with strict mode."""
+    from sam_sql_analytics_db_tool.services.security import PIIFilterService
+
+    # Mock schema context with PII metadata
+    schema_context = {
+        "tables": {
+            "users": {
+                "columns": [
+                    {"name": "id", "type": "INTEGER"},
+                    {"name": "email", "type": "VARCHAR", "pii": {"pii_detected": True, "pii_type": "NonSensitive"}},
+                    {"name": "name", "type": "VARCHAR", "pii": {"pii_detected": True, "pii_type": "Sensitive"}},
+                    {"name": "created_at", "type": "TIMESTAMP"}
+                ]
+            }
+        }
+    }
+
+    # Mock query results
+    results = [
+        {"id": 1, "email": "alice@example.com", "name": "Alice", "created_at": "2024-01-01"},
+        {"id": 2, "email": "bob@example.com", "name": "Bob", "created_at": "2024-01-02"}
+    ]
+
+    # Filter with strict mode
+    filtered = PIIFilterService.filter_pii_from_results(results, schema_context, "strict")
+
+    # Verify PII columns are masked
+    assert filtered[0]["email"] == "***REDACTED***", "email should be masked"
+    assert filtered[0]["name"] == "***REDACTED***", "name should be masked"
+    assert filtered[1]["email"] == "***REDACTED***", "email should be masked"
+    assert filtered[1]["name"] == "***REDACTED***", "name should be masked"
+
+    # Verify non-PII columns remain
+    assert filtered[0]["id"] == 1, "id should remain visible"
+    assert filtered[0]["created_at"] == "2024-01-01", "created_at should remain visible"
+    assert filtered[1]["id"] == 2, "id should remain visible"
+
+def test_filter_pii_from_results_moderate():
+    """Test PII filtering with moderate mode (only Sensitive PII)."""
+    from sam_sql_analytics_db_tool.services.security import PIIFilterService
+
+    schema_context = {
+        "tables": {
+            "users": {
+                "columns": [
+                    {"name": "id", "type": "INTEGER"},
+                    {"name": "email", "type": "VARCHAR", "pii": {"pii_detected": True, "pii_type": "NonSensitive"}},
+                    {"name": "ssn", "type": "VARCHAR", "pii": {"pii_detected": True, "pii_type": "Sensitive"}},
+                ]
+            }
+        }
+    }
+
+    results = [{"id": 1, "email": "alice@example.com", "ssn": "123-45-6789"}]
+
+    # Filter with moderate mode
+    filtered = PIIFilterService.filter_pii_from_results(results, schema_context, "moderate")
+
+    # Only Sensitive PII should be masked
+    assert filtered[0]["ssn"] == "***REDACTED***", "Sensitive PII (ssn) should be masked"
+    assert filtered[0]["email"] == "alice@example.com", "NonSensitive PII (email) should remain"
+    assert filtered[0]["id"] == 1, "Non-PII should remain"
+
+def test_filter_pii_from_results_none():
+    """Test PII filtering with none mode (no filtering)."""
+    from sam_sql_analytics_db_tool.services.security import PIIFilterService
+
+    schema_context = {
+        "tables": {
+            "users": {
+                "columns": [
+                    {"name": "email", "type": "VARCHAR", "pii": {"pii_detected": True, "pii_type": "NonSensitive"}},
+                ]
+            }
+        }
+    }
+
+    results = [{"email": "alice@example.com"}]
+
+    # Filter with none mode
+    filtered = PIIFilterService.filter_pii_from_results(results, schema_context, "none")
+
+    # No filtering should occur
+    assert filtered[0]["email"] == "alice@example.com", "No filtering with 'none' level"
+
+def test_filter_pii_from_results_empty():
+    """Test PII filtering with empty results."""
+    from sam_sql_analytics_db_tool.services.security import PIIFilterService
+
+    schema_context = {"tables": {}}
+
+    # Empty results
+    filtered = PIIFilterService.filter_pii_from_results([], schema_context, "strict")
+    assert filtered == [], "Empty results should remain empty"
+
+    # None results
+    filtered = PIIFilterService.filter_pii_from_results(None, schema_context, "strict")
+    assert filtered is None, "None results should remain None"

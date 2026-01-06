@@ -168,8 +168,18 @@ class SqlAnalyticsDbTool(DynamicTool):
         try:
             # Execute query with row limit enforcement
             results = self.db_factory.run_select(query)
+
+            # Filter PII from query results based on security configuration
+            pii_filter_level = self.tool_config.get("security", {}).get("pii_filter_level", "none")
+            if pii_filter_level != "none" and self._schema_context:
+                results = PIIFilterService.filter_pii_from_results(
+                    results=results,
+                    schema_context=self._schema_context,
+                    filter_level=pii_filter_level
+                )
+
             return {"result": results}
-            
+
         except Exception as e:
             log.error("Query execution failed: %s", e)
             return {"error": str(e)}

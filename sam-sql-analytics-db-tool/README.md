@@ -182,20 +182,43 @@ Configure `pii_filter_level` in security settings to control PII visibility in L
   - Use when PII exposure to LLM is acceptable
 
 **What Gets Filtered:**
-- Schema: `enum_values` removed from PII columns
-- Profile: ALL `column_metrics` removed for PII columns
-- Preserved: Column names, types, PKs, FKs, indexes (schema structure intact)
+
+When `pii_filter_level` is set to `"strict"` or `"moderate"`, PII is filtered from:
+
+1. **LLM Context (tool description):**
+   - Schema: `enum_values` removed from PII columns
+   - Profile: ALL `column_metrics` removed for PII columns
+   - Preserved: Column names, types, PKs, FKs, indexes (schema structure intact)
+
+2. **Query Results (user/UI):**
+   - PII column values masked as `"***REDACTED***"`
+   - Column names and structure preserved
+   - Non-PII columns remain visible with actual values
 
 **Important Notes:**
-- PII filtering applies ONLY to LLM context (tool description)
-- Original schema and query results remain unfiltered
-- LLM can still generate queries using PII column names
+- PII filtering applies to both LLM context AND query results returned to user
+- Original schema context remains unfiltered internally
+- LLM can still generate queries using PII column names (sees column definitions)
 - Profile metrics removed to prevent min/max/histogram value leakage
 
-**Example:**
+**Example Configuration:**
 ```yaml
 security:
-  pii_filter_level: "strict"  # Hide ALL PII from LLM
+  pii_filter_level: "strict"  # Mask ALL PII in LLM context + query results
+```
+
+**Example Query Result (strict mode):**
+```json
+{
+  "result": [
+    {
+      "id": 1,
+      "name": "***REDACTED***",
+      "email": "***REDACTED***",
+      "created_at": "2024-01-15T10:30:00"
+    }
+  ]
+}
 ```
 
 ## Security

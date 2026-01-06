@@ -141,6 +141,40 @@ class PIIFilterService:
     """Service for filtering PII from contexts before sending to LLM."""
 
     @staticmethod
+    def _identify_pii_columns(
+        schema_context: Dict[str, Any],
+        filter_level: str
+    ) -> set[str]:
+        """Identify PII column names based on filter level.
+
+        Args:
+            schema_context: Schema context with PII detection metadata
+            filter_level: "strict" (all PII), "moderate" (sensitive only), or "none"
+
+        Returns:
+            Set of column names that should be filtered
+        """
+        if filter_level == "none" or not schema_context:
+            return set()
+
+        pii_columns = set()
+        for table_name, table_data in schema_context.get("tables", {}).items():
+            for col in table_data.get("columns", []):
+                pii_info = col.get("pii")
+                if pii_info and pii_info.get("pii_detected"):
+                    # Apply filtering based on level
+                    if filter_level == "strict":
+                        # Filter all PII
+                        pii_columns.add(col["name"])
+                    elif filter_level == "moderate":
+                        # Filter only Sensitive PII
+                        pii_type = pii_info.get("pii_type", "")
+                        if pii_type == "Sensitive":
+                            pii_columns.add(col["name"])
+
+        return pii_columns
+
+    @staticmethod
     def filter_for_llm(
         schema: Dict[str, Any],
         profile: Dict[str, Any],
@@ -221,24 +255,17 @@ class PIIFilterService:
         filtered_schema = copy.deepcopy(schema)
         filtered_profile = copy.deepcopy(profile)
 
-        pii_columns_filtered = 0
-
         log.debug("PII filtering level: %s", level)
+
+        # Identify PII columns using shared helper
+        pii_columns_global = PIIFilterService._identify_pii_columns(filtered_schema, level)
+
+        pii_columns_filtered = 0
 
         # Filter schema: remove enum_values from PII columns (keep column definitions)
         for table_name, table_data in filtered_schema.get("tables", {}).items():
             for col in table_data.get("columns", []):
-                pii_info = col.get("pii")
-                should_filter_values = False
-
-                if pii_info and pii_info.get("pii_detected"):
-                    if level == "strict":
-                        should_filter_values = True
-                    elif level == "moderate":
-                        pii_type = pii_info.get("pii_type", "")
-                        should_filter_values = (pii_type == "Sensitive")
-
-                if should_filter_values:
+                if col["name"] in pii_columns_global:
                     # Remove enum_values (actual PII data) but keep column definition
                     if "enum_values" in col:
                         del col["enum_values"]
@@ -251,17 +278,8 @@ class PIIFilterService:
         # Filter profile: remove ALL column_metrics for PII columns
         # Profile metrics leak PII via min/max/histogram/distinct values
         for table_name, table_profile in filtered_profile.get("tables", {}).items():
-            # Identify PII columns from schema
-            schema_table = filtered_schema.get("tables", {}).get(table_name, {})
-            pii_columns = {
-                col["name"]
-                for col in schema_table.get("columns", [])
-                if col.get("pii", {}).get("pii_detected")
-                and (
-                    level == "strict"
-                    or (level == "moderate" and col.get("pii", {}).get("pii_type") == "Sensitive")
-                )
-            }
+            # Use the same PII columns set identified earlier
+            pii_columns = pii_columns_global
 
             # Remove metrics for PII columns only
             column_metrics = table_profile.get("column_metrics", {})
@@ -284,3 +302,46 @@ class PIIFilterService:
             )
 
         return filtered_schema, filtered_profile
+
+    @staticmethod
+    def filter_pii_from_results(
+        results: list[Dict[str, Any]],
+        schema_context: Dict[str, Any],
+        filter_level: str
+    ) -> list[Dict[str, Any]]:
+        """Filter PII columns from query results based on filter level.
+
+        Args:
+            results: List of row dicts from query execution
+            schema_context: Schema context with PII detection metadata
+            filter_level: "strict" (all PII), "moderate" (sensitive only), or "none"
+
+        Returns:
+            Filtered results with PII values masked as "***REDACTED***"
+        """
+        if not results or filter_level == "none" or not schema_context:
+            return results
+
+        # Identify PII columns using shared helper
+        pii_columns = PIIFilterService._identify_pii_columns(schema_context, filter_level)
+
+        if not pii_columns:
+            return results
+
+        # Mask PII values in results
+        filtered_results = []
+        for row in results:
+            filtered_row = {}
+            for col_name, value in row.items():
+                if col_name in pii_columns:
+                    filtered_row[col_name] = "***REDACTED***"
+                else:
+                    filtered_row[col_name] = value
+            filtered_results.append(filtered_row)
+
+        log.info(
+            "Filtered %d PII columns from query results (level=%s): %s",
+            len(pii_columns), filter_level, sorted(pii_columns)
+        )
+
+        return filtered_results

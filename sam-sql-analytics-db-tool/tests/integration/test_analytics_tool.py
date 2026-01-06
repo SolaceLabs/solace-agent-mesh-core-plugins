@@ -515,3 +515,51 @@ class TestSqlAnalyticsDbTool:
         log.info("✓ End-to-end query execution test passed")
         log.info("  Retrieved %d rows with %d columns",
                  len(result["result"]), len(first_row))
+
+    async def test_pii_filtering_in_query_results(
+        self, database_container, analytics_tool_config, mock_component
+    ):
+        """Test PII filtering in query results with strict mode.
+
+        Verifies that when pii_filter_level="strict", query results have PII
+        values masked while preserving non-PII data.
+        """
+        # Create tool with strict PII filtering
+        config_strict = {**analytics_tool_config}
+        config_strict["security"] = {
+            **analytics_tool_config.get("security", {}),
+            "pii_filter_level": "strict"
+        }
+
+        tool_strict = SqlAnalyticsDbTool(config_strict)
+        await tool_strict.init(mock_component, config_strict)
+
+        # Execute query that returns PII columns
+        result = await tool_strict._run_async_impl(
+            {"query": "SELECT id, name, email, created_at FROM users LIMIT 1"}
+        )
+
+        # Verify query succeeded
+        assert "result" in result, "Should have result key"
+        assert "error" not in result, f"Query failed: {result.get('error')}"
+        assert len(result["result"]) == 1, "Should return 1 row"
+
+        row = result["result"][0]
+
+        # PII columns should be masked
+        assert row["name"] == "***REDACTED***", \
+            "name column (PII) should be masked in query results"
+        assert row["email"] == "***REDACTED***", \
+            "email column (PII) should be masked in query results"
+
+        # Non-PII columns should remain visible
+        assert isinstance(row["id"], int), "id column should have actual value"
+        assert row["id"] >= 1, "id should be valid integer"
+        assert row["created_at"] is not None, "created_at should have actual value"
+
+        log.info("✓ PII filtering in query results test passed")
+        log.info("  Verified PII columns masked: name, email")
+        log.info("  Verified non-PII columns visible: id, created_at")
+
+        # Cleanup
+        await tool_strict.cleanup(mock_component, config_strict)
