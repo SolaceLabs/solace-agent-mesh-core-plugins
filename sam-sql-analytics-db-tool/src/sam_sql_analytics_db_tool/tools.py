@@ -188,7 +188,8 @@ class SqlAnalyticsDbTool(DynamicTool):
             
         try:
             # Execute query with row limit enforcement
-            results = self.db_factory.run_select(query)
+            max_rows = self.tool_config.get("security", {}).get("max_result_rows", 1000)
+            results = self.db_factory.run_select(query, limit=max_rows)
 
             # Filter PII from query results based on security configuration
             pii_filter_level = self.tool_config.get("security", {}).get("pii_filter_level", "none")

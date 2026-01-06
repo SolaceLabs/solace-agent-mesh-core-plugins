@@ -43,3 +43,4 @@ apps:
               blocked_operations: ["ALTER", "DROP", "TRUNCATE", "DELETE", "UPDATE", "GRANT", "REVOKE", "INSERT", "CREATE"]
               warning_operations: []
               pii_filter_level: "none"  # Options: "strict" (all PII), "moderate" (sensitive only), "none" (default)
+              max_result_rows: 1000  # Maximum rows returned per query (enforced even if user doesn't add LIMIT)

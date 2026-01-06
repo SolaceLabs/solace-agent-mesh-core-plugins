@@ -256,12 +256,12 @@ def analytics_tool_config(database_container, database_engine):
         },
         "timeouts": {
             "connect_timeout": 5,
-            "statement_timeout_ms": 10000,
-            "query_limit_rows": 1000
+            "statement_timeout_ms": 10000
         },
         "security": {
             "blocked_operations": ["DROP", "DELETE", "UPDATE", "INSERT", "CREATE"],
-            "warning_operations": ["WITH"]
+            "warning_operations": ["WITH"],
+            "max_result_rows": 1000
         },
         "profiling": {
             "sample_size": 100,

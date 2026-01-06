@@ -54,6 +54,7 @@ tool_config:
     blocked_operations: ["ALTER", "DROP", "TRUNCATE", "DELETE", "UPDATE", "GRANT", "REVOKE"]
     warning_operations: ["INSERT", "CREATE"]
     pii_filter_level: "none"  # Options: "strict", "moderate", "none" (default)
+    max_result_rows: 1000  # Maximum rows per query (auto-appends LIMIT if not present)
 ```
 
 ### Connection String Format
