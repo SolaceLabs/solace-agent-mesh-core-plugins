@@ -64,6 +64,15 @@ class SqlAnalyticsDbTool(DynamicTool):
         else:
             context.append("✅ Database Connected")
 
+        # Add directive for LLM to use context before querying
+        if self._schema_context and self._profile_context:
+            context.append("""\n
+                ⚠️  INSTRUCTION: The Database Schema and Database Profile
+                sections below contain table definitions and pre-computed metrics (row counts, column statistics, distributions).
+                Use this context as your PRIMARY source of information. Only execute SQL queries when you need actual data rows 
+                or the context lacks the specific metric.
+                """)
+
         # Apply PII filtering before including in LLM context
         pii_filter_level = self.tool_config.get("security", {}).get("pii_filter_level", "none")
         schema_for_llm = self._schema_context
