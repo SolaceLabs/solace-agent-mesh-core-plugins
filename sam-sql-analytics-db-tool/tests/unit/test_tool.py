@@ -42,15 +42,17 @@ def test_tool_initialization(tool_config):
     assert tool._schema_context is None
     assert tool._profile_context is None
 
+@patch('sam_sql_analytics_db_tool.tools.AnalyticsSubprocessManager')
 @patch('sam_sql_analytics_db_tool.tools.DBFactory')
 @patch('sam_sql_analytics_db_tool.tools.SecurityService')
-async def test_tool_init_success(mock_security, mock_db, tool_config, mock_component):
+async def test_tool_init_success(mock_security, mock_db, mock_subprocess, tool_config, mock_component):
     """Test successful tool initialization with services."""
-    # Mock successful combined discovery + profiling
-    mock_component.run_in_executor.return_value = async_return({
+    # Mock subprocess manager's run_combined method
+    mock_subprocess_instance = mock_subprocess.return_value
+    mock_subprocess_instance.run_combined.return_value = {
         "discovery": {"tables": ["users", "orders"]},
         "profiling": {"profiles": {"users": {"row_count": 100}}}
-    })
+    }
 
     tool = SqlAnalyticsDbTool(tool_config)
     await tool.init(mock_component, tool_config)
@@ -59,15 +61,18 @@ async def test_tool_init_success(mock_security, mock_db, tool_config, mock_compo
     assert tool._schema_context == {"tables": ["users", "orders"]}
     assert tool._profile_context == {"profiles": {"users": {"row_count": 100}}}
 
+@patch('sam_sql_analytics_db_tool.tools.AnalyticsSubprocessManager')
 @patch('sam_sql_analytics_db_tool.tools.DBFactory')
 @patch('sam_sql_analytics_db_tool.tools.SecurityService')
-async def test_tool_init_failure(mock_security, mock_db, tool_config, mock_component):
+async def test_tool_init_failure(mock_security, mock_db, mock_subprocess, tool_config, mock_component):
     """Test tool initialization failure handling."""
-    mock_component.run_in_executor.side_effect = Exception("Connection failed")
-    
+    # Mock subprocess failure
+    mock_subprocess_instance = mock_subprocess.return_value
+    mock_subprocess_instance.run_combined.side_effect = Exception("Connection failed")
+
     tool = SqlAnalyticsDbTool(tool_config)
     await tool.init(mock_component, tool_config)
-    
+
     assert not tool._connection_healthy
     assert tool._connection_error is not None
     assert "Connection failed" in tool._connection_error

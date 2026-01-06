@@ -119,10 +119,7 @@ class SqlAnalyticsDbTool(DynamicTool):
 
             # Run combined discovery + profiling in parallel (single subprocess)
             log.info("Running subprocess combined discovery + profiling...")
-            combined_result = await component.run_in_executor(
-                self.subprocess.run_combined,
-                connection_string
-            )
+            combined_result = self.subprocess.run_combined(connection_string)
 
             # Unpack results
             self._schema_context = combined_result.get("discovery")
