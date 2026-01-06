@@ -89,8 +89,13 @@ class ProfileHistoryService:
                 log.warning("Profile not found for date %s", date)
                 return None
 
-            content = artifact.get_bytes()
-            profile = json.loads(content.decode())
+            # Artifact is a Part object with inline_data (Blob)
+            if not artifact.inline_data:
+                log.error("Artifact has no inline_data for date %s", date)
+                return None
+
+            content_bytes = artifact.inline_data.data
+            profile = json.loads(content_bytes.decode())
 
             log.info("Loaded profile for %s from %s", date, filename)
             return profile
