@@ -34,16 +34,30 @@ class SqlAnalyticsDbTool(DynamicTool):
         
     @property
     def parameters_schema(self):
-        """Define the parameters schema - only SQL queries allowed."""
+        """Define the parameters schema for query execution and historical profiling."""
         return adk_types.Schema(
             type=adk_types.Type.OBJECT,
             properties={
+                "operation": adk_types.Schema(
+                    type=adk_types.Type.STRING,
+                    enum=["query", "get_profile", "list_profiles"],
+                    description=(
+                        "Operation type:\n"
+                        "- 'query': Execute SQL query (default)\n"
+                        "- 'get_profile': Load historical profile for specific date\n"
+                        "- 'list_profiles': List all available profile dates"
+                    )
+                ),
                 "query": adk_types.Schema(
                     type=adk_types.Type.STRING,
-                    description="Read-only SQL query to execute."
+                    description="Read-only SQL query to execute (when operation='query')."
+                ),
+                "date": adk_types.Schema(
+                    type=adk_types.Type.STRING,
+                    description="Date in YYYY-MM-DD format (when operation='get_profile')."
                 )
             },
-            required=["query"]
+            required=[]  # operation defaults to "query", then query is required
         )
     
     @property
@@ -78,6 +92,14 @@ class SqlAnalyticsDbTool(DynamicTool):
             context.append("  • You need actual data values (not just counts or statistics)")
             context.append("  • The question requires filtering (WHERE), joins, or aggregations beyond simple counts")
             context.append("="*80 + "\n")
+
+        # Add historical profiling info if available
+        if self._artifact_service:
+            context.append("\n📅 Historical Profiling:")
+            context.append("  Drift detection enabled - use operations to compare profiles over time:")
+            context.append("  • list_profiles - Get available snapshot dates")
+            context.append("  • get_profile(date='YYYY-MM-DD') - Load historical profile for comparison")
+            context.append("")
 
         # Apply PII filtering before including in LLM context
         pii_filter_level = self.tool_config.get("security", {}).get("pii_filter_level", "none")
@@ -148,6 +170,24 @@ class SqlAnalyticsDbTool(DynamicTool):
 
             log.info("Done subprocess combined discovery + profiling!")
 
+            # Initialize historical profiling if artifact service available
+            self._artifact_service = None
+            self._app_name = None
+
+            if hasattr(component, "artifact_service") and component.artifact_service:
+                from .services.profile_history import ProfileHistoryService
+
+                self._artifact_service = component.artifact_service
+                self._app_name = getattr(component, "app_name", "sam-app")
+                self.profile_history = ProfileHistoryService(self.tool_name)
+
+                # ⚠️  DEMO POC: Auto-generate synthetic profiles if none exist (DELETE THIS LINE FOR PRODUCTION)
+                await self._init_demo_profiles_if_empty()
+
+                log.info("Historical profiling enabled (artifact service available)")
+            else:
+                log.warning("Historical profiling disabled (artifact service unavailable)")
+
             self._connection_healthy = True
             log.info("Discovery and profiling completed")
 
@@ -162,16 +202,29 @@ class SqlAnalyticsDbTool(DynamicTool):
             self.db_factory.close()
             
     async def _run_async_impl(self, args: Dict[str, Any], **kwargs):
+        """Route to appropriate handler based on operation type."""
+        operation = args.get("operation", "query")  # Default to query for backward compatibility
+
+        if operation == "query":
+            return await self._handle_query(args, kwargs)
+        elif operation == "get_profile":
+            return await self._handle_get_profile(args, kwargs)
+        elif operation == "list_profiles":
+            return await self._handle_list_profiles(args, kwargs)
+        else:
+            return {"error": f"Invalid operation: {operation}"}
+
+    async def _handle_query(self, args: Dict[str, Any], kwargs: Dict[str, Any]):
         """Execute validated SQL query."""
         if not self._connection_healthy:
             return {
                 "error": f"Database connection is not available: {self._connection_error}"
             }
-            
+
         query = args.get("query")
         if not query:
             return {"error": "No SQL query provided"}
-            
+
         # Validate query
         validation = self.security_service.validate_query(
             query,
@@ -205,3 +258,67 @@ class SqlAnalyticsDbTool(DynamicTool):
         except Exception as e:
             log.error("Query execution failed: %s", e)
             return {"error": str(e)}
+
+    async def _handle_get_profile(self, args: Dict[str, Any], kwargs: Dict[str, Any]):
+        """Load historical profile snapshot for drift analysis."""
+        if not hasattr(self, 'profile_history') or not self._artifact_service:
+            return {
+                "error": "Historical profiling not available (artifact service unavailable)"
+            }
+
+        date = args.get("date")
+        if not date:
+            return {"error": "Missing 'date' parameter for get_profile operation"}
+
+        # Validate date format
+        from datetime import datetime
+        try:
+            datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            return {"error": f"Invalid date format: {date}. Use YYYY-MM-DD"}
+
+        # Load profile from artifact storage
+        profile = await self.profile_history.get_profile(
+            date=date,
+            artifact_service=self._artifact_service,
+            app_name=self._app_name
+        )
+
+        if not profile:
+            return {
+                "error": f"Profile not found for date {date}. Use list_profiles operation to see available dates."
+            }
+
+        return {
+            "date": date,
+            "profile": profile
+        }
+
+    async def _handle_list_profiles(self, args: Dict[str, Any], kwargs: Dict[str, Any]):
+        """List all available historical profile dates."""
+        if not hasattr(self, 'profile_history') or not self._artifact_service:
+            return {
+                "error": "Historical profiling not available (artifact service unavailable)"
+            }
+
+        dates = await self.profile_history.list_profiles(
+            artifact_service=self._artifact_service,
+            app_name=self._app_name
+        )
+
+        return {
+            "available_dates": dates,
+            "count": len(dates)
+        }
+
+    async def _init_demo_profiles_if_empty(self):
+        """⚠️  DEMO POC ONLY - Delete this entire method for production.
+
+        Auto-generates 20 days of synthetic profiles with anomalies if none exist.
+        """
+        existing = await self.profile_history.list_profiles(self._artifact_service, self._app_name)
+        if len(existing) == 0:
+            log.info("🔧 POC: Generating 20 days of demo profiles with anomalies...")
+            await self.profile_history.generate_demo_snapshots(
+                self._profile_context, self._artifact_service, self._app_name, num_days=20
+            )
