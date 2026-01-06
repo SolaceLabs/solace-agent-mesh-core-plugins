@@ -147,7 +147,7 @@ class DBFactory:
 
         with self.engine.connect() as conn:
             result = conn.execute(text(sql))
-            return [dict(row) for row in result]
+            return [dict(row._mapping) for row in result]
 
     def close(self):
         """Dispose engine + pool."""

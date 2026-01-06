@@ -468,3 +468,50 @@ class TestSqlAnalyticsDbTool:
         # Cleanup
         await tool_none.cleanup(mock_component, analytics_tool_config)
         log.info("✓ No PII filtering test passed (default behavior)")
+
+    async def test_query_execution_e2e(self, analytics_tool):
+        """Test end-to-end query execution with real database.
+
+        This test validates the full query execution path:
+        1. _run_async_impl() receives query
+        2. validate_query() validates SQL
+        3. run_select() executes against real DB
+        4. SQLAlchemy Row objects converted to dicts
+
+        Catches bugs like:
+        - dict(row) instead of dict(row._mapping) on SQLAlchemy 2.x
+        - Missing column names in response
+        - Incorrect data type handling
+        """
+        # Execute simple SELECT query through full stack
+        result = await analytics_tool._run_async_impl(
+            {"query": "SELECT * FROM users LIMIT 2"}
+        )
+
+        # Verify response structure
+        assert "result" in result, "Response should have 'result' key"
+        assert "error" not in result, f"Query should not error: {result.get('error')}"
+
+        # Verify result is list of dicts
+        assert isinstance(result["result"], list), "Result should be list of rows"
+        assert len(result["result"]) >= 1, "Should return at least one row"
+        assert len(result["result"]) <= 2, "LIMIT 2 should be respected"
+
+        # Verify row structure (dict with column keys)
+        first_row = result["result"][0]
+        assert isinstance(first_row, dict), "Each row should be a dict"
+
+        # Verify expected columns exist
+        assert "id" in first_row, "Row should have 'id' column"
+        assert "email" in first_row, "Row should have 'email' column"
+        assert "name" in first_row, "Row should have 'name' column"
+        assert "created_at" in first_row, "Row should have 'created_at' column"
+
+        # Verify data types
+        assert isinstance(first_row["id"], int), "id should be integer"
+        assert isinstance(first_row["email"], str), "email should be string"
+        assert isinstance(first_row["name"], str), "name should be string"
+
+        log.info("✓ End-to-end query execution test passed")
+        log.info("  Retrieved %d rows with %d columns",
+                 len(result["result"]), len(first_row))
