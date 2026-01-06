@@ -113,7 +113,7 @@ class ProfileHistoryService:
         prefix = f"{self.base_path}/"
 
         try:
-            artifacts = await artifact_service.list_artifacts(
+            artifacts = await artifact_service.list_artifact_keys(
                 app_name=app_name,
                 user_id="global",
                 session_id="global",
@@ -236,7 +236,7 @@ class ProfileHistoryService:
                 elif fraud_spike and table_name == "orders" and "totalamount" in col_name:
                     if "max" in metrics:
                         metrics["max"] = 9999.0
-                    if "third_quartile" in metrics:
+                    if "third_quartile" in metrics and metrics["third_quartile"] is not None:
                         metrics["third_quartile"] *= 2.5
 
                 # Inventory crisis
@@ -258,7 +258,7 @@ class ProfileHistoryService:
                         metrics["null_count"] = metrics["count"] * 0.85
 
                 # Gradual quality degradation
-                if "null_ratio" in metrics and metrics["null_ratio"] > 0.1:
+                if "null_ratio" in metrics and metrics["null_ratio"] is not None and metrics["null_ratio"] > 0.1:
                     improvement = 1 - (days_ago * 0.01)
                     metrics["null_ratio"] *= improvement
                     if "null_count" in metrics and "count" in metrics:
