@@ -110,21 +110,20 @@ class ProfileHistoryService:
         Returns:
             List of date strings (YYYY-MM-DD), sorted newest first
         """
-        prefix = f"{self.base_path}/"
-
         try:
-            artifacts = await artifact_service.list_artifact_keys(
+            # Get all artifact keys (no prefix filtering available)
+            artifact_keys = await artifact_service.list_artifact_keys(
                 app_name=app_name,
                 user_id="global",
-                session_id="global",
-                prefix=prefix
+                session_id="global"
             )
 
+            # Filter for our profile files and extract dates
             dates = []
-            for artifact in artifacts:
-                filename = artifact.get("filename", "")
-                # Extract date from filename: profile_2026-01-06.json
-                if "profile_" in filename and filename.endswith(".json"):
+            for filename in artifact_keys:
+                # Match: analytics_profiles/analytics_db/profile_2026-01-06.json
+                if self.base_path in filename and "profile_" in filename and filename.endswith(".json"):
+                    # Extract date from filename
                     date_str = filename.split("profile_")[1].replace(".json", "")
                     dates.append(date_str)
 
