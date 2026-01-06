@@ -10,6 +10,7 @@ import base64
 import logging
 import time
 import hashlib
+import httpx
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 from starlette.responses import JSONResponse
@@ -736,6 +737,9 @@ class McpAdapter(GatewayAdapter):
         """
 
         try:
+            # Get config early - needed for all grant types
+            config: McpAdapterConfig = self.context.adapter_config
+
             # Cleanup expired codes before processing
             self._cleanup_expired_oauth_codes()
 
@@ -853,11 +857,78 @@ class McpAdapter(GatewayAdapter):
 
             elif grant_type == "refresh_token":
                 # For refresh token grant, we need to call the OAuth2 service to get new tokens
-                # This requires the WebUI proxy to support refresh token exchange
-                log.warning("MCP OAuth: Refresh token grant not yet implemented")
-                return JSONResponse(
-                    {"error": "unsupported_grant_type"}, status_code=400
-                )
+                if not refresh_token:
+                    log.warning("MCP OAuth token: Missing refresh_token parameter")
+                    return JSONResponse(
+                        {"error": "invalid_request", "error_description": "Missing refresh_token parameter"},
+                        status_code=400,
+                    )
+
+                try:
+                    # Exchange refresh token for new tokens via external auth service
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        refresh_response = await client.post(
+                            f"{config.external_auth_service_url}/gateway-oauth/refresh",
+                            json={"refresh_token": refresh_token},
+                        )
+
+                        if refresh_response.status_code == 200:
+                            new_tokens = refresh_response.json()
+                            new_access_token = new_tokens.get("access_token")
+                            new_refresh_token = new_tokens.get("refresh_token", refresh_token)  # Use old if not rotated
+
+                            if not new_access_token:
+                                log.error("MCP OAuth: No access token in refresh response")
+                                return JSONResponse(
+                                    {"error": "server_error"},
+                                    status_code=500,
+                                )
+
+                            log.info("MCP OAuth: Successfully refreshed access token")
+
+                            return JSONResponse(
+                                {
+                                    "access_token": new_access_token,
+                                    "refresh_token": new_refresh_token,
+                                    "token_type": "Bearer",
+                                    "expires_in": new_tokens.get("expires_in", 3600),
+                                }
+                            )
+
+                        elif refresh_response.status_code == 400:
+                            # Invalid or expired refresh token
+                            error_data = refresh_response.json() if refresh_response.headers.get("content-type", "").startswith("application/json") else {}
+                            log.warning(
+                                "MCP OAuth: Refresh token invalid or expired: %s",
+                                error_data.get("error", "invalid_grant")
+                            )
+                            return JSONResponse(
+                                {
+                                    "error": error_data.get("error", "invalid_grant"),
+                                    "error_description": error_data.get("error_description", "Refresh token is invalid or expired"),
+                                },
+                                status_code=400,
+                            )
+
+                        else:
+                            log.error(
+                                "MCP OAuth: Refresh token exchange failed: %d %s",
+                                refresh_response.status_code,
+                                refresh_response.text,
+                            )
+                            return JSONResponse(
+                                {"error": "server_error"},
+                                status_code=502,
+                            )
+
+                except httpx.RequestError as e:
+                    log.error(
+                        "MCP OAuth: Failed to connect to auth service for token refresh: %s", e
+                    )
+                    return JSONResponse(
+                        {"error": "server_error", "error_description": "Failed to connect to authentication service"},
+                        status_code=503,
+                    )
 
             else:
                 log.warning("MCP OAuth token: Unsupported grant_type: %s", grant_type)
