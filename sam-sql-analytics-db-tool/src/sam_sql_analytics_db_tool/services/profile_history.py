@@ -13,10 +13,11 @@ class ProfileHistoryService:
         """Initialize profile history service.
 
         Args:
-            tool_name: Tool instance name (for artifact path scoping)
+            tool_name: Tool instance name (for artifact filename scoping)
         """
         self.tool_name = tool_name
-        self.base_path = f"analytics_profiles/{tool_name}"
+        # Use flat storage (no subdirectories) for artifact service compatibility
+        self.filename_prefix = f"analytics_profile_{tool_name}_"
 
     async def save_profile(
         self,
@@ -36,7 +37,8 @@ class ProfileHistoryService:
         from solace_agent_mesh.agent.utils.artifact_helpers import save_artifact_with_metadata
         from datetime import datetime as dt, timezone
 
-        filename = f"{self.base_path}/profile_{date}.json"
+        # Flat filename: analytics_profile_analytics_db_2026-01-06.json
+        filename = f"{self.filename_prefix}{date}.json"
 
         await save_artifact_with_metadata(
             artifact_service=artifact_service,
@@ -72,7 +74,8 @@ class ProfileHistoryService:
         Returns:
             Profile dict or None if not found
         """
-        filename = f"{self.base_path}/profile_{date}.json"
+        # Flat filename
+        filename = f"{self.filename_prefix}{date}.json"
 
         try:
             artifact = await artifact_service.load_artifact(
@@ -111,7 +114,7 @@ class ProfileHistoryService:
             List of date strings (YYYY-MM-DD), sorted newest first
         """
         try:
-            # Get all artifact keys (no prefix filtering available)
+            # Get all artifact keys (returns flat list of filenames)
             artifact_keys = await artifact_service.list_artifact_keys(
                 app_name=app_name,
                 user_id="global",
@@ -121,10 +124,10 @@ class ProfileHistoryService:
             # Filter for our profile files and extract dates
             dates = []
             for filename in artifact_keys:
-                # Match: analytics_profiles/analytics_db/profile_2026-01-06.json
-                if self.base_path in filename and "profile_" in filename and filename.endswith(".json"):
-                    # Extract date from filename
-                    date_str = filename.split("profile_")[1].replace(".json", "")
+                # Match flat filenames: analytics_profile_analytics_db_2026-01-06.json
+                if filename.startswith(self.filename_prefix) and filename.endswith(".json"):
+                    # Extract date from: analytics_profile_analytics_db_2026-01-06.json
+                    date_str = filename.replace(self.filename_prefix, "").replace(".json", "")
                     dates.append(date_str)
 
             # Sort newest first
