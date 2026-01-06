@@ -66,12 +66,18 @@ class SqlAnalyticsDbTool(DynamicTool):
 
         # Add directive for LLM to use context before querying
         if self._schema_context and self._profile_context:
-            context.append("""\n
-                ⚠️  INSTRUCTION: The Database Schema and Database Profile
-                sections below contain table definitions and pre-computed metrics (row counts, column statistics, distributions).
-                Use this context as your PRIMARY source of information. Only execute SQL queries when you need actual data rows 
-                or the context lacks the specific metric.
-                """)
+            context.append("\n" + "="*80)
+            context.append("⚠️  CRITICAL INSTRUCTION ⚠️")
+            context.append("="*80)
+            context.append("ALWAYS prefer the DATABASE SCHEMA and DATABASE PROFILE sections below over executing SQL queries.")
+            context.append("These sections contain:")
+            context.append("  • Complete table definitions (columns, types, constraints, relationships)")
+            context.append("  • Pre-computed statistics (row counts, min/max/mean/median/stddev/quartiles)")
+            context.append("  • Data distributions (histograms)")
+            context.append("\nExecute SQL queries ONLY when:")
+            context.append("  • You need actual data values (not just counts or statistics)")
+            context.append("  • The question requires filtering (WHERE), joins, or aggregations beyond simple counts")
+            context.append("="*80 + "\n")
 
         # Apply PII filtering before including in LLM context
         pii_filter_level = self.tool_config.get("security", {}).get("pii_filter_level", "none")
@@ -91,14 +97,20 @@ class SqlAnalyticsDbTool(DynamicTool):
             if not self._profile_context:
                 profile_for_llm = None
 
-        # Include both schema and profile data in context
+        # Include both schema and profile data in context with visual markers
         if schema_for_llm:
-            context.append("\nDatabase Schema:")
+            context.append("\n" + "="*80)
+            context.append("📋 DATABASE SCHEMA")
+            context.append("="*80)
             context.append(yaml.dump(schema_for_llm, default_flow_style=False))
+            context.append("="*80 + "\n")
 
         if profile_for_llm:
-            context.append("\nDatabase Profile:")
+            context.append("\n" + "="*80)
+            context.append("📊 DATABASE PROFILE (Pre-computed Statistics)")
+            context.append("="*80)
             context.append(yaml.dump(profile_for_llm, default_flow_style=False))
+            context.append("="*80)
 
         return "\n".join([self.tool_config.get("tool_description", "")] + context)
         

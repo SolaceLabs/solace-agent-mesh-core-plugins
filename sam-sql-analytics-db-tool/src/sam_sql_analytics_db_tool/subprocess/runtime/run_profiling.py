@@ -144,7 +144,7 @@ def compute_histogram_bins(res_min: float, res_max: float, res_iqr: float, res_r
 
     Returns: (num_bins, bin_width)
     """
-    max_bin_count = 30  # Cap at 30 bins for LLM context (OpenMetadata uses 100)
+    max_bin_count = 15  # Cap at 15 bins for LLM context (OpenMetadata uses 100)
 
     if res_iqr is not None and res_iqr > 0:
         # Freedman-Diaconis rule: bin_width = 2 * IQR * n^(-1/3)

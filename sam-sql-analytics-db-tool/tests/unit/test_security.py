@@ -195,3 +195,135 @@ def test_filter_pii_from_results_empty():
     # None results
     filtered = PIIFilterService.filter_pii_from_results(None, schema_context, "strict")
     assert filtered is None, "None results should remain None"
+
+def test_trim_for_llm_context():
+    """Test context trimming removes redundant fields."""
+    from sam_sql_analytics_db_tool.services.security import PIIFilterService
+
+    schema = {
+        "tables": {
+            "users": {
+                "columns": [
+                    {
+                        "name": "email",
+                        "type": "VARCHAR",
+                        "pii": {
+                            "pii_detected": True,
+                            "pii_type": "Sensitive",
+                            "confidence": 1.0,
+                            "detection_method": "column_name"
+                        }
+                    },
+                    {"name": "id", "type": "INTEGER"}
+                ]
+            }
+        }
+    }
+
+    profile = {
+        "tables": {
+            "users": {
+                "table_metrics": {
+                    "row_count": 1000,
+                    "sampling_enabled": True  # Should be removed
+                },
+                "column_metrics": {
+                    "id": {
+                        "count": 1000,
+                        "min": 1,
+                        "max": 1000,
+                        "mean": 500.5,
+                        "median": 500,
+                        "stddev": 288.67,
+                        "first_quartile": 250,
+                        "third_quartile": 750,
+                        "sum": 500500,  # Should REMAIN (useful)
+                        "iqr": 500,  # Should be removed (derivable)
+                        "duplicate_count": 0,  # Should be removed (derivable)
+                        "non_parametric_skew": 0.0,  # Should be removed
+                        "type": "INTEGER"  # Should be removed (in schema)
+                    }
+                }
+            }
+        }
+    }
+
+    # Trim in-place
+    PIIFilterService._trim_for_llm_context(schema, profile)
+
+    # Verify PII metadata simplified
+    email_col = schema["tables"]["users"]["columns"][0]
+    assert email_col["pii"] == "Sensitive", "PII should be simplified to just type string"
+
+    # Verify table metrics trimmed
+    table_metrics = profile["tables"]["users"]["table_metrics"]
+    assert "row_count" in table_metrics, "row_count should remain"
+    assert "sampling_enabled" not in table_metrics, "sampling_enabled should be removed"
+
+    # Verify column metrics: keep valuable, remove redundant
+    id_metrics = profile["tables"]["users"]["column_metrics"]["id"]
+
+    # Should remain
+    assert "count" in id_metrics
+    assert "min" in id_metrics
+    assert "max" in id_metrics
+    assert "mean" in id_metrics
+    assert "median" in id_metrics
+    assert "stddev" in id_metrics
+    assert "first_quartile" in id_metrics
+    assert "third_quartile" in id_metrics
+    assert "sum" in id_metrics, "sum should remain (useful for totals)"
+
+    # Should be removed
+    assert "iqr" not in id_metrics, "iqr should be removed (derivable from Q3-Q1)"
+    assert "duplicate_count" not in id_metrics, "duplicate_count should be removed"
+    assert "non_parametric_skew" not in id_metrics, "non_parametric_skew should be removed"
+    assert "type" not in id_metrics, "type should be removed (in schema)"
+
+def test_filter_for_llm_always_trims():
+    """Test filter_for_llm always trims, even with level='none'."""
+    from sam_sql_analytics_db_tool.services.security import PIIFilterService
+
+    schema = {
+        "tables": {
+            "users": {
+                "columns": [
+                    {
+                        "name": "email",
+                        "pii": {
+                            "pii_detected": True,
+                            "pii_type": "Sensitive",
+                            "confidence": 1.0
+                        }
+                    }
+                ]
+            }
+        }
+    }
+
+    profile = {
+        "tables": {
+            "users": {
+                "column_metrics": {
+                    "email": {
+                        "count": 100,
+                        "iqr": 50,
+                        "non_parametric_skew": 0.1
+                    }
+                }
+            }
+        }
+    }
+
+    # Filter with level="none" (no PII filtering, but should still trim)
+    filtered_schema, filtered_profile = PIIFilterService.filter_for_llm(schema, profile, "none")
+
+    # PII info should be trimmed (dict → string)
+    email_col = filtered_schema["tables"]["users"]["columns"][0]
+    assert email_col["pii"] == "Sensitive", "PII should be trimmed even with level='none'"
+
+    # Column metrics should be trimmed
+    email_metrics = filtered_profile["tables"]["users"]["column_metrics"]["email"]
+    assert "count" in email_metrics, "count should remain"
+    assert "iqr" not in email_metrics, "iqr should be removed by trimming"
+    assert "non_parametric_skew" not in email_metrics, "non_parametric_skew should be removed"

@@ -121,7 +121,7 @@ class TestSqlAnalyticsDbTool:
         # Verify connection status in tool description
         description = analytics_tool.tool_description
         assert "✅ Database Connected" in description
-        assert "Database Schema:" in description
+        assert "DATABASE SCHEMA" in description
 
     async def test_profiling_metrics(self, analytics_tool):
         """Rigorously test profiling: row counts, min/max/mean, histograms, null ratios."""
@@ -230,7 +230,7 @@ class TestSqlAnalyticsDbTool:
 
         # Verify profiling in tool description
         description = analytics_tool.tool_description
-        assert "Database Profile:" in description
+        assert "DATABASE PROFILE" in description
 
     async def test_pii_detection_implicit_and_content_based(self, analytics_tool):
         """
@@ -404,9 +404,12 @@ class TestSqlAnalyticsDbTool:
 
         # Parse schema from description to verify filtering
         import yaml
-        schema_yaml = description.split("Database Schema:")[1]
-        if "Database Profile:" in schema_yaml:
-            schema_yaml = schema_yaml.split("Database Profile:")[0]
+        # Extract schema YAML between markers
+        schema_start = description.find("📋 DATABASE SCHEMA")
+        schema_end = description.find("=" * 80, schema_start + 100)  # Find closing separator
+        schema_yaml = description[schema_start:schema_end]
+        # Remove header lines and extract just YAML
+        schema_yaml = "\n".join([line for line in schema_yaml.split("\n") if not line.startswith("=") and "DATABASE SCHEMA" not in line])
 
         schema_in_desc = yaml.safe_load(schema_yaml)
         users_table = schema_in_desc.get("tables", {}).get("users", {})
@@ -421,8 +424,17 @@ class TestSqlAnalyticsDbTool:
             "enum_values should be removed from PII columns"
 
         # Verify profile metrics removed for PII columns
-        if "Database Profile:" in description:
-            profile_yaml = description.split("Database Profile:")[1]
+        if "DATABASE PROFILE" in description:
+            # Extract profile YAML between markers
+            profile_start = description.find("📊 DATABASE PROFILE")
+            profile_end = description.find("=" * 80, profile_start + 100)
+            if profile_end == -1:
+                profile_yaml = description[profile_start:]
+            else:
+                profile_yaml = description[profile_start:profile_end]
+            # Remove header lines and extract just YAML
+            profile_yaml = "\n".join([line for line in profile_yaml.split("\n") if not line.startswith("=") and "DATABASE PROFILE" not in line])
+
             profile_in_desc = yaml.safe_load(profile_yaml)
             users_profile = profile_in_desc.get("tables", {}).get("users", {})
             email_metrics = users_profile.get("column_metrics", {}).get("email")

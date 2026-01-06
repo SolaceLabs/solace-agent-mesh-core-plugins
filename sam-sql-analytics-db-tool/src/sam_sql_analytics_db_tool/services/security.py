@@ -249,59 +249,105 @@ class PIIFilterService:
             ... )
             >>> # email column kept, but enum_values and metrics removed
         """
-        if level == "none":
-            return schema, profile
-
+        # Always copy for safety
         filtered_schema = copy.deepcopy(schema)
         filtered_profile = copy.deepcopy(profile)
 
-        log.debug("PII filtering level: %s", level)
-
-        # Identify PII columns using shared helper
-        pii_columns_global = PIIFilterService._identify_pii_columns(filtered_schema, level)
-
         pii_columns_filtered = 0
 
-        # Filter schema: remove enum_values from PII columns (keep column definitions)
-        for table_name, table_data in filtered_schema.get("tables", {}).items():
-            for col in table_data.get("columns", []):
-                if col["name"] in pii_columns_global:
-                    # Remove enum_values (actual PII data) but keep column definition
-                    if "enum_values" in col:
-                        del col["enum_values"]
-                        log.debug(
-                            "Removed enum_values from PII column %s.%s",
-                            table_name, col["name"]
-                        )
-                    pii_columns_filtered += 1
+        if level != "none":
+            log.debug("PII filtering level: %s", level)
 
-        # Filter profile: remove ALL column_metrics for PII columns
-        # Profile metrics leak PII via min/max/histogram/distinct values
-        for table_name, table_profile in filtered_profile.get("tables", {}).items():
-            # Use the same PII columns set identified earlier
-            pii_columns = pii_columns_global
+            # Identify PII columns using shared helper (needs dict structure)
+            pii_columns_global = PIIFilterService._identify_pii_columns(filtered_schema, level)
 
-            # Remove metrics for PII columns only
-            column_metrics = table_profile.get("column_metrics", {})
-            filtered_metrics = {
-                col_name: metrics
-                for col_name, metrics in column_metrics.items()
-                if col_name not in pii_columns
-            }
-            table_profile["column_metrics"] = filtered_metrics
+            # Filter schema: remove enum_values from PII columns (keep column definitions)
+            for table_name, table_data in filtered_schema.get("tables", {}).items():
+                for col in table_data.get("columns", []):
+                    if col["name"] in pii_columns_global:
+                        # Remove enum_values (actual PII data) but keep column definition
+                        if "enum_values" in col:
+                            del col["enum_values"]
+                            log.debug(
+                                "Removed enum_values from PII column %s.%s",
+                                table_name, col["name"]
+                            )
+                        pii_columns_filtered += 1
 
-        # Update summary stats
-        if pii_columns_filtered > 0:
-            filtered_schema.setdefault("_summary", {})[
-                "pii_columns_filtered"
-            ] = pii_columns_filtered
-            log.info(
-                "PII filter (%s): Filtered %d columns (values removed)",
-                level,
-                pii_columns_filtered
-            )
+            # Filter profile: remove ALL column_metrics for PII columns
+            # Profile metrics leak PII via min/max/histogram/distinct values
+            for table_name, table_profile in filtered_profile.get("tables", {}).items():
+                # Use the same PII columns set identified earlier
+                pii_columns = pii_columns_global
+
+                # Remove metrics for PII columns only
+                column_metrics = table_profile.get("column_metrics", {})
+                filtered_metrics = {
+                    col_name: metrics
+                    for col_name, metrics in column_metrics.items()
+                    if col_name not in pii_columns
+                }
+                table_profile["column_metrics"] = filtered_metrics
+
+            # Update summary stats
+            if pii_columns_filtered > 0:
+                filtered_schema.setdefault("_summary", {})[
+                    "pii_columns_filtered"
+                ] = pii_columns_filtered
+                log.info(
+                    "PII filter (%s): Filtered %d columns (values removed)",
+                    level,
+                    pii_columns_filtered
+                )
+
+        # Always trim redundant fields (LAST STEP, after all PII filtering)
+        PIIFilterService._trim_for_llm_context(filtered_schema, filtered_profile)
 
         return filtered_schema, filtered_profile
+
+    @staticmethod
+    def _trim_for_llm_context(schema: Dict[str, Any], profile: Dict[str, Any]):
+        """Remove redundant/verbose fields to reduce context size.
+
+        Modifies schema and profile in-place.
+        """
+        # Trim schema PII metadata (keep only pii_type, remove verbose fields)
+        for table_data in schema.get("tables", {}).values():
+            for col in table_data.get("columns", []):
+                pii_info = col.get("pii")
+                if pii_info and isinstance(pii_info, dict):
+                    # Simplify PII info: keep only type
+                    pii_type = pii_info.get("pii_type")
+                    if pii_type:
+                        col["pii"] = pii_type  # "Sensitive" or "NonSensitive"
+                    else:
+                        del col["pii"]
+
+        # Trim profile metrics (remove derivable/rarely-used fields)
+        for table_profile in profile.get("tables", {}).values():
+            # Remove table-level redundant fields
+            table_metrics = table_profile.get("table_metrics", {})
+            if "sampling_enabled" in table_metrics:
+                del table_metrics["sampling_enabled"]
+
+            # Trim column metrics
+            for col_name, metrics in table_profile.get("column_metrics", {}).items():
+                if not isinstance(metrics, dict):
+                    continue
+
+                # Remove derivable fields
+                if "iqr" in metrics:
+                    del metrics["iqr"]  # Derivable: Q3 - Q1
+                if "duplicate_count" in metrics:
+                    del metrics["duplicate_count"]  # Derivable: count - distinct_count
+
+                # Remove rarely-used advanced fields
+                if "non_parametric_skew" in metrics:
+                    del metrics["non_parametric_skew"]
+
+                # Remove type from metrics (already in schema)
+                if "type" in metrics:
+                    del metrics["type"]
 
     @staticmethod
     def filter_pii_from_results(
