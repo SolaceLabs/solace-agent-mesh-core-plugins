@@ -1,0 +1,85 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.sam_sql_analytics_db_tool.metadata]
+type = "tool"
+
+[project]
+name = "sam_sql_analytics_db_tool"
+version = "0.1.0"
+description = "A reusable SQL analytics tool for Solace Agent Mesh."
+readme = "README.md"
+requires-python = ">=3.10.16"
+dependencies = [
+    # Core dependencies
+    "pydantic==2.11.9",
+    "PyYAML==6.0.2",
+    "pandas>=2.0.0",
+    "sqlglot>=11.0.0",
+
+    # Database Adapters
+    "psycopg2-binary==2.9.10",     # PostgreSQL
+    "PyMySQL==1.1.2",              # MySQL/MariaDB
+    "oracledb>=1.0.0",             # Oracle
+    "snowflake-connector-python",   # Snowflake
+    "pyodbc>=4.0.0"                # MSSQL
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["sam_sql_analytics_db_tool"]
+src-path = "src"
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/sam_sql_analytics_db_tool" = "sam_sql_analytics_db_tool/"
+"config.yaml" = "sam_sql_analytics_db_tool/config.yaml"
+"README.md" = "sam_sql_analytics_db_tool/README.md"
+"pyproject.toml" = "sam_sql_analytics_db_tool/pyproject.toml"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "--tb=short --strict-markers --disable-warnings -p pytest_asyncio"
+
+[tool.hatch.envs.hatch-test]
+dependencies = [
+    "pytest-asyncio",
+    "pytest>=8.0.0",
+    "pytest-mock>=3.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-xdist>=3.5.0",
+    "solace-agent-mesh>=1.4.9,<2.0.0",
+    "testcontainers[mysql,postgres,oracle,mssql]>=4.4.0",
+    "docker>=6.1.3",
+    "paramiko>=3.0.0"
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest-asyncio",
+    "pytest>=8.0.0",
+    "pytest-mock>=3.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-xdist>=3.5.0",
+    "solace-agent-mesh>=1.4.9,<2.0.0",
+    "testcontainers[mysql,postgres,oracle,mssql]>=4.4.0",
+    "docker>=6.1.3",
+    "paramiko>=3.0.0"
+]
+
+
+[tool.sam-sql-analytics.subprocess-deps]
+packages = [
+    "openmetadata-ingestion==1.10.7.0",
+    "openmetadata-ingestion[postgres]",
+    "presidio-analyzer>=2.2.0",
+    "spacy>=3.8.0",
+#    "sqlalchemy==1.4.54",
+#    "psycopg2-binary",
+    "PyMySQL",
+    "pyodbc",
+    "oracledb",
+    "snowflake-connector-python"
+]

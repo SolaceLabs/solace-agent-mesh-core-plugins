@@ -10,6 +10,9 @@ sam-sql-database:
 sam-sql-database-tool:
   - changed-files:
       - any-glob-to-any-file: sam-sql-database-tool/**
+sam-sql-analytics-db-tool:
+  - changed-files:
+      - any-glob-to-any-file: sam-sql-analytics-db-tool/**
 sam-geo-information:
   - changed-files:
       - any-glob-to-any-file: sam-geo-information/**
