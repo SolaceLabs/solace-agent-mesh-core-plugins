@@ -125,7 +125,8 @@ class ProfileHistoryService:
             dates = []
             for filename in artifact_keys:
                 # Match flat filenames: analytics_profile_analytics_db_2026-01-06.json
-                if filename.startswith(self.filename_prefix) and filename.endswith(".json"):
+                # Exclude metadata files (.metadata.json)
+                if filename.startswith(self.filename_prefix) and filename.endswith(".json") and ".metadata" not in filename:
                     # Extract date from: analytics_profile_analytics_db_2026-01-06.json
                     date_str = filename.replace(self.filename_prefix, "").replace(".json", "")
                     dates.append(date_str)
