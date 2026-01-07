@@ -868,8 +868,11 @@ class McpAdapter(GatewayAdapter):
                     # Exchange refresh token for new tokens via external auth service
                     async with httpx.AsyncClient(timeout=10.0) as client:
                         refresh_response = await client.post(
-                            f"{config.external_auth_service_url}/gateway-oauth/refresh",
-                            json={"refresh_token": refresh_token},
+                            f"{config.external_auth_service_url}/refresh_token",
+                            json={
+                                "refresh_token": refresh_token,
+                                "provider": config.external_auth_provider
+                            },
                         )
 
                         if refresh_response.status_code == 200:
