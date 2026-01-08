@@ -40,7 +40,6 @@ class ListingFilterMiddleware(Middleware):
             # The auth handler should have populated this
             try:
                 client_id = self.adapter._get_client_id(mcp_context)
-                self.adapter._current_mcp_context = mcp_context
                 external_input = {
                     "tool_name": "None",
                     "agent_name": "None",
@@ -50,8 +49,13 @@ class ListingFilterMiddleware(Middleware):
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
 
+                # Pass mcp_context through endpoint_context for per-request auth
                 user_identity = await self.adapter.context.get_user_identity(
-                    external_input, endpoint_context={"mcp_client_id": client_id}
+                    external_input,
+                    endpoint_context={
+                        "mcp_client_id": client_id,
+                        "mcp_context": mcp_context
+                    }
                 )
                 user_id = user_identity.get("id")
             except Exception as e:

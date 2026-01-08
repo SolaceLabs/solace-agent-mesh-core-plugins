@@ -64,8 +64,6 @@ class McpAdapterAuthHandler(ABC):
         Returns:
             Redirect to WebUI OAuth proxy
         """
-
-
         config: McpAdapterConfig = self.context.adapter_config
 
         # Extract query parameters from MCP client

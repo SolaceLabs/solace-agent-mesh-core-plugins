@@ -85,10 +85,6 @@ class McpAdapter(McpAdapterAuthHandler, GatewayAdapter):
             {}
         )  # agent_name -> list of tool names
 
-        # Store MCP context for enterprise authentication
-        # Enterprise auth extractors will access this to extract tokens
-        self._current_mcp_context: Optional[Any] = None
-
         # Resource management for artifact access
         # Track which artifacts exist per session for resource listing
         self.session_artifacts: Dict[str, Dict[str, Dict[str, Any]]] = (
@@ -439,9 +435,6 @@ class McpAdapter(McpAdapterAuthHandler, GatewayAdapter):
 
         try:
             client_id = self._get_client_id(mcp_context)
-            # Store MCP context for enterprise authentication
-            # Enterprise auth extractors will access this to extract Bearer tokens
-            self._current_mcp_context = mcp_context
 
             # Create external input dict with client_id
             # NOTE: Token extraction is now handled by enterprise auth
@@ -455,8 +448,13 @@ class McpAdapter(McpAdapterAuthHandler, GatewayAdapter):
             }
 
             # Submit to SAM via the generic gateway with endpoint_context
+            # Pass mcp_context through endpoint_context for per-request auth (no race conditions)
             task_id = await self.context.handle_external_input(
-                external_input, endpoint_context={"mcp_client_id": client_id}
+                external_input,
+                endpoint_context={
+                    "mcp_client_id": client_id,
+                    "mcp_context": mcp_context
+                }
             )
 
             # Register Future, Queue, and buffers for this task
