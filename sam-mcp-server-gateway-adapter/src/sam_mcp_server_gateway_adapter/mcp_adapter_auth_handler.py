@@ -150,8 +150,17 @@ class McpAdapterAuthHandler(ABC):
         mcp_callback_uri = f"{base_url}/oauth/callback"
         log.info("Using OAuth callback URI: %s", mcp_callback_uri)
 
+        # Build OAuth2 service's redirect_uri (where Azure will redirect after  login)
+        # Overrides config default with environment-specific OAuth2 service URL
+        oauth2_redirect_uri = f"{config.external_auth_service_url}/callback"
+
         # Redirect to WebUI OAuth proxy with internal state
-        proxy_params = {"gateway_uri": mcp_callback_uri, "state": internal_state, "provider": config.external_auth_provider}
+        proxy_params = {
+            "gateway_uri": mcp_callback_uri,
+             "state": internal_state,
+            "provider": config.external_auth_provider, 
+            "redirect_uri": oauth2_redirect_uri
+        }
 
         proxy_url = f"{config.external_auth_service_url}/login?{urlencode(proxy_params)}"
 
