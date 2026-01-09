@@ -26,6 +26,25 @@ class McpAdapterAuthHandler(ABC):
     # Note: code_challenge and code_challenge_method are required when require_pkce is enabled (default)
     oauth_states: Dict[str, Dict[str, Any]] = {}
 
+
+    def _get_base_url(self, config: McpAdapterConfig) -> str:
+        """
+        Get external base URL for OAuth endpoints.
+
+        Uses MCP_EXTERNAL_BASE_URL environment variable if set (production),
+        otherwise builds from host:port (local development).
+
+        Returns:
+            Base URL (e.g., "https://solacechatbeta.mymaas.net" or "http://0.0.0.0:8090")
+        """
+        external_base = os.environ.get("MCP_EXTERNAL_BASE_URL")
+        if external_base:
+            log.debug(f"Using external base URL from MCP_EXTERNAL_BASE_URL: {external_base}")
+            return external_base.rstrip('/')  # Remove trailing slash if present
+
+        # Fallback for local dev
+        return f"http://{config.host}:{config.port}"
+
     def _register_oauth_endpoints(self) -> None:
         """
         Register OAuth endpoints with the FastMCP server.
@@ -127,15 +146,9 @@ class McpAdapterAuthHandler(ABC):
         log.info("Stored OAuth state for internal_state=%s", internal_state)
 
         # Build MCP's callback URI (where OAuth2 service will send gateway code)
-        # Uses environment variable override for production or builds from config for local dev
-
-        # Check for environment variable override (production)
-        external_callback = os.environ.get("MCP_OAUTH_CALLBACK_URI")
-        if external_callback:
-            log.info("Using external OAuth callback URI from MCP_OAUTH_CALLBACK_URI env var %s", external_callback)
-            mcp_callback_uri = external_callback
-        else:
-            mcp_callback_uri = f"http://{config.host}:{config.port}/oauth/callback"
+        base_url = self._get_base_url(config)
+        mcp_callback_uri = f"{base_url}/oauth/callback"
+        log.info("Using OAuth callback URI: %s", mcp_callback_uri)
 
         # Redirect to WebUI OAuth proxy with internal state
         proxy_params = {"gateway_uri": mcp_callback_uri, "state": internal_state, "provider": config.external_auth_provider}
@@ -208,15 +221,10 @@ class McpAdapterAuthHandler(ABC):
         )
 
         try:
-            # Exchange gateway code for actual OAuth tokens from WebUI proxy
-
-            # Check for environment variable override
-            external_callback = os.environ.get("MCP_OAUTH_CALLBACK_URI")
-            if external_callback:
-                log.info("Using external OAuth callback URI from MCP_OAUTH_CALLBACK_URI env var %s", external_callback)
-                mcp_callback_uri = external_callback
-            else:
-                mcp_callback_uri = f"http://{config.host}:{config.port}/oauth/callback"
+            # Exchange gateway code for actual OAuth tokens from OAuth2 service
+            # Must use same callback URI as in authorize step
+            base_url = self._get_base_url(config)
+            mcp_callback_uri = f"{base_url}/oauth/callback"
 
             async with httpx.AsyncClient(timeout=10.0) as client:
                 params = urlencode({"code": gateway_code, "gateway_uri": mcp_callback_uri})
@@ -288,12 +296,12 @@ class McpAdapterAuthHandler(ABC):
         when require_pkce is enabled (default). Clients must include code_challenge with method S256.
         """
         config: McpAdapterConfig = self.context.adapter_config
-
+        base_url = self._get_base_url(config)
         metadata = {
-            "issuer": f"http://{config.host}:{config.port}",
-            "authorization_endpoint": f"http://{config.host}:{config.port}/oauth/authorize",
-            "token_endpoint": f"http://{config.host}:{config.port}/oauth/token",
-            "registration_endpoint": f"http://{config.host}:{config.port}/oauth/register",
+            "issuer": base_url,
+            "authorization_endpoint": f"{base_url}/oauth/authorize",
+            "token_endpoint": f"{base_url}/oauth/token",
+            "registration_endpoint": f"{base_url}/oauth/register",
             "response_types_supported": ["code"],
             "grant_types_supported": ["authorization_code", "refresh_token"],
             "token_endpoint_auth_methods_supported": [
