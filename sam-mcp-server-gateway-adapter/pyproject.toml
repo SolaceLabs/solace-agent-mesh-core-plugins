@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.sam_mcp_server_gateway_adapter.metadata]
+type = "gateway"
+
+[project]
+name = "sam_mcp_server_gateway_adapter"
+version = "0.1.0"
+authors = [
+  { name="SolaceLabs", email="solacelabs@solace.com" },
+]
+description = "A gateway adapter to make SAM accessible as a MCP server"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp~=2.12.5",
+    "starlette~=0.49.1",
+    "httpx>=0.27.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sam_mcp_server_gateway_adapter"]
+src-path = "src"
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/sam_mcp_server_gateway_adapter" = "sam_mcp_server_gateway_adapter/"
+"config.yaml" = "sam_mcp_server_gateway_adapter/config.yaml"
+"README.md" = "sam_mcp_server_gateway_adapter/README.md"
+"pyproject.toml" = "sam_mcp_server_gateway_adapter/pyproject.toml"
