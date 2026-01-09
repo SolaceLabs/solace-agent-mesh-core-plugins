@@ -1,3 +1,4 @@
+import os
 from abc import ABC
 import base64
 import logging
@@ -125,8 +126,16 @@ class McpAdapterAuthHandler(ABC):
 
         log.info("Stored OAuth state for internal_state=%s", internal_state)
 
-        # Build MCP's callback URI (where WebUI will send gateway code)
-        mcp_callback_uri = f"http://{config.host}:{config.port}/oauth/callback"
+        # Build MCP's callback URI (where OAuth2 service will send gateway code)
+        # Uses environment variable override for production or builds from config for local dev
+
+        # Check for environment variable override (production)
+        external_callback = os.environ.get("MCP_OAUTH_CALLBACK_URI")
+        if external_callback:
+            log.info("Using external OAuth callback URI from MCP_OAUTH_CALLBACK_URI env var %s", external_callback)
+            mcp_callback_uri = external_callback
+        else:
+            mcp_callback_uri = f"http://{config.host}:{config.port}/oauth/callback"
 
         # Redirect to WebUI OAuth proxy with internal state
         proxy_params = {"gateway_uri": mcp_callback_uri, "state": internal_state, "provider": config.external_auth_provider}
@@ -200,7 +209,14 @@ class McpAdapterAuthHandler(ABC):
 
         try:
             # Exchange gateway code for actual OAuth tokens from WebUI proxy
-            mcp_callback_uri = f"http://{config.host}:{config.port}/oauth/callback"
+
+            # Check for environment variable override
+            external_callback = os.environ.get("MCP_OAUTH_CALLBACK_URI")
+            if external_callback:
+                log.info("Using external OAuth callback URI from MCP_OAUTH_CALLBACK_URI env var %s", external_callback)
+                mcp_callback_uri = external_callback
+            else:
+                mcp_callback_uri = f"http://{config.host}:{config.port}/oauth/callback"
 
             async with httpx.AsyncClient(timeout=10.0) as client:
                 params = urlencode({"code": gateway_code, "gateway_uri": mcp_callback_uri})
