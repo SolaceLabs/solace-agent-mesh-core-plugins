@@ -1,0 +1,67 @@
+name: Publish Package
+
+# This workflow ONLY triggers when a GitHub Release is published
+# Release-please creates releases when the Release PR is merged
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract package path from release tag
+        id: extract
+        run: |
+          # Release tag format: <package-name>-v<version>
+          # Example: sam-slack-v0.3.0
+          TAG="${{ github.event.release.tag_name }}"
+          echo "Tag: $TAG"
+
+          # Extract package name (everything before -v)
+          PACKAGE_PATH=$(echo "$TAG" | sed 's/-v[0-9].*//')
+          echo "Package path: $PACKAGE_PATH"
+          echo "path=$PACKAGE_PATH" >> $GITHUB_OUTPUT
+
+      - name: Verify package exists
+        run: |
+          if [ ! -d "${{ steps.extract.outputs.path }}" ]; then
+            echo "Error: Package directory '${{ steps.extract.outputs.path }}' not found"
+            exit 1
+          fi
+          echo "Found package at ${{ steps.extract.outputs.path }}"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install hatch twine
+
+      - name: Build package
+        run: |
+          cd ${{ steps.extract.outputs.path }}
+          hatch build
+
+      - name: Show built artifacts
+        run: |
+          echo "Built artifacts for ${{ steps.extract.outputs.path }}:"
+          ls -la ${{ steps.extract.outputs.path }}/dist/
+
+      # Uncomment to publish to PyPI
+      # - name: Publish to PyPI
+      #   env:
+      #     TWINE_USERNAME: __token__
+      #     TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      #   run: |
+      #     cd ${{ steps.extract.outputs.path }}
+      #     twine upload dist/*
