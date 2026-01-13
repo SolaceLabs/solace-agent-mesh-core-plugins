@@ -1,16 +1,65 @@
 name: CI
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
     types: [opened, synchronize, reopened]
-    paths-ignore:
-      - ".github/**"
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+  statuses: write
+  checks: write
+  repository-projects: read
+  id-token: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.ref_name != github.event.repository.default_branch }}
 
 jobs:
+  # Validate conventional commits for PRs
+  validate-conventional-commit:
+    name: "Validate Conventional Commit"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Validate PR Title
+        uses: amannn/action-semantic-pull-request@e32d7e603df1aa1ba07e981f2a23455dee596825 # v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            deps
+            revert
+          requireScope: false
+          disallowScopes: |
+            release
+          subjectPattern: ^.+$
+          subjectPatternError: |
+            The subject "{subject}" found in the pull request title "{title}"
+            didn't match the configured pattern. Please ensure that the subject
+            is not empty.
+
+  # Label PR based on changed files and determine which plugins to build
   label-pr:
     runs-on: ubuntu-24.04
     outputs:
@@ -21,28 +70,57 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Lable PR based on changes
+      - name: Label PR based on changes
         id: label-pr
-        if: ${{ github.event_name == 'pull_request' }}
+        if: github.event_name == 'pull_request'
         uses: actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9 # v5.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           sync-labels: true
           configuration-path: .github/pr_labeler.yaml
 
+      - name: Get changed directories on push
+        id: changed-dirs
+        if: github.event_name == 'push'
+        run: |
+          # Get changed files between HEAD and HEAD~1
+          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only $(git rev-list --max-parents=0 HEAD) HEAD)
+          echo "Changed files: $CHANGED_FILES"
+
+          # Extract plugin directories (top-level directories starting with sam-)
+          PLUGINS=$(echo "$CHANGED_FILES" | grep -E '^sam-[^/]+/' | cut -d'/' -f1 | sort -u | tr '\n' ',' | sed 's/,$//')
+          echo "Changed plugins: $PLUGINS"
+          echo "plugins=$PLUGINS" >> $GITHUB_OUTPUT
+
       - name: Format labels for matrix
         id: format-labels
         run: |
-          # Debug output
-          echo "Raw labels: ${{ steps.label-pr.outputs.all-labels }}"
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            # Use labels from PR labeler
+            LABELS="${{ steps.label-pr.outputs.all-labels }}"
+          else
+            # Use changed directories from push
+            LABELS="${{ steps.changed-dirs.outputs.plugins }}"
+          fi
 
-          # Convert comma-separated list to JSON array of objects using pure bash
-          LABELS="${{ steps.label-pr.outputs.all-labels }}"
+          echo "Raw labels/dirs: $LABELS"
+
+          # Convert comma-separated list to JSON array of objects
+          if [ -z "$LABELS" ]; then
+            echo "all-plugins=[]" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           JSON="["
           FIRST=true
           IFS=',' read -ra LABEL_ARRAY <<< "$LABELS"
           for label in "${LABEL_ARRAY[@]}"; do
-            if [ "$FIRST" = true ] ; then
+            # Trim whitespace
+            label=$(echo "$label" | xargs)
+            if [ -z "$label" ]; then
+              continue
+            fi
+            if [ "$FIRST" = true ]; then
               FIRST=false
             else
               JSON="$JSON,"
@@ -54,17 +132,117 @@ jobs:
           echo "Generated JSON: $JSON"
           echo "all-plugins=$JSON" >> $GITHUB_OUTPUT
 
+  # Build and test each plugin that changed
   builds:
     needs: label-pr
-    if: ${{ needs.label-pr.outputs.all_plugins != '[]' }}
+    if: needs.label-pr.outputs.all_plugins != '[]'
     strategy:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.label-pr.outputs.all_plugins) }}
-    name: Build Plugin - ${{matrix.plugin_directory}}
+    name: Build Plugin - ${{ matrix.plugin_directory }}
     uses: ./.github/workflows/build-plugin.yaml
     with:
-      plugin_directory: ${{matrix.plugin_directory}}
+      plugin_directory: ${{ matrix.plugin_directory }}
     secrets:
       COMMIT_KEY: ${{ secrets.COMMIT_KEY }}
       FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+
+  # SonarQube scan for the entire repository
+  sonarqube-scan:
+    name: SonarQube Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@540792c588b5c2740ad2bb4667db5cd46ae678f2 # v2.2.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ github.repository_owner }}_${{ github.event.repository.name }}
+
+      - name: SonarQube Quality Gate check
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        id: sonarqube-quality-gate-check
+        uses: sonarsource/sonarqube-quality-gate-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
+
+  # FOSSA scan for the entire repository (on main branch)
+  fossa-scan:
+    name: FOSSA Scan
+    runs-on: ubuntu-latest
+    if: github.ref_name == github.event.repository.default_branch
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: FOSSA Analyze and Test
+        uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@main
+        continue-on-error: true
+        with:
+          scanners: "fossa"
+          additional_scan_params: |
+            fossa.branch=${{ github.ref_name }}
+            fossa.revision=${{ github.sha }}
+          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
+
+      - name: FOSSA Guard - Block on Licensing Violations
+        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
+        continue-on-error: true
+        with:
+          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
+          fossa_project_id: "${{ github.repository_owner }}_${{ github.event.repository.name }}"
+          fossa_branch: ${{ github.ref_name }}
+          fossa_revision: ${{ github.sha }}
+          fossa_category: licensing
+          fossa_mode: BLOCK
+          block_on: policy_conflict
+
+      - name: FOSSA Guard - Block on Vulnerability Violations
+        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
+        continue-on-error: true
+        with:
+          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
+          fossa_project_id: "${{ github.repository_owner }}_${{ github.event.repository.name }}"
+          fossa_branch: ${{ github.ref_name }}
+          fossa_revision: ${{ github.sha }}
+          fossa_category: vulnerability
+          fossa_mode: BLOCK
+          block_on: critical,high
+
+  # CI Status check - aggregates all job results
+  ci-status:
+    name: CI Status
+    runs-on: ubuntu-latest
+    needs: [label-pr, builds, sonarqube-scan]
+    if: always()
+    steps:
+      - name: Check CI status
+        run: |
+          if [[ "${{ needs.label-pr.outputs.all_plugins }}" == "[]" ]]; then
+            echo "No plugins changed, skipping build checks"
+          elif [[ "${{ needs.builds.result }}" == "success" || "${{ needs.builds.result }}" == "skipped" ]]; then
+            echo "Build jobs passed or were skipped"
+          else
+            echo "Build jobs failed"
+            exit 1
+          fi
+
+          if [[ "${{ needs.sonarqube-scan.result }}" == "success" || "${{ needs.sonarqube-scan.result }}" == "skipped" ]]; then
+            echo "SonarQube scan passed or was skipped"
+          else
+            echo "SonarQube scan failed"
+            exit 1
+          fi
+
+          echo "All CI checks passed!"

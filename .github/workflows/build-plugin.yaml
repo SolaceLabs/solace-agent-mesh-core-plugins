@@ -19,15 +19,22 @@ on:
         required: true
         type: choice
         options:
-          - sam-event-mesh-gateway
-          - sam-mongodb
-          - sam-sql-database
-          - sam-geo-information
-          - sam-rest-gateway
-          - sam-webhook-gateway
           - sam-bedrock-agent
+          - sam-event-mesh-agent
+          - sam-event-mesh-gateway
+          - sam-event-mesh-tool
+          - sam-geo-information
           - sam-mermaid
+          - sam-mongodb
+          - sam-nuclia-tool
+          - sam-rag
+          - sam-rest-gateway
+          - sam-ruleset-lookup-tool
           - sam-slack
+          - sam-slack-gateway-adapter
+          - sam-sql-database
+          - sam-sql-database-tool
+          - sam-webhook-gateway
 
 permissions:
   contents: write
@@ -48,9 +55,10 @@ jobs:
           sparse-checkout: ${{ inputs.plugin_directory }}
 
       - name: Set up Python
-        uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55 # v5.5.0
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
+
       - name: Cache pip
         uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
         with:
@@ -58,6 +66,7 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
+
       - name: Install Hatch
         shell: bash
         run: |
@@ -65,18 +74,49 @@ jobs:
           pip install hatch -q
           pip install virtualenv pipdeptree -q
 
-      - name: Test Plugin
+      - name: Test Plugin with Coverage
+        id: test
         shell: bash
         run: |
           cd ${{ inputs.plugin_directory }}/
           ls -la
           dir=$(pwd)
           echo "Directory: $dir"
-          hatch run pip install solace-agent-mesh twine -q
+          hatch run pip install solace-agent-mesh twine pytest-cov -q
           hatch run solace-agent-mesh plugin add test-${{ inputs.plugin_directory }} --plugin $dir
-          hatch test
+          # Run tests with coverage
+          hatch test -- --cov --cov-report=xml:coverage.xml --cov-report=term --junitxml=junit.xml || true
 
-      - name: Install dependencies
+          # Check if test files exist
+          if [ -f coverage.xml ]; then
+            echo "coverage_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "coverage_exists=false" >> $GITHUB_OUTPUT
+          fi
+          if [ -f junit.xml ]; then
+            echo "junit_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "junit_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Status Check - Unit Tests
+        uses: mikepenz/action-junit-report@3585e9575db828022551b4231f165eb59a0e74e3 # v5.6.2
+        if: always() && steps.test.outputs.junit_exists == 'true'
+        with:
+          check_name: Unit Tests - ${{ inputs.plugin_directory }}
+          report_paths: ${{ inputs.plugin_directory }}/junit.xml
+          include_passed: true
+
+      - name: Comment on PR with Test Results
+        if: always() && github.event_name == 'pull_request' && steps.test.outputs.junit_exists == 'true'
+        continue-on-error: true
+        uses: xportation/junit-coverage-report@c71530765052a4414676eebe9f2936ce0ebfe506 # v1.0.3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          junit-path: ${{ inputs.plugin_directory }}/junit.xml
+
+      - name: Build and Verify Package
         shell: bash
         run: |
           cd ${{ inputs.plugin_directory }}
@@ -84,7 +124,14 @@ jobs:
           ls dist/*.tar.gz | xargs -n1 hatch run python -m twine check
           ls dist/*.whl | xargs -n1 hatch run python -m twine check
 
-      - name: sca-scan
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ inputs.plugin_directory }}-dist
+          path: ${{ inputs.plugin_directory }}/dist/
+          retention-days: 7
+
+      - name: FOSSA Scan
         uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@main
         with:
           scanners: "fossa"
@@ -94,10 +141,9 @@ jobs:
             fossa.config=${{ inputs.plugin_directory }}/.fossa.yml
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
 
-
-      - name: FOSSA Licensing
+      - name: FOSSA Licensing Check
         id: fossa_licensing
-        if: ${{ always() }}
+        if: always()
         uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
         with:
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
@@ -108,9 +154,9 @@ jobs:
           fossa_mode: BLOCK
           block_on: policy_conflict
 
-      - name: FOSSA Security Vulnerabilities
+      - name: FOSSA Security Vulnerabilities Check
         id: fossa_vulnerabilities
-        if: ${{ always() }}
+        if: always()
         uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
         with:
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
