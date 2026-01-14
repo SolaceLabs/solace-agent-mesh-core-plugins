@@ -57,6 +57,10 @@ class McpAdapterConfig(BaseModel):
         description="Require PKCE (Proof Key for Code Exchange, RFC 7636) for all OAuth flows. "
         "STRONGLY recommended for security. Disable only for legacy client compatibility.",
     )
+    oauth_state_ttl_seconds: int = Field(
+        default=300,
+        description="OAuth state TTL in seconds.",
+    )
 
     # File handling configuration
     inline_image_max_bytes: int = Field(

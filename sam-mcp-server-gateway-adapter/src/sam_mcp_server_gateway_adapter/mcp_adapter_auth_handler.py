@@ -140,7 +140,7 @@ class McpAdapterAuthHandler(ABC):
             "code_challenge": code_challenge,
             "code_challenge_method": code_challenge_method,
             "created_at": time.time(),
-            "ttl_seconds": 300,  # 5 minutes
+            "ttl_seconds": config.oauth_state_ttl_seconds,
         }
 
         log.info("Stored OAuth state for internal_state=%s", internal_state)

@@ -181,10 +181,18 @@ class McpAdapter(McpAdapterAuthHandler, GatewayAdapter):
                     continue
 
                 for skill in agent_card.skills:
-                    self._register_tool_for_skill(agent_card, skill)
+                    try:
+                        self._register_tool_for_skill(agent_card, skill)
+                    except Exception as e:
+                        log.warning(
+                            "Failed to register tool for agent %s skill %s: %s",
+                            agent_card.name,
+                            skill.name,
+                            e,
+                        )
 
         except Exception as e:
-            log.exception("Error registering tools from agents: %s", e)
+            log.exception("Error registering tools from agents: %s, ignoring", e)
 
     def _register_artifact_resource_template(self) -> None:
         """

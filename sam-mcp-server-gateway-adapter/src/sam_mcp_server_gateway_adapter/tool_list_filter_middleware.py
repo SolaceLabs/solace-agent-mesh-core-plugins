@@ -103,10 +103,10 @@ class ListingFilterMiddleware(Middleware):
             return filtered_tools
 
         except Exception as e:
-            # On error, log and return unfiltered list to avoid breaking clients
+            # On error, log and return filtered tools, even if its empty its better than returning all tools 
             log.error(
-                "Error filtering tools by user permissions: %s. Returning unfiltered list.",
+                "Error filtering tools by user permissions: %s. Returning limited filtered_tools.",
                 e,
                 exc_info=True,
             )
-            return result
+            return filtered_tools
