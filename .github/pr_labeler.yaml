@@ -1,33 +1,67 @@
-sam-event-mesh-gateway:
-  - changed-files:
-      - any-glob-to-any-file: sam-event-mesh-gateway/**
-sam-mongodb:
-  - changed-files:
-      - any-glob-to-any-file: sam-mongodb/**
-sam-sql-database:
-  - changed-files:
-      - any-glob-to-any-file: sam-sql-database/**
-sam-sql-database-tool:
-  - changed-files:
-      - any-glob-to-any-file: sam-sql-database-tool/**
-sam-geo-information:
-  - changed-files:
-      - any-glob-to-any-file: sam-geo-information/**
-sam-rest-gateway:
-  - changed-files:
-      - any-glob-to-any-file: sam-rest-gateway/**
-sam-webhook-gateway:
-  - changed-files:
-      - any-glob-to-any-file: sam-webhook-gateway/**
+# PR Labeler configuration
+# Labels PRs based on which plugin directories have changes
+# Used by CI to determine which plugins to build and test
+
 sam-bedrock-agent:
   - changed-files:
       - any-glob-to-any-file: sam-bedrock-agent/**
+
+sam-event-mesh-agent:
+  - changed-files:
+      - any-glob-to-any-file: sam-event-mesh-agent/**
+
+sam-event-mesh-gateway:
+  - changed-files:
+      - any-glob-to-any-file: sam-event-mesh-gateway/**
+
+sam-event-mesh-tool:
+  - changed-files:
+      - any-glob-to-any-file: sam-event-mesh-tool/**
+
+sam-geo-information:
+  - changed-files:
+      - any-glob-to-any-file: sam-geo-information/**
+
 sam-mermaid:
   - changed-files:
       - any-glob-to-any-file: sam-mermaid/**
+
+sam-mongodb:
+  - changed-files:
+      - any-glob-to-any-file: sam-mongodb/**
+
+sam-nuclia-tool:
+  - changed-files:
+      - any-glob-to-any-file: sam-nuclia-tool/**
+
+sam-rag:
+  - changed-files:
+      - any-glob-to-any-file: sam-rag/**
+
+sam-rest-gateway:
+  - changed-files:
+      - any-glob-to-any-file: sam-rest-gateway/**
+
+sam-ruleset-lookup-tool:
+  - changed-files:
+      - any-glob-to-any-file: sam-ruleset-lookup-tool/**
+
 sam-slack:
   - changed-files:
       - any-glob-to-any-file: sam-slack/**
-sam-mcp-server-gateway-adapter:
+
+sam-slack-gateway-adapter:
   - changed-files:
-      - any-glob-to-any-file: sam-mcp-server-gateway-adapter/**
+      - any-glob-to-any-file: sam-slack-gateway-adapter/**
+
+sam-sql-database:
+  - changed-files:
+      - any-glob-to-any-file: sam-sql-database/**
+
+sam-sql-database-tool:
+  - changed-files:
+      - any-glob-to-any-file: sam-sql-database-tool/**
+
+sam-webhook-gateway:
+  - changed-files:
+      - any-glob-to-any-file: sam-webhook-gateway/**
