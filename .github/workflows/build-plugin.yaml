@@ -128,6 +128,19 @@ jobs:
             -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.exclusions=**/__pycache__/**,**/dist/**,**/.hatch/**,**/build/**,**/*.egg-info/**,**/tests/**
             -Dsonar.cpd.exclusions=**/tests/**
+            -Dsonar.pullrequest.github.summary_comment=false
+
+      # Quality Gate check - blocks if quality gate fails for this plugin's project
+      # Note: PR decoration/comments disabled since Sonar license doesn't support mono-repo
+      - name: SonarQube Quality Gate check
+        id: sonarqube-quality-gate-check
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: sonarsource/sonarqube-quality-gate-action@master
+        with:
+          pollingTimeoutSec: 300
+        env:
+          SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
 
       - name: Build and Verify Package
         shell: bash
