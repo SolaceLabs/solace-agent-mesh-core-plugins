@@ -28,3 +28,6 @@ sam-mermaid:
 sam-slack:
   - changed-files:
       - any-glob-to-any-file: sam-slack/**
+sam-mcp-server-gateway-adapter:
+  - changed-files:
+      - any-glob-to-any-file: sam-mcp-server-gateway-adapter/**

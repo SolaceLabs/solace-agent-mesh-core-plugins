@@ -28,6 +28,7 @@ on:
           - sam-bedrock-agent
           - sam-mermaid
           - sam-slack
+          - sam-mcp-server-gateway-adapter
 
 permissions:
   contents: write
