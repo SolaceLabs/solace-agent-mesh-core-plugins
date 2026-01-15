@@ -7,10 +7,9 @@ This document describes the complete release process for the `solace-agent-mesh-
 ## Table of Contents
 
 - [Quick Start: Release Manager Checklist](#quick-start-release-manager-checklist)
-- [Release Process Flow](#release-process-flow)
+- [Workflow Diagrams](#workflow-diagrams)
 - [Key Components](#key-components)
 - [Gating Mechanisms](#gating-mechanisms)
-- [Step-by-Step Release Guide](#step-by-step-release-guide)
 - [FOSSA Integration](#fossa-integration)
 - [Troubleshooting](#troubleshooting)
 - [FAQ](#faq)
@@ -376,192 +375,35 @@ Release-please analyzes conventional commits to determine version bumps:
 
 ### Hard Gates (Block Merge)
 
-These checks **must pass** for a release PR to be mergeable:
+These checks **must pass** for PRs to be mergeable (applies to all PRs including release PRs):
 
-#### 1. FOSSA License Compliance (Per-Plugin)
-- **Location:** [`build-plugin.yaml:88-99`](.github/workflows/build-plugin.yaml#L88-L99)
-- **Mode:** BLOCK
-- **Trigger:** `policy_conflict`
-- **Scope:** Per-plugin (e.g., `SolaceLabs_sam-slack`)
-- **Config:** Plugin-specific `.fossa.yml` files
+#### 1. CI Build and Tests
+- **Workflow:** [`ci.yaml`](.github/workflows/ci.yaml) → [`build-plugin.yaml`](.github/workflows/build-plugin.yaml)
+- **Checks:** Install dependencies, run tests, build packages, validate with Twine
+- **Scope:** Per-plugin (only changed plugins are tested)
+- **Failure:** Blocks merge
 
-```yaml
-- name: FOSSA Licensing
-  uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
-  with:
-    fossa_mode: BLOCK
-    block_on: policy_conflict
-```
-
-#### 2. FOSSA Vulnerability Scan (Per-Plugin)
-- **Location:** [`build-plugin.yaml:101-113`](.github/workflows/build-plugin.yaml#L101-L113)
-- **Mode:** BLOCK
-- **Trigger:** `critical`, `high` severity vulnerabilities
-- **Scope:** Per-plugin
-- **Config:** Plugin-specific `.fossa.yml` files
-
-```yaml
-- name: FOSSA Security Vulnerabilities
-  uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
-  with:
-    fossa_mode: BLOCK
-    block_on: critical,high
-```
-
-#### 3. Build and Test Failures
-- Any build, test, or packaging validation failure blocks merge
+#### 2. FOSSA Per-Plugin Scans
+- **Workflow:** [`build-plugin.yaml:83-113`](.github/workflows/build-plugin.yaml#L83-L113)
+- **Checks:** License compliance + vulnerability scanning
+- **Mode:** BLOCK on policy violations or critical/high CVEs
+- **Scope:** Each plugin independently (e.g., `SolaceLabs_sam-slack`)
+- **Details:** See [FOSSA Integration](#fossa-integration) section below
 
 ### Soft Gates (Warning Only)
 
-These checks run but **do not block** merge:
+These checks run **only on release PRs** and provide advisory information but **do not block** merge:
 
-#### 1. SonarQube Hotspot Check (Project-Level)
-- **Location:** [`release-readiness-check.yaml:80-86`](.github/workflows/release-readiness-check.yaml#L80-L86)
-- **Mode:** Warning (`continue-on-error: true`)
-- **Scope:** Entire repository
-- **Output:** Posted as PR comment
-
-#### 2. FOSSA License Check (Project-Level)
-- **Location:** [`release-readiness-check.yaml:88-99`](.github/workflows/release-readiness-check.yaml#L88-L99)
-- **Mode:** Warning (`continue-on-error: true`)
-- **Scope:** Repository project `SolaceLabs_solace-agent-mesh-core-plugins`
-- **Output:** Posted as PR comment
-
-#### 3. FOSSA Vulnerability Check (Project-Level)
-- **Location:** [`release-readiness-check.yaml:101-112`](.github/workflows/release-readiness-check.yaml#L101-L112)
-- **Mode:** Warning (`continue-on-error: true`)
-- **Scope:** Repository project
-- **Output:** Posted as PR comment
-
-## Step-by-Step Release Guide
-
-### For Release Managers
-
-#### Phase 1: Wait for Release PR
-
-1. **Automatic Creation:**
-   - Release-please bot monitors the `main` branch
-   - Detects conventional commits since last release
-   - Creates or updates a PR titled `chore: release main`
-
-2. **PR Contents:**
-   - Version bumps in affected `pyproject.toml` files
-   - Updated `CHANGELOG.md` in affected plugins
-   - Updated `.release-please-manifest.json`
-
-#### Phase 2: Review Release PR
-
-1. **Identify Plugins Being Released:**
-   - Check the "Release Readiness Check Results" comment
-   - Look for "Plugins being released:" section
-   - Review changed files to confirm scope
-
-2. **Verify Version Bumps:**
-   - Ensure version increments are appropriate
-   - Check if conventional commit types match version changes
-   - Example: `feat:` should bump minor, `fix:` should bump patch
-
-3. **Review Changelogs:**
-   - Navigate to each plugin's `CHANGELOG.md`
-   - Verify entries match the actual changes
-   - Check for any missing or incorrect entries
-
-4. **Check CI Status:**
-   - ✅ All CI checks must be green (hard gate)
-   - If failed:
-     - Click into failed workflow
-     - Identify the issue (build, test, FOSSA)
-     - Fix the issue in the codebase
-     - Push to `main` branch
-     - Release PR updates automatically
-
-5. **Review Security Checks:**
-   - Read the "Release Readiness Check Results" comment
-   - **SonarQube Hotspots:**
-     - ✅ Success - No unresolved hotspots
-     - ⚠️ Warning - Review hotspots, use judgment
-   - **FOSSA Licensing:**
-     - ✅ Success - All licenses compliant
-     - ⚠️ Warning - Review policy violations, use judgment
-   - **FOSSA Vulnerabilities:**
-     - ✅ Success - No critical/high CVEs
-     - ⚠️ Warning - Review CVEs, assess risk
-
-6. **Make Go/No-Go Decision:**
-   - Hard gates must pass (CI, per-plugin FOSSA)
-   - Soft gates are advisory (project-level checks)
-   - Consider risk vs. urgency
-   - Consult security team if needed
-
-#### Phase 3: Merge Release PR
-
-1. **Approve PR:**
-   - Add approval if required by branch protection
-   - Ensure at least one approval from release manager
-
-2. **Merge:**
-   - Click "Merge pull request"
-   - Use "Squash and merge" or "Create a merge commit" (avoid rebase)
-   - Confirm merge
-
-3. **Automatic Post-Merge Actions:**
-   - Release-please workflow runs on `main`
-   - Creates GitHub releases for each changed plugin
-   - Tags format: `v{plugin-name}-v{version}` (e.g., `vsam-slack-v0.3.0`)
-
-#### Phase 4: Monitor Publishing
-
-1. **Watch GitHub Actions:**
-   - Navigate to Actions tab
-   - Look for "Publish Package" workflows
-   - One workflow per plugin being released
-   - Runs in parallel for multiple plugins
-
-2. **Verify GitHub Releases:**
-   - Check Releases page
-   - Each plugin has separate release
-   - Release notes include changelog
-   - Artifacts (wheel + tarball) attached
-
-3. **Verify PyPI Publication:**
-   - Check [PyPI](https://pypi.org/search/?q=sam_) for each plugin
-   - Confirm new version is live
-   - Test installation: `pip install {package-name}=={version}`
-
-4. **Handle Failures:**
-   - If PyPI publish fails:
-     - Check workflow logs for error
-     - Common issues: version conflict, network timeout
-     - Can manually re-run workflow from Actions tab
-   - If build fails:
-     - Check for environment issues
-     - Verify pyproject.toml is valid
-     - May need to create hotfix
-
-#### Phase 5: Post-Release Validation
-
-1. **Test Installation:**
-   ```bash
-   # Create fresh virtual environment
-   python -m venv test-env
-   source test-env/bin/activate
-
-   # Install released version
-   pip install sam-slack==0.3.0
-
-   # Verify installation
-   python -c "import sam_slack; print(sam_slack.__version__)"
-   ```
-
-2. **Verify Documentation:**
-   - Check that CHANGELOG.md is accurate
-   - Ensure release notes on GitHub are complete
-   - Update any external documentation if needed
-
-3. **Communicate Release:**
-   - Notify stakeholders of new versions
-   - Post in relevant Slack channels
-   - Update project tracking tools
+#### 1. Release Readiness Check
+- **Workflow:** [`release-readiness-check.yaml`](.github/workflows/release-readiness-check.yaml)
+- **Trigger:** Only when PR title matches `chore: release`
+- **Checks:**
+  - SonarQube security hotspots (project-level)
+  - FOSSA licensing (project-level)
+  - FOSSA vulnerabilities (project-level)
+- **Mode:** `continue-on-error: true` (warnings only)
+- **Output:** Bot posts comment with results on release PR
+- **Decision:** Release manager reviews and uses judgment
 
 ## FOSSA Integration
 
