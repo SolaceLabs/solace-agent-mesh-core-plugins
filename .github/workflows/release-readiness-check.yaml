@@ -1,14 +1,38 @@
 name: Release Readiness Check
 
-# This workflow runs on release-please PRs to validate that all security checks pass
-# before the release PR can be merged. This ensures that releases are only made
-# when all compliance requirements are met.
+# This workflow validates that all security checks pass before release.
+# It can be called from release-please workflow or triggered manually.
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches:
-      - main
+  workflow_call:
+    inputs:
+      pr_number:
+        description: "PR number to comment on"
+        required: true
+        type: number
+      ref:
+        description: "Git ref to checkout (branch or SHA)"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      FOSSA_API_KEY:
+        required: true
+      SONARQUBE_TOKEN:
+        required: false
+      SONARQUBE_HOST_URL:
+        required: false
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to comment on (optional)"
+        required: false
+        type: number
+      ref:
+        description: "Git ref to checkout (branch or SHA)"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -17,65 +41,37 @@ permissions:
   statuses: write
 
 jobs:
-  # Check if this is a release-please PR
-  check-release-pr:
-    name: Check if Release PR
+  release-readiness-check:
+    name: Release Readiness Check
     runs-on: ubuntu-latest
     outputs:
-      is_release_pr: ${{ steps.check.outputs.is_release_pr }}
-      plugins_to_release: ${{ steps.extract.outputs.plugins }}
+      SONARQUBE_STATUS: ${{ steps.security_outputs.outputs.sonarqube_status }}
+      FOSSA_POLICY_STATUS: ${{ steps.security_outputs.outputs.fossa_policy_status }}
+      FOSSA_VULNERABILITIES_STATUS: ${{ steps.security_outputs.outputs.fossa_vulnerabilities_status }}
+      PLUGINS: ${{ steps.extract.outputs.plugins }}
     steps:
-      - name: Check if release PR
-        id: check
-        run: |
-          # Check if PR title matches release-please format
-          PR_TITLE="${{ github.event.pull_request.title }}"
-          echo "PR Title: $PR_TITLE"
-
-          # Release-please PRs have title format: "chore: release main" or "chore(main): release <version>"
-          if echo "$PR_TITLE" | grep -qiE "^chore(\(.*\))?: release"; then
-            echo "is_release_pr=true" >> $GITHUB_OUTPUT
-            echo "This is a release-please PR"
-          else
-            echo "is_release_pr=false" >> $GITHUB_OUTPUT
-            echo "This is NOT a release-please PR"
-          fi
-
       - name: Checkout code
-        if: steps.check.outputs.is_release_pr == 'true'
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          ref: ${{ inputs.ref || github.ref }}
           fetch-depth: 0
 
+      - name: Get current GitHub SHA
+        id: get_sha
+        run: echo "sha=${GITHUB_SHA}" >> $GITHUB_OUTPUT
       - name: Extract plugins being released
         id: extract
-        if: steps.check.outputs.is_release_pr == 'true'
         run: |
-          # Get the changed files in this PR to determine which plugins are being released
+          # Get the changed files by comparing against main
+          git fetch origin main
           CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
-          echo "Changed files in PR:"
+          echo "Changed files:"
           echo "$CHANGED_FILES"
 
           # Extract unique plugin directories from changed files
           PLUGINS=$(echo "$CHANGED_FILES" | grep -E '^sam-[^/]+/' | cut -d'/' -f1 | sort -u | tr '\n' ',' | sed 's/,$//')
           echo "Plugins being released: $PLUGINS"
           echo "plugins=$PLUGINS" >> $GITHUB_OUTPUT
-
-  # Run release readiness checks for release-please PRs
-  release-readiness-check:
-    name: Release Readiness Check
-    needs: check-release-pr
-    if: needs.check-release-pr.outputs.is_release_pr == 'true'
-    runs-on: ubuntu-latest
-    outputs:
-      SONARQUBE_STATUS: ${{ steps.security_outputs.outputs.sonarqube_status }}
-      FOSSA_POLICY_STATUS: ${{ steps.security_outputs.outputs.fossa_policy_status }}
-      FOSSA_VULNERABILITIES_STATUS: ${{ steps.security_outputs.outputs.fossa_vulnerabilities_status }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          fetch-depth: 0
 
       - name: Pre-Release Check - Unresolved SonarQube Hotspots
         id: sonarqube_hotspots
@@ -93,7 +89,7 @@ jobs:
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
           fossa_project_id: "${{ github.repository_owner }}_${{ github.event.repository.name }}"
           fossa_branch: main
-          fossa_revision: ${{ github.event.pull_request.head.sha }}
+          fossa_revision: ${{ steps.get_sha.outputs.sha }}
           fossa_category: licensing
           fossa_mode: BLOCK
           block_on: policy_conflict
@@ -106,7 +102,7 @@ jobs:
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
           fossa_project_id: "${{ github.repository_owner }}_${{ github.event.repository.name }}"
           fossa_branch: main
-          fossa_revision: ${{ github.event.pull_request.head.sha }}
+          fossa_revision: ${{ steps.get_sha.outputs.sha }}
           fossa_category: vulnerability
           fossa_mode: BLOCK
           block_on: critical,high
@@ -148,38 +144,56 @@ jobs:
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Plugins being released:** ${{ needs.check-release-pr.outputs.plugins_to_release }}" >> $GITHUB_STEP_SUMMARY
+          echo "### Plugins Being Released" >> $GITHUB_STEP_SUMMARY
+          PLUGINS="${{ steps.extract.outputs.plugins }}"
+          if [ -n "$PLUGINS" ]; then
+            IFS=',' read -ra PLUGIN_ARRAY <<< "$PLUGINS"
+            for plugin in "${PLUGIN_ARRAY[@]}"; do
+              echo "- \`$plugin\`" >> $GITHUB_STEP_SUMMARY
+            done
+          else
+            echo "- No specific plugins detected" >> $GITHUB_STEP_SUMMARY
+          fi
 
-      - name: Comment on PR with check results
-        if: always()
+      - name: Comment on PR
+        if: always() && inputs.pr_number
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
+            const prNumber = ${{ inputs.pr_number }};
             const sonarqubeStatus = '${{ steps.sonarqube_hotspots.outcome }}';
             const fossaLicensingStatus = '${{ steps.fossa_licensing.outcome }}';
             const fossaVulnerabilitiesStatus = '${{ steps.fossa_vulnerabilities.outcome }}';
-            const pluginsToRelease = '${{ needs.check-release-pr.outputs.plugins_to_release }}';
+            const pluginsToRelease = '${{ steps.extract.outputs.plugins }}';
 
             const getStatusEmoji = (status) => status === 'success' ? '✅' : '⚠️';
 
-            const body = `## 🔐 Release Readiness Check Results
+            let pluginsList = 'None detected';
+            if (pluginsToRelease) {
+              pluginsList = pluginsToRelease.split(',').map(p => `\`${p}\``).join(', ');
+            }
 
-            | Check | Status |
-            |-------|--------|
-            | SonarQube Hotspots | ${getStatusEmoji(sonarqubeStatus)} ${sonarqubeStatus} |
-            | FOSSA Licensing | ${getStatusEmoji(fossaLicensingStatus)} ${fossaLicensingStatus} |
-            | FOSSA Vulnerabilities | ${getStatusEmoji(fossaVulnerabilitiesStatus)} ${fossaVulnerabilitiesStatus} |
+            const body = [
+              '## 🔐 Release Readiness Check Results',
+              '',
+              '| Check | Status |',
+              '|-------|--------|',
+              `| SonarQube Hotspots | ${getStatusEmoji(sonarqubeStatus)} ${sonarqubeStatus} |`,
+              `| FOSSA Licensing | ${getStatusEmoji(fossaLicensingStatus)} ${fossaLicensingStatus} |`,
+              `| FOSSA Vulnerabilities | ${getStatusEmoji(fossaVulnerabilitiesStatus)} ${fossaVulnerabilitiesStatus} |`,
+              '',
+              '### Plugins Being Released',
+              pluginsList,
+              '',
+              '---',
+              '*This check runs automatically on release-please PRs to ensure compliance before release.*'
+            ].join('\n');
 
-            **Plugins being released:** ${pluginsToRelease || 'None detected'}
-
-            ---
-            *This check runs automatically on release-please PRs to ensure compliance before release.*`;
-
-            // Find existing comment
+            // Find and delete existing comment
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
+              issue_number: prNumber,
             });
 
             const botComment = comments.find(comment => 
@@ -188,29 +202,19 @@ jobs:
             );
 
             if (botComment) {
-              await github.rest.issues.updateComment({
+              console.log(`Deleting existing comment ${botComment.id}`);
+              await github.rest.issues.deleteComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                comment_id: botComment.id,
-                body: body
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: body
+                comment_id: botComment.id
               });
             }
 
-  # Status check for non-release PRs (skip)
-  release-readiness-skip:
-    name: Release Readiness Check
-    needs: check-release-pr
-    if: needs.check-release-pr.outputs.is_release_pr != 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Skip release readiness check
-        run: |
-          echo "This is not a release-please PR, skipping release readiness checks"
-          echo "PR Title: ${{ github.event.pull_request.title }}"
+            // Create new comment
+            console.log(`Creating new comment on PR #${prNumber}`);
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: body
+            });
