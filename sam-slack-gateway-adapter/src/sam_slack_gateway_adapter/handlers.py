@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict
 from solace_agent_mesh.gateway.adapter.types import ResponseContext
 from . import utils
 
+
 if TYPE_CHECKING:
     from .adapter import SlackAdapter
 
