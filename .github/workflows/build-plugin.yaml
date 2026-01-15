@@ -121,15 +121,13 @@ jobs:
           projectBaseDir: ${{ inputs.plugin_directory }}
           args: >
             -Dsonar.projectKey=${{ github.repository_owner }}_${{ inputs.plugin_directory }}
-
-      - name: SonarQube Quality Gate check
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        id: sonarqube-quality-gate-check
-        uses: sonarsource/sonarqube-quality-gate-action@master
-        continue-on-error: true
-        env:
-          SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
+            -Dsonar.projectName=${{ inputs.plugin_directory }}
+            -Dsonar.sources=src
+            -Dsonar.python.version=3.10,3.11,3.12,3.13
+            -Dsonar.sourceEncoding=UTF-8
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.exclusions=**/__pycache__/**,**/dist/**,**/.hatch/**,**/build/**,**/*.egg-info/**,**/tests/**
+            -Dsonar.cpd.exclusions=**/tests/**
 
       - name: Build and Verify Package
         shell: bash
