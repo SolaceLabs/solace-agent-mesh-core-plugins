@@ -165,108 +165,157 @@ If a critical issue is discovered post-release:
 6. Yank broken version on PyPI if critical security issue
 7. Notify users via security advisory
 
-## Release Process Flow
+## Workflow Diagrams
 
-### Part 1: PR Review and Validation (What You Do)
+### Workflow 1: Developer PR Process (Feature Development)
+
+This is the standard workflow for developers working on features/fixes until code reaches `main`.
 
 ```mermaid
 flowchart TD
-    Start[Code Merged to Main] --> Detect[Release-Please Bot<br/>Detects Changes]
+    Start["👨‍💻 Developer Creates PR<br/>(Feature/Fix Branch → Main)"] --> Commit["Commit Message Format:<br/>feat(sam-slack): add feature<br/>fix(sam-rag): fix bug"]
 
-    Detect --> CreatePR[Bot Creates/Updates<br/>Release PR]
+    Commit --> PROpen[PR Opened to Main]
 
-    CreatePR --> PRContent["<b>Release PR Contains:</b><br/>✓ Version bumps<br/>✓ CHANGELOGs<br/>✓ Only changed plugins"]
+    PROpen --> CITrigger[CI Workflow Triggers<br/>ci.yaml]
 
-    PRContent --> YouReview["<b>👤 YOU: Review PR</b><br/>Check versions & changelogs"]
+    CITrigger --> Label[Auto-label PR<br/>Based on Changed Files]
 
-    YouReview --> Triggers{PR Triggers<br/>2 Workflows}
+    Label --> Matrix[Build Matrix Created<br/>for Changed Plugins Only]
 
-    %% CI Path (Hard Gate)
-    Triggers --> CI["<b>CI Workflow</b><br/>(HARD GATE - Must Pass)"]
-    CI --> BuildTests[Build & Test<br/>Changed Plugins]
-    BuildTests --> FossaScan[FOSSA Per-Plugin Scan]
-    FossaScan --> FossaGate{FOSSA<br/>Pass?}
-    FossaGate -->|❌ Fail| CIBlock["❌ BLOCKED<br/>Cannot Merge"]
-    FossaGate -->|✅ Pass| CIPass[✅ CI Pass]
+    Matrix --> BuildLoop["For Each Changed Plugin:<br/>build-plugin.yaml"]
 
-    %% Release Readiness (Soft Gate)
-    Triggers --> RRC["<b>Release Readiness</b><br/>(ADVISORY - Warnings Only)"]
-    RRC --> SecurityChecks[SonarQube<br/>+ Project FOSSA]
-    SecurityChecks --> Comment["Bot Posts Comment<br/>with Check Results"]
-    Comment --> YouDecide["<b>👤 YOU: Review Warnings</b><br/>Make go/no-go decision"]
+    BuildLoop --> Steps1[Install Dependencies<br/>& Run Tests]
+    Steps1 --> Steps2[Build Package<br/>wheel + tarball]
+    Steps2 --> Steps3[Validate with Twine]
+    Steps3 --> Fossa1[FOSSA SCA Scan]
+    Fossa1 --> Fossa2[FOSSA License Check<br/>BLOCK on violations]
+    Fossa2 --> Fossa3[FOSSA Vulnerability Check<br/>BLOCK on critical/high]
 
-    %% Merge Decision
-    CIPass --> Merge["<b>👤 YOU: Approve & Merge</b><br/>If satisfied with checks"]
-    YouDecide --> Merge
-    CIBlock --> NoMerge[Fix Issues First]
+    Fossa3 --> CIResult{All Plugins<br/>Pass CI?}
 
-    Merge --> NextPhase[See Part 2:<br/>Automated Publishing]
+    CIResult -->|❌ No| CIFail["❌ CI Failed<br/>Developer Fixes Issues<br/>Push → CI Re-runs"]
+    CIFail --> PROpen
+
+    CIResult -->|✅ Yes| CIPass[✅ CI Passes<br/>Ready for Review]
+
+    CIPass --> Review["👥 Code Review<br/>Team Reviews Changes"]
+
+    Review --> Approved{Approved?}
+    Approved -->|No| MoreChanges[Request Changes]
+    MoreChanges --> PROpen
+
+    Approved -->|Yes| MergeToMain["✅ Merge to Main<br/>(Squash/Merge Commit)"]
+
+    MergeToMain --> Accumulate["Changes Accumulate on Main<br/>Release-Please Tracks Them"]
+
+    Accumulate --> NextFlow["See Workflow 2:<br/>Release Process"]
 
     %% Styling
+    classDef devClass fill:#9775fa,stroke:#7950f2,stroke-width:2px,color:#fff
     classDef gateClass fill:#ff6b6b,stroke:#c92a2a,stroke-width:3px,color:#fff
     classDef passClass fill:#51cf66,stroke:#2f9e44,stroke-width:2px
-    classDef actionClass fill:#ffd43b,stroke:#f08c00,stroke-width:3px
     classDef autoClass fill:#4dabf7,stroke:#1971c2,stroke-width:2px
 
-    class CIBlock,FossaGate,NoMerge gateClass
-    class CIPass,NextPhase passClass
-    class YouReview,YouDecide,Merge actionClass
-    class CI,RRC,BuildTests,FossaScan,SecurityChecks,Comment autoClass
+    class Start,Commit,Review,Approved devClass
+    class CIFail,Fossa2,Fossa3 gateClass
+    class CIPass,MergeToMain,NextFlow passClass
+    class CITrigger,Label,Matrix,BuildLoop,Steps1,Steps2,Steps3,Fossa1 autoClass
 ```
 
-### Part 2: Automated Publishing (Hands-Off)
+### Workflow 2: Release Process (Release Manager)
+
+This workflow starts when changes have accumulated on `main` and release-please creates a release PR.
 
 ```mermaid
 flowchart TD
-    Start[Release PR Merged] --> AutoRelease[Release-Please Runs<br/>on Main Branch]
+    Start["Changes Merged to Main<br/>(from Workflow 1)"] --> Monitor[Release-Please Bot<br/>Monitors Main Branch]
 
-    AutoRelease --> CreateReleases["<b>Bot Creates Releases</b><br/>One per changed plugin<br/>Tags: vsam-xxx-v0.x.x"]
+    Monitor --> Analyze[Analyzes Conventional Commits<br/>Since Last Release]
 
-    CreateReleases --> Example["Example:<br/>vsam-slack-v0.3.0<br/>vsam-rag-v0.2.0"]
+    Analyze --> Determine[Determines:<br/>• Which plugins changed<br/>• Version bumps needed]
 
-    Example --> TriggerPublish{Each Release<br/>Triggers Publish}
+    Determine --> CreatePR["🤖 Bot Creates/Updates<br/>Release PR: 'chore: release main'"]
 
-    TriggerPublish --> Plugin1[Publish sam-slack]
-    TriggerPublish --> Plugin2[Publish sam-rag]
+    CreatePR --> PRContent["PR Contains:<br/>✓ Version bumps (pyproject.toml)<br/>✓ CHANGELOGs<br/>✓ .release-please-manifest.json<br/>✓ Only changed plugins"]
 
-    Plugin1 --> Build1[Extract Package Path]
-    Plugin2 --> Build2[Extract Package Path]
+    PRContent --> Triggers{PR Triggers<br/>2 Workflows}
 
-    Build1 --> PkgBuild1[Build with Hatch<br/>wheel + tarball]
-    Build2 --> PkgBuild2[Build with Hatch<br/>wheel + tarball]
+    %% CI Path (Same as regular PR)
+    Triggers --> CI["CI Workflow (Hard Gate)<br/>Same as Workflow 1"]
+    CI --> CIBuild[Build & Test<br/>Per-Plugin FOSSA]
+    CIBuild --> CIGate{CI Pass?}
+    CIGate -->|❌| Block1["❌ BLOCKED<br/>Cannot Merge"]
+    CIGate -->|✅| CIPass[✅ CI Passes]
 
-    PkgBuild1 --> PyPI1[Publish to PyPI<br/>Trusted Publishing]
-    PkgBuild2 --> PyPI2[Publish to PyPI<br/>Trusted Publishing]
+    %% Release Readiness (Unique to Release PR)
+    Triggers --> ReadinessCheck["Release Readiness Check<br/>(ADVISORY - Warnings Only)"]
+    ReadinessCheck --> Security[Run Security Checks:<br/>• SonarQube Hotspots<br/>• Project-Level FOSSA<br/>• Licensing<br/>• Vulnerabilities]
+    Security --> BotComment["🤖 Bot Posts Comment<br/>with Check Results"]
 
-    PyPI1 --> Artifacts1[Upload to<br/>GitHub Release]
-    PyPI2 --> Artifacts2[Upload to<br/>GitHub Release]
+    BotComment --> ReleaseReview["<b>👤 RELEASE MANAGER:</b><br/>Review Release PR"]
 
-    Artifacts1 --> YouMonitor["<b>👤 YOU: Monitor Progress</b><br/>Watch Actions tab<br/>~5 min per plugin"]
-    Artifacts2 --> YouMonitor
+    ReleaseReview --> Check1["✓ Review version bumps<br/>✓ Review CHANGELOGs<br/>✓ Check CI status (must pass)<br/>✓ Review security warnings"]
 
-    YouMonitor --> YouVerify["<b>👤 YOU: Verify</b><br/>Test pip install<br/>Check PyPI"]
+    Check1 --> Decision{Go/No-Go<br/>Decision}
 
-    YouVerify --> Done[✅ Release Complete]
+    CIPass --> Decision
+
+    Decision -->|No-Go| NoMerge["Document Concerns<br/>or Fix Issues First"]
+    Decision -->|Go| ApproveAndMerge["<b>👤 RELEASE MANAGER:</b><br/>Approve & Merge PR"]
+
+    ApproveAndMerge --> MainMerge[PR Merged to Main]
+
+    MainMerge --> ReleaseAction["🤖 Release-Please Action<br/>Runs on Main"]
+
+    ReleaseAction --> CreateReleases["🤖 Creates GitHub Releases<br/>One per Changed Plugin"]
+
+    CreateReleases --> Tags["Example Tags:<br/>vsam-slack-v0.3.0<br/>vsam-rag-v0.2.0"]
+
+    Tags --> PublishTrigger["Each Release Triggers<br/>publish.yaml"]
+
+    PublishTrigger --> ParallelPublish{Publishing<br/>In Parallel}
+
+    ParallelPublish --> P1["Plugin 1:<br/>sam-slack"]
+    ParallelPublish --> P2["Plugin 2:<br/>sam-rag"]
+
+    P1 --> Build1[Extract Path → Build → Publish]
+    P2 --> Build2[Extract Path → Build → Publish]
+
+    Build1 --> PyPI1[📦 Published to PyPI<br/>+ GitHub Release Artifacts]
+    Build2 --> PyPI2[📦 Published to PyPI<br/>+ GitHub Release Artifacts]
+
+    PyPI1 --> Monitor1["<b>👤 RELEASE MANAGER:</b><br/>Monitor Actions Tab"]
+    PyPI2 --> Monitor1
+
+    Monitor1 --> Verify["<b>👤 RELEASE MANAGER:</b><br/>Verify Publication"]
+
+    Verify --> Test["Test:<br/>pip install sam-slack==0.3.0<br/>pip install sam-rag==0.2.0"]
+
+    Test --> Communicate["<b>👤 RELEASE MANAGER:</b><br/>Post-Release Communication"]
+
+    Communicate --> Done[✅ Release Complete]
 
     %% Styling
+    classDef rmClass fill:#ffd43b,stroke:#f08c00,stroke-width:3px,color:#000
+    classDef gateClass fill:#ff6b6b,stroke:#c92a2a,stroke-width:3px,color:#fff
     classDef passClass fill:#51cf66,stroke:#2f9e44,stroke-width:2px
-    classDef actionClass fill:#ffd43b,stroke:#f08c00,stroke-width:3px
     classDef autoClass fill:#4dabf7,stroke:#1971c2,stroke-width:2px
 
-    class Done passClass
-    class YouMonitor,YouVerify actionClass
-    class AutoRelease,CreateReleases,TriggerPublish,Plugin1,Plugin2,Build1,Build2,PkgBuild1,PkgBuild2,PyPI1,PyPI2,Artifacts1,Artifacts2 autoClass
+    class ReleaseReview,Check1,ApproveAndMerge,Monitor1,Verify,Test,Communicate rmClass
+    class Block1,CIGate,NoMerge gateClass
+    class CIPass,Done passClass
+    class Monitor,Analyze,Determine,CreatePR,CI,CIBuild,ReadinessCheck,Security,BotComment,ReleaseAction,CreateReleases,PublishTrigger,Build1,Build2,PyPI1,PyPI2 autoClass
 ```
 
 ### Legend
 
 | Icon/Color | Meaning |
 |------------|---------|
-| 👤 **YOU** | Action required from you (release manager) |
-| 🤖 **Bot** | Automated by workflows |
+| 👨‍💻 **Purple** | Developer actions (Workflow 1) |
+| 👤 **Yellow** | Release Manager actions (Workflow 2) |
+| 🤖 **Blue** | Automated processes |
 | 🔴 **Red** | Hard gate - blocks merge |
-| 🟡 **Yellow** | Your action needed |
-| 🔵 **Blue** | Automated process |
 | 🟢 **Green** | Success/completion |
 
 ## Key Components
