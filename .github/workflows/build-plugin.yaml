@@ -138,6 +138,7 @@ jobs:
         uses: sonarsource/sonarqube-quality-gate-action@master
         with:
           pollingTimeoutSec: 300
+          scanMetadataReportFile: ${{ inputs.plugin_directory }}/.scannerwork/report-task.txt
         env:
           SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
