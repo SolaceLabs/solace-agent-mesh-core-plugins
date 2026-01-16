@@ -374,9 +374,10 @@ class SlackAdapter(GatewayAdapter):
                         },
                     )
                 else:
+                    cached_email = cached_claim.lower() if isinstance(cached_claim, str) else cached_claim
                     return AuthClaims(
-                        id=cached_claim,
-                        email=cached_claim,
+                        id=cached_email,
+                        email=cached_email,
                         source="slack_api",
                         raw_context={
                             "slack_user_id": slack_user_id,
@@ -389,6 +390,8 @@ class SlackAdapter(GatewayAdapter):
                 user=slack_user_id
             )
             user_email = profile_response.get("profile", {}).get("email")
+            if user_email:
+                user_email = user_email.lower()
 
             if user_email:
                 if self.context.cache_service and ttl > 0:
