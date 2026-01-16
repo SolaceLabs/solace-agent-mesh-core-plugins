@@ -19,9 +19,9 @@ on:
       FOSSA_API_KEY:
         required: true
       SONARQUBE_TOKEN:
-        required: false
+        required: true
       SONARQUBE_HOST_URL:
-        required: false
+        required: true
   workflow_dispatch:
     inputs:
       pr_number:
@@ -41,14 +41,13 @@ permissions:
   statuses: write
 
 jobs:
-  release-readiness-check:
-    name: Release Readiness Check
+  # First job: Extract plugins being released
+  extract-plugins:
+    name: Extract Plugins
     runs-on: ubuntu-latest
     outputs:
-      SONARQUBE_STATUS: ${{ steps.security_outputs.outputs.sonarqube_status }}
-      FOSSA_POLICY_STATUS: ${{ steps.security_outputs.outputs.fossa_policy_status }}
-      FOSSA_VULNERABILITIES_STATUS: ${{ steps.security_outputs.outputs.fossa_vulnerabilities_status }}
-      PLUGINS: ${{ steps.extract.outputs.plugins }}
+      plugins: ${{ steps.extract.outputs.plugins }}
+      plugins_json: ${{ steps.extract.outputs.plugins_json }}
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -56,9 +55,6 @@ jobs:
           ref: ${{ inputs.ref || github.ref }}
           fetch-depth: 0
 
-      - name: Get current GitHub SHA
-        id: get_sha
-        run: echo "sha=${GITHUB_SHA}" >> $GITHUB_OUTPUT
       - name: Extract plugins being released
         id: extract
         run: |
@@ -73,15 +69,55 @@ jobs:
           echo "Plugins being released: $PLUGINS"
           echo "plugins=$PLUGINS" >> $GITHUB_OUTPUT
 
-      - name: Pre-Release Check - Unresolved SonarQube Hotspots
-        id: sonarqube_hotspots
+          # Create JSON array for matrix
+          if [ -z "$PLUGINS" ]; then
+            echo "plugins_json=[]" >> $GITHUB_OUTPUT
+          else
+            JSON="["
+            FIRST=true
+            IFS=',' read -ra PLUGIN_ARRAY <<< "$PLUGINS"
+            for plugin in "${PLUGIN_ARRAY[@]}"; do
+              plugin=$(echo "$plugin" | xargs)
+              if [ -z "$plugin" ]; then continue; fi
+              if [ "$FIRST" = true ]; then FIRST=false; else JSON="$JSON,"; fi
+              JSON="$JSON\"$plugin\""
+            done
+            JSON="$JSON]"
+            echo "plugins_json=$JSON" >> $GITHUB_OUTPUT
+          fi
+
+  # Second job: Check SonarQube hotspots for each plugin
+  sonarqube-check:
+    name: SonarQube - ${{ matrix.plugin }}
+    needs: extract-plugins
+    if: needs.extract-plugins.outputs.plugins_json != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: ${{ fromJSON(needs.extract-plugins.outputs.plugins_json) }}
+    steps:
+      - name: Check SonarQube Hotspots for ${{ matrix.plugin }}
+        id: sonarqube
         uses: SolaceDev/maas-build-actions/.github/actions/sonarqube-hotspot-checker@master
         continue-on-error: true
         with:
-          sonarqube_project: "${{ github.repository_owner }}_${{ github.event.repository.name }}"
+          sonarqube_project: "${{ github.repository_owner }}_${{ matrix.plugin }}"
           branch: "main"
 
-      - name: Pre-Release Check - FOSSA Licensing
+      - name: Record result
+        if: always()
+        run: |
+          echo "Plugin: ${{ matrix.plugin }}"
+          echo "Status: ${{ steps.sonarqube.outcome }}"
+
+  # Third job: Check FOSSA for the entire repository
+  fossa-check:
+    name: FOSSA Check
+    needs: extract-plugins
+    runs-on: ubuntu-latest
+    steps:
+      - name: FOSSA Licensing Check
         id: fossa_licensing
         uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
         continue-on-error: true
@@ -89,12 +125,12 @@ jobs:
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
           fossa_project_id: "${{ github.repository_owner }}_${{ github.event.repository.name }}"
           fossa_branch: main
-          fossa_revision: ${{ steps.get_sha.outputs.sha }}
+          fossa_revision: ${{ github.sha }}
           fossa_category: licensing
           fossa_mode: BLOCK
           block_on: policy_conflict
 
-      - name: Pre-Release Check - FOSSA Security Vulnerabilities
+      - name: FOSSA Vulnerability Check
         id: fossa_vulnerabilities
         uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
         continue-on-error: true
@@ -102,50 +138,74 @@ jobs:
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
           fossa_project_id: "${{ github.repository_owner }}_${{ github.event.repository.name }}"
           fossa_branch: main
-          fossa_revision: ${{ steps.get_sha.outputs.sha }}
+          fossa_revision: ${{ github.sha }}
           fossa_category: vulnerability
           fossa_mode: BLOCK
           block_on: critical,high
 
-      - name: Set security check outputs
-        id: security_outputs
-        run: |
-          echo "sonarqube_status=${{ steps.sonarqube_hotspots.outcome }}" >> $GITHUB_OUTPUT
-          echo "fossa_policy_status=${{ steps.fossa_licensing.outcome }}" >> $GITHUB_OUTPUT
-          echo "fossa_vulnerabilities_status=${{ steps.fossa_vulnerabilities.outcome }}" >> $GITHUB_OUTPUT
-
-      - name: Create Check Summary
+      - name: Record result
         if: always()
         run: |
+          echo "Licensing Status: ${{ steps.fossa_licensing.outcome }}"
+          echo "Vulnerability Status: ${{ steps.fossa_vulnerabilities.outcome }}"
+
+  # Fourth job: Aggregate results and comment on PR
+  report-results:
+    name: Report Results
+    needs: [extract-plugins, sonarqube-check, fossa-check]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Check Summary
+        run: |
           echo "## 🔐 Release Readiness Check Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          PLUGINS="${{ needs.extract-plugins.outputs.plugins }}"
+          SONAR_RESULT="${{ needs.sonarqube-check.result }}"
+          FOSSA_RESULT="${{ needs.fossa-check.result }}"
+
+          echo "### SonarQube Hotspots (Per-Plugin)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$SONAR_RESULT" = "success" ]; then
+            echo "✅ **All plugins passed** - No unresolved HIGH vulnerability hotspots" >> $GITHUB_STEP_SUMMARY
+          elif [ "$SONAR_RESULT" = "skipped" ]; then
+            echo "⏭️ **Skipped** - No plugins to check" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ **Some plugins have issues** - Check individual job results above" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -n "$PLUGINS" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Plugin | Project |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|---------|" >> $GITHUB_STEP_SUMMARY
+            IFS=',' read -ra PLUGIN_ARRAY <<< "$PLUGINS"
+            for plugin in "${PLUGIN_ARRAY[@]}"; do
+              plugin=$(echo "$plugin" | xargs)
+              echo "| \`$plugin\` | SolaceLabs_${plugin} |" >> $GITHUB_STEP_SUMMARY
+            done
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### FOSSA Checks (Repository-Level)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
 
-          # SonarQube status
-          if [ "${{ steps.sonarqube_hotspots.outcome }}" = "success" ]; then
-            echo "| SonarQube Hotspots | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          if [ "$FOSSA_RESULT" = "success" ]; then
+            echo "| Licensing | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+            echo "| Vulnerabilities | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          elif [ "$FOSSA_RESULT" = "skipped" ]; then
+            echo "| Licensing | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+            echo "| Vulnerabilities | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "| SonarQube Hotspots | ⚠️ ${{ steps.sonarqube_hotspots.outcome }} |" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # FOSSA Licensing status
-          if [ "${{ steps.fossa_licensing.outcome }}" = "success" ]; then
-            echo "| FOSSA Licensing | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| FOSSA Licensing | ⚠️ ${{ steps.fossa_licensing.outcome }} |" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # FOSSA Vulnerabilities status
-          if [ "${{ steps.fossa_vulnerabilities.outcome }}" = "success" ]; then
-            echo "| FOSSA Vulnerabilities | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| FOSSA Vulnerabilities | ⚠️ ${{ steps.fossa_vulnerabilities.outcome }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Licensing | ⚠️ Check job results |" >> $GITHUB_STEP_SUMMARY
+            echo "| Vulnerabilities | ⚠️ Check job results |" >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Plugins Being Released" >> $GITHUB_STEP_SUMMARY
-          PLUGINS="${{ steps.extract.outputs.plugins }}"
           if [ -n "$PLUGINS" ]; then
             IFS=',' read -ra PLUGIN_ARRAY <<< "$PLUGINS"
             for plugin in "${PLUGIN_ARRAY[@]}"; do
@@ -156,37 +216,67 @@ jobs:
           fi
 
       - name: Comment on PR
-        if: always() && inputs.pr_number
+        if: inputs.pr_number
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
             const prNumber = ${{ inputs.pr_number }};
-            const sonarqubeStatus = '${{ steps.sonarqube_hotspots.outcome }}';
-            const fossaLicensingStatus = '${{ steps.fossa_licensing.outcome }}';
-            const fossaVulnerabilitiesStatus = '${{ steps.fossa_vulnerabilities.outcome }}';
-            const pluginsToRelease = '${{ steps.extract.outputs.plugins }}';
+            const pluginsToRelease = '${{ needs.extract-plugins.outputs.plugins }}';
+            const sonarResult = '${{ needs.sonarqube-check.result }}';
+            const fossaResult = '${{ needs.fossa-check.result }}';
 
-            const getStatusEmoji = (status) => status === 'success' ? '✅' : '⚠️';
+            const getStatusEmoji = (status) => {
+              if (status === 'success') return '✅';
+              if (status === 'skipped') return '⏭️';
+              return '⚠️';
+            };
+
+            const getSonarStatusText = (status) => {
+              if (status === 'success') return 'All plugins passed';
+              if (status === 'skipped') return 'Skipped (no plugins)';
+              return 'Some plugins have issues';
+            };
+
+            const getFossaStatusText = (status) => {
+              if (status === 'success') return 'Passed';
+              if (status === 'skipped') return 'Skipped';
+              return 'Issues found';
+            };
 
             let pluginsList = 'None detected';
+            let pluginsTable = '';
             if (pluginsToRelease) {
-              pluginsList = pluginsToRelease.split(',').map(p => `\`${p}\``).join(', ');
+              const plugins = pluginsToRelease.split(',').map(p => p.trim()).filter(p => p);
+              pluginsList = plugins.map(p => `\`${p}\``).join(', ');
+              
+              pluginsTable = [
+                '',
+                '### SonarQube Projects Checked',
+                '',
+                '| Plugin | SonarQube Project |',
+                '|--------|-------------------|',
+                ...plugins.map(p => `| \`${p}\` | SolaceLabs_${p} |`),
+                ''
+              ].join('\n');
             }
 
             const body = [
               '## 🔐 Release Readiness Check Results',
               '',
-              '| Check | Status |',
-              '|-------|--------|',
-              `| SonarQube Hotspots | ${getStatusEmoji(sonarqubeStatus)} ${sonarqubeStatus} |`,
-              `| FOSSA Licensing | ${getStatusEmoji(fossaLicensingStatus)} ${fossaLicensingStatus} |`,
-              `| FOSSA Vulnerabilities | ${getStatusEmoji(fossaVulnerabilitiesStatus)} ${fossaVulnerabilitiesStatus} |`,
+              '### Overall Status',
               '',
+              '| Check | Scope | Status |',
+              '|-------|-------|--------|',
+              `| SonarQube Hotspots | Per-Plugin | ${getStatusEmoji(sonarResult)} ${getSonarStatusText(sonarResult)} |`,
+              `| FOSSA Licensing | Repository | ${getStatusEmoji(fossaResult)} ${getFossaStatusText(fossaResult)} |`,
+              `| FOSSA Vulnerabilities | Repository | ${getStatusEmoji(fossaResult)} ${getFossaStatusText(fossaResult)} |`,
+              pluginsTable,
               '### Plugins Being Released',
               pluginsList,
               '',
               '---',
-              '*This check runs automatically on release-please PRs to ensure compliance before release.*'
+              '*This check runs automatically on release-please PRs to ensure compliance before release.*',
+              '*Click on individual job results above for detailed per-plugin SonarQube status.*'
             ].join('\n');
 
             // Find and delete existing comment
