@@ -497,14 +497,15 @@ class SlackGatewayComponent(BaseGatewayComponent):
                         "source": "slack_fallback",
                     }
                 else:
+                    cached_email = cached_claim.lower() if isinstance(cached_claim, str) else cached_claim
                     log.debug(
                         "%s Using cached email for user %s.",
                         log_id_prefix,
                         slack_user_id,
                     )
                     return {
-                        "id": cached_claim,
-                        "email": cached_claim,
+                        "id": cached_email,
+                        "email": cached_email,
                         "source": "slack_api",
                     }
 
@@ -518,6 +519,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
             user_email = profile_response.get("profile", {}).get("email")
 
             if user_email:
+                user_email = user_email.lower()
                 log.debug(
                     "%s Successfully fetched email for user %s: %s",
                     log_id_prefix,
