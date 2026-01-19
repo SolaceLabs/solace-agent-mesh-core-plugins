@@ -250,15 +250,17 @@ jobs:
                 const sonarStep = buildJob.steps.find(step => step.name === 'SonarQube Scan');
 
                 if (sonarStep) {
-                  if (sonarStep.conclusion === 'success') {
+                  // Use outcome instead of conclusion because the step has continue-on-error: true
+                  // outcome reflects the actual result before continue-on-error is applied
+                  if (sonarStep.outcome === 'success') {
                     status = 'passed';
                     statusEmoji = '✅';
-                  } else if (sonarStep.conclusion === 'failure') {
+                  } else if (sonarStep.outcome === 'failure') {
                     status = 'failed';
                     statusEmoji = '❌';
                     allPassed = false;
                   } else {
-                    status = sonarStep.conclusion || 'unknown';
+                    status = sonarStep.outcome || 'unknown';
                     statusEmoji = '⚠️';
                   }
                 }
