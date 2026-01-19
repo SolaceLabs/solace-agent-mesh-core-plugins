@@ -144,6 +144,46 @@ jobs:
           echo "SonarQube scan outcome: ${{ steps.sonarqube-scan.outcome }}"
           echo "status=${{ steps.sonarqube-scan.outcome }}" >> $GITHUB_OUTPUT
 
+      - name: Report SonarQube Status via Check
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        env:
+          SONAR_OUTCOME: ${{ steps.sonarqube-scan.outcome }}
+          SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
+        with:
+          script: |
+            const outcome = process.env.SONAR_OUTCOME;
+            const plugin = '${{ inputs.plugin_directory }}';
+            const sonarHostUrl = process.env.SONAR_HOST_URL || 'https://sonarq.solace.com';
+            const prNumber = context.payload.pull_request.number;
+            const headSha = context.payload.pull_request.head.sha;
+
+            const conclusion = outcome === 'success' ? 'success' :
+                              outcome === 'failure' ? 'failure' :
+                              'neutral';
+
+            const summary = outcome === 'success'
+              ? `✅ Quality gate passed for ${plugin}`
+              : outcome === 'failure'
+              ? `❌ Quality gate failed for ${plugin}`
+              : `⚠️ SonarQube scan status: ${outcome}`;
+
+            const sonarUrl = `${sonarHostUrl}/dashboard?id=${context.repo.owner}_${plugin}&pullRequest=${prNumber}`;
+
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: `SonarQube: ${plugin}`,
+              head_sha: headSha,
+              status: 'completed',
+              conclusion: conclusion,
+              output: {
+                title: `SonarQube Quality Gate - ${plugin}`,
+                summary: summary,
+                text: `[View detailed analysis on SonarQube](${sonarUrl})`
+              }
+            });
+
       - name: Build and Verify Package
         shell: bash
         run: |

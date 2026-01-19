@@ -182,11 +182,6 @@ jobs:
       pull-requests: write
       checks: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          fetch-depth: 0
-
       - name: Create Check Run
         id: create_check
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
@@ -221,49 +216,55 @@ jobs:
           script: |
             const plugins = JSON.parse('${{ needs.label-pr.outputs.all_plugins }}');
             const prNumber = context.payload.pull_request.number;
+            const headSha = '${{ github.event.pull_request.head.sha }}';
             const sonarHostUrl = process.env.SONARQUBE_HOST_URL || 'https://sonarq.solace.com';
 
             console.log(`Processing ${plugins.length} plugins`);
+            console.log(`Head SHA: ${headSha}`);
+
+            // Get all check runs for this commit
+            const { data: checkRuns } = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: headSha,
+              per_page: 100
+            });
+
+            console.log(`Found ${checkRuns.check_runs.length} check runs total`);
 
             let allPassed = true;
             let pluginResults = [];
 
             for (const pluginObj of plugins) {
               const plugin = pluginObj.plugin_directory;
-              // Get the build job result for this plugin by finding the job
-              const jobsResponse = await github.rest.actions.listJobsForWorkflowRun({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                run_id: context.runId,
-              });
+              const checkName = `SonarQube: ${plugin}`;
 
-              // Find the build job for this specific plugin
-              const buildJob = jobsResponse.data.jobs.find(job =>
-                job.name === `Build Plugin - ${plugin}`
-              );
+              // Find the check run for this plugin
+              const checkRun = checkRuns.check_runs.find(run => run.name === checkName);
 
               let status = 'unknown';
               let statusEmoji = '❓';
 
-              if (buildJob) {
-                // Check if SonarQube scan step failed
-                const sonarStep = buildJob.steps.find(step => step.name === 'SonarQube Scan');
+              if (checkRun) {
+                console.log(`Plugin: ${plugin}, Check conclusion: ${checkRun.conclusion}`);
 
-                if (sonarStep) {
-                  // Use outcome instead of conclusion because the step has continue-on-error: true
-                  // outcome reflects the actual result before continue-on-error is applied
-                  if (sonarStep.outcome === 'success') {
-                    status = 'passed';
-                    statusEmoji = '✅';
-                  } else if (sonarStep.outcome === 'failure') {
-                    status = 'failed';
-                    statusEmoji = '❌';
-                    allPassed = false;
-                  } else {
-                    status = sonarStep.outcome || 'unknown';
-                    statusEmoji = '⚠️';
-                  }
+                if (checkRun.conclusion === 'success') {
+                  status = 'passed';
+                  statusEmoji = '✅';
+                } else if (checkRun.conclusion === 'failure') {
+                  status = 'failed';
+                  statusEmoji = '❌';
+                  allPassed = false;
+                } else if (checkRun.conclusion === 'neutral' || checkRun.conclusion === 'skipped') {
+                  status = checkRun.conclusion;
+                  statusEmoji = '⏭️';
+                } else {
+                  status = checkRun.conclusion || 'unknown';
+                  statusEmoji = '⚠️';
                 }
+              } else {
+                console.log(`Check run not found for ${plugin}`);
+                statusEmoji = '⚠️';
               }
 
               const sonarUrl = `${sonarHostUrl}/dashboard?id=${context.repo.owner}_${plugin}&pullRequest=${prNumber}`;
