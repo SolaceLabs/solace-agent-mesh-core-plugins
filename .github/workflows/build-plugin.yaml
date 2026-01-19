@@ -53,6 +53,9 @@ permissions:
 jobs:
   build-plugin:
     runs-on: ubuntu-latest
+    outputs:
+      sonarqube_status: ${{ steps.record-sonar-result.outputs.status }}
+      plugin_directory: ${{ inputs.plugin_directory }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -113,6 +116,8 @@ jobs:
           include_passed: true
 
       - name: SonarQube Scan
+        id: sonarqube-scan
+        continue-on-error: true
         uses: sonarsource/sonarqube-scan-action@540792c588b5c2740ad2bb4667db5cd46ae678f2 # v2.2.0
         env:
           SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
@@ -129,19 +134,15 @@ jobs:
             -Dsonar.exclusions=**/__pycache__/**,**/dist/**,**/.hatch/**,**/build/**,**/*.egg-info/**,**/tests/**
             -Dsonar.cpd.exclusions=**/tests/**
             -Dsonar.pullrequest.github.summary_comment=false
+            -Dsonar.qualitygate.wait=true
 
-      # Quality Gate check - blocks if quality gate fails for this plugin's project
-      # Note: PR decoration/comments disabled since Sonar license doesn't support mono-repo
-      - name: SonarQube Quality Gate check
-        id: sonarqube-quality-gate-check
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        uses: sonarsource/sonarqube-quality-gate-action@master
-        with:
-          pollingTimeoutSec: 300
-          scanMetadataReportFile: ${{ inputs.plugin_directory }}/.scannerwork/report-task.txt
-        env:
-          SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
+      - name: Record SonarQube Result
+        id: record-sonar-result
+        if: always()
+        run: |
+          echo "Plugin: ${{ inputs.plugin_directory }}"
+          echo "SonarQube scan outcome: ${{ steps.sonarqube-scan.outcome }}"
+          echo "status=${{ steps.sonarqube-scan.outcome }}" >> $GITHUB_OUTPUT
 
       - name: Build and Verify Package
         shell: bash
