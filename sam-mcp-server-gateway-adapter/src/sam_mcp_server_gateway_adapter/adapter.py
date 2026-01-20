@@ -1209,12 +1209,7 @@ class McpAdapter(McpAdapterAuthHandler, GatewayAdapter):
                         except Exception as e:
                             log.warning("Failed to signal stream completion: %s", e)
 
-                    error_msg = (
-                        f"🔐 Authentication required. Visit:\n\n"
-                        f"{auth_uri}\n\n"
-                        f"⚠️ If the URL appears broken across multiple lines, copy it and remove any spaces/line breaks.\n\n"
-                        f"After authenticating, retry your request."
-                    )
+                    error_msg = f"🔐 Authentication required (copy the URL, remove empty spaces, and paste it in your browser):\n\n{auth_uri}\n\nAfter authenticating, re-request your last operation."
 
                     future = self.task_futures.get(task_id)
                     if future and not future.done():
