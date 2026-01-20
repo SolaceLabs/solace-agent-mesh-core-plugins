@@ -1,16 +1,65 @@
 name: CI
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
     types: [opened, synchronize, reopened]
-    paths-ignore:
-      - ".github/**"
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+  statuses: write
+  checks: write
+  repository-projects: read
+  id-token: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.ref_name != github.event.repository.default_branch }}
 
 jobs:
+  # Validate conventional commits for PRs
+  validate-conventional-commit:
+    name: "Validate Conventional Commit"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Validate PR Title
+        uses: amannn/action-semantic-pull-request@e32d7e603df1aa1ba07e981f2a23455dee596825 # v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            deps
+            revert
+          requireScope: false
+          disallowScopes: |
+            release
+          subjectPattern: ^.+$
+          subjectPatternError: |
+            The subject "{subject}" found in the pull request title "{title}"
+            didn't match the configured pattern. Please ensure that the subject
+            is not empty.
+
+  # Label PR based on changed files and determine which plugins to build
   label-pr:
     runs-on: ubuntu-24.04
     outputs:
@@ -21,50 +70,396 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Lable PR based on changes
+      - name: Label PR based on changes
         id: label-pr
-        if: ${{ github.event_name == 'pull_request' }}
+        if: github.event_name == 'pull_request'
         uses: actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9 # v5.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           sync-labels: true
           configuration-path: .github/pr_labeler.yaml
 
-      - name: Format labels for matrix
+      - name: Get changed plugins in PR
+        id: changed-pr
+        if: github.event_name == 'pull_request'
+        run: |
+          # Get all changed files in the PR by comparing against the base branch
+          # This compares the merge base to the PR head, capturing ALL changes in the PR
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          echo "Base SHA: $BASE_SHA"
+          echo "Head SHA: $HEAD_SHA"
+
+          # Get changed files between base and head of PR
+          CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          echo "Changed files in PR:"
+          echo "$CHANGED_FILES"
+
+          # Extract plugin directories (top-level directories starting with sam-)
+          PLUGINS=$(echo "$CHANGED_FILES" | grep -E '^sam-[^/]+/' | cut -d'/' -f1 | sort -u | tr '\n' ',' | sed 's/,$//')
+          echo "Changed plugins: $PLUGINS"
+          echo "plugins=$PLUGINS" >> $GITHUB_OUTPUT
+
+      - name: Get changed plugins on push
+        id: changed-push
+        if: github.event_name == 'push'
+        run: |
+          # Get changed files between HEAD and HEAD~1
+          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only $(git rev-list --max-parents=0 HEAD) HEAD)
+          echo "Changed files: $CHANGED_FILES"
+
+          # Extract plugin directories (top-level directories starting with sam-)
+          PLUGINS=$(echo "$CHANGED_FILES" | grep -E '^sam-[^/]+/' | cut -d'/' -f1 | sort -u | tr '\n' ',' | sed 's/,$//')
+          echo "Changed plugins: $PLUGINS"
+          echo "plugins=$PLUGINS" >> $GITHUB_OUTPUT
+
+      - name: Format plugins for matrix
         id: format-labels
         run: |
-          # Debug output
-          echo "Raw labels: ${{ steps.label-pr.outputs.all-labels }}"
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            # Use changed plugins detected from PR diff
+            PLUGINS="${{ steps.changed-pr.outputs.plugins }}"
+          else
+            # Use changed plugins from push
+            PLUGINS="${{ steps.changed-push.outputs.plugins }}"
+          fi
 
-          # Convert comma-separated list to JSON array of objects using pure bash
-          LABELS="${{ steps.label-pr.outputs.all-labels }}"
+          echo "Changed plugins: $PLUGINS"
+
+          # Convert comma-separated list to JSON array of objects
+          if [ -z "$PLUGINS" ]; then
+            echo "all-plugins=[]" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           JSON="["
           FIRST=true
-          IFS=',' read -ra LABEL_ARRAY <<< "$LABELS"
-          for label in "${LABEL_ARRAY[@]}"; do
-            if [ "$FIRST" = true ] ; then
+          IFS=',' read -ra PLUGIN_ARRAY <<< "$PLUGINS"
+          for plugin in "${PLUGIN_ARRAY[@]}"; do
+            # Trim whitespace
+            plugin=$(echo "$plugin" | xargs)
+            if [ -z "$plugin" ]; then
+              continue
+            fi
+            if [ "$FIRST" = true ]; then
               FIRST=false
             else
               JSON="$JSON,"
             fi
-            JSON="$JSON{\"plugin_directory\":\"$label\"}"
+            JSON="$JSON{\"plugin_directory\":\"$plugin\"}"
           done
           JSON="$JSON]"
 
           echo "Generated JSON: $JSON"
           echo "all-plugins=$JSON" >> $GITHUB_OUTPUT
 
+  # Build and test each plugin that changed
   builds:
     needs: label-pr
-    if: ${{ needs.label-pr.outputs.all_plugins != '[]' }}
+    if: needs.label-pr.outputs.all_plugins != '[]'
     strategy:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.label-pr.outputs.all_plugins) }}
-    name: Build Plugin - ${{matrix.plugin_directory}}
+    name: Build Plugin - ${{ matrix.plugin_directory }}
     uses: ./.github/workflows/build-plugin.yaml
     with:
-      plugin_directory: ${{matrix.plugin_directory}}
+      plugin_directory: ${{ matrix.plugin_directory }}
     secrets:
       COMMIT_KEY: ${{ secrets.COMMIT_KEY }}
       FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+      SONARQUBE_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+      SONARQUBE_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
+
+  # Aggregate SonarQube Quality Gate results for all plugins
+  sonarqube-quality-gate:
+    name: SonarQube Quality Gate
+    needs: [label-pr, builds]
+    if: always() && github.event_name == 'pull_request' && needs.label-pr.outputs.all_plugins != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      checks: write
+    steps:
+      - name: Create Check Run
+        id: create_check
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const headSha = '${{ github.event.pull_request.head.sha }}';
+            console.log(`Creating SonarQube Quality Gate check run for SHA: ${headSha}`);
+
+            const { data: checkRun } = await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'SonarQube Quality Gate',
+              head_sha: headSha,
+              status: 'in_progress',
+              started_at: new Date().toISOString(),
+              output: {
+                title: 'SonarQube Quality Gate Check',
+                summary: 'Checking quality gate status for all modified plugins...'
+              }
+            });
+
+            console.log(`Check run created with ID: ${checkRun.id}`);
+            core.setOutput('check_run_id', checkRun.id);
+            return checkRun.id;
+
+      - name: Aggregate Quality Gate Results
+        id: aggregate
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        env:
+          SONARQUBE_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
+        with:
+          script: |
+            const plugins = JSON.parse('${{ needs.label-pr.outputs.all_plugins }}');
+            const prNumber = context.payload.pull_request.number;
+            const headSha = '${{ github.event.pull_request.head.sha }}';
+            const sonarHostUrl = process.env.SONARQUBE_HOST_URL || 'https://sonarq.solace.com';
+
+            console.log(`Processing ${plugins.length} plugins`);
+            console.log(`Head SHA: ${headSha}`);
+
+            // Get all check runs for this commit
+            const { data: checkRuns } = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: headSha,
+              per_page: 100
+            });
+
+            console.log(`Found ${checkRuns.check_runs.length} check runs total`);
+
+            let allPassed = true;
+            let pluginResults = [];
+
+            for (const pluginObj of plugins) {
+              const plugin = pluginObj.plugin_directory;
+              const checkName = `SonarQube: ${plugin}`;
+
+              // Find the check run for this plugin
+              const checkRun = checkRuns.check_runs.find(run => run.name === checkName);
+
+              let status = 'unknown';
+              let statusEmoji = '❓';
+
+              if (checkRun) {
+                console.log(`Plugin: ${plugin}, Check conclusion: ${checkRun.conclusion}`);
+
+                if (checkRun.conclusion === 'success') {
+                  status = 'passed';
+                  statusEmoji = '✅';
+                } else if (checkRun.conclusion === 'failure') {
+                  status = 'failed';
+                  statusEmoji = '❌';
+                  allPassed = false;
+                } else if (checkRun.conclusion === 'neutral' || checkRun.conclusion === 'skipped') {
+                  status = checkRun.conclusion;
+                  statusEmoji = '⏭️';
+                } else {
+                  status = checkRun.conclusion || 'unknown';
+                  statusEmoji = '⚠️';
+                }
+              } else {
+                console.log(`Check run not found for ${plugin}`);
+                statusEmoji = '⚠️';
+              }
+
+              const sonarUrl = `${sonarHostUrl}dashboard?id=${context.repo.owner}_${plugin}&pullRequest=${prNumber}`;
+
+              pluginResults.push({
+                plugin: plugin,
+                status: status,
+                statusEmoji: statusEmoji,
+                url: sonarUrl
+              });
+
+              console.log(`Plugin: ${plugin}, Status: ${status}`);
+            }
+
+            core.setOutput('all_passed', allPassed);
+            core.setOutput('plugin_results', JSON.stringify(pluginResults));
+            return { allPassed, pluginResults };
+
+      - name: Update Check Run
+        if: always()
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const checkRunId = '${{ steps.create_check.outputs.check_run_id }}';
+            const allPassed = '${{ steps.aggregate.outputs.all_passed }}' === 'true';
+            const pluginResults = JSON.parse('${{ steps.aggregate.outputs.plugin_results }}');
+
+            console.log(`Updating check run ID: ${checkRunId}`);
+            console.log(`All passed: ${allPassed}`);
+
+            const conclusion = allPassed ? 'success' : 'failure';
+            const summary = allPassed
+              ? '✅ All plugins passed SonarQube quality gate'
+              : '❌ Some plugins failed SonarQube quality gate';
+
+            let outputText = '## SonarQube Quality Gate Results\n\n';
+            outputText += '| Plugin | Status | SonarQube |\n';
+            outputText += '|--------|--------|----------|\n';
+
+            for (const result of pluginResults) {
+              const statusText = result.status === 'passed' ? 'Passed' :
+                                 result.status === 'failed' ? 'Failed' :
+                                 result.status.charAt(0).toUpperCase() + result.status.slice(1);
+              outputText += `| \`${result.plugin}\` | ${result.statusEmoji} ${statusText} | [View Results](${result.url}) |\n`;
+            }
+
+            await github.rest.checks.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              check_run_id: checkRunId,
+              status: 'completed',
+              conclusion: conclusion,
+              completed_at: new Date().toISOString(),
+              output: {
+                title: 'SonarQube Quality Gate Check',
+                summary: summary,
+                text: outputText
+              }
+            });
+
+            console.log(`Check run completed with conclusion: ${conclusion}`);
+
+      - name: Comment on PR
+        if: always()
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const pluginResults = JSON.parse('${{ steps.aggregate.outputs.plugin_results }}');
+            const allPassed = '${{ steps.aggregate.outputs.all_passed }}' === 'true';
+            const prNumber = context.payload.pull_request.number;
+
+            const header = allPassed
+              ? '## ✅ SonarQube Quality Gate - All Passed'
+              : '## ❌ SonarQube Quality Gate - Issues Found';
+
+            let tableRows = [];
+            for (const result of pluginResults) {
+              const statusText = result.status === 'passed' ? 'Passed' :
+                                 result.status === 'failed' ? 'Failed' :
+                                 result.status.charAt(0).toUpperCase() + result.status.slice(1);
+              tableRows.push(`| \`${result.plugin}\` | ${result.statusEmoji} ${statusText} | [See analysis details on SonarQube](${result.url}) |`);
+            }
+
+            const body = [
+              header,
+              '',
+              '| Plugin | Quality Gate Status | Analysis |',
+              '|--------|-------------------|----------|',
+              ...tableRows,
+              '',
+              '---',
+              '*Quality gate checks are run for each modified plugin. Click the SonarQube links above for detailed analysis.*'
+            ].join('\n');
+
+            // Find and delete existing SonarQube comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            const existingComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('SonarQube Quality Gate')
+            );
+
+            if (existingComment) {
+              console.log(`Deleting existing comment ${existingComment.id}`);
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id
+              });
+            }
+
+            // Create new comment
+            console.log(`Creating new SonarQube comment on PR #${prNumber}`);
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: body
+            });
+
+  # FOSSA scan for the entire repository (on main branch)
+  fossa-scan:
+    name: FOSSA Scan
+    runs-on: ubuntu-latest
+    if: github.ref_name == github.event.repository.default_branch
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: FOSSA Analyze and Test
+        uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@main
+        continue-on-error: true
+        with:
+          scanners: "fossa"
+          additional_scan_params: |
+            fossa.branch=${{ github.ref_name }}
+            fossa.revision=${{ github.sha }}
+          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
+
+      - name: FOSSA Guard - Block on Licensing Violations
+        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
+        continue-on-error: true
+        with:
+          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
+          fossa_project_id: "${{ github.repository_owner }}_${{ github.event.repository.name }}"
+          fossa_branch: ${{ github.ref_name }}
+          fossa_revision: ${{ github.sha }}
+          fossa_category: licensing
+          fossa_mode: BLOCK
+          block_on: policy_conflict
+
+      - name: FOSSA Guard - Block on Vulnerability Violations
+        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
+        continue-on-error: true
+        with:
+          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
+          fossa_project_id: "${{ github.repository_owner }}_${{ github.event.repository.name }}"
+          fossa_branch: ${{ github.ref_name }}
+          fossa_revision: ${{ github.sha }}
+          fossa_category: vulnerability
+          fossa_mode: BLOCK
+          block_on: critical,high
+
+  # CI Status check - aggregates all job results
+  ci-status:
+    name: CI Status
+    runs-on: ubuntu-latest
+    needs: [label-pr, builds, sonarqube-quality-gate]
+    if: always()
+    steps:
+      - name: Check CI status
+        run: |
+          if [[ "${{ needs.label-pr.outputs.all_plugins }}" == "[]" ]]; then
+            echo "No plugins changed, skipping build and quality checks"
+          elif [[ "${{ needs.builds.result }}" == "success" || "${{ needs.builds.result }}" == "skipped" ]]; then
+            echo "Build jobs passed or were skipped"
+
+            # Check SonarQube quality gate for PRs
+            if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+              if [[ "${{ needs.sonarqube-quality-gate.result }}" == "success" || "${{ needs.sonarqube-quality-gate.result }}" == "skipped" ]]; then
+                echo "SonarQube quality gate passed or was skipped"
+              else
+                echo "SonarQube quality gate failed"
+                exit 1
+              fi
+            fi
+          else
+            echo "Build jobs failed"
+            exit 1
+          fi
+
+          echo "All CI checks passed!"

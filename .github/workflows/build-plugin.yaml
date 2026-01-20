@@ -1,4 +1,5 @@
 name: Build Plugin
+run-name: Build Plugin ${{ inputs.plugin_directory }}
 
 on:
   workflow_call:
@@ -12,6 +13,10 @@ on:
         required: true
       FOSSA_API_KEY:
         required: true
+      SONARQUBE_TOKEN:
+        required: true
+      SONARQUBE_HOST_URL:
+        required: true
   workflow_dispatch:
     inputs:
       plugin_directory:
@@ -19,16 +24,23 @@ on:
         required: true
         type: choice
         options:
-          - sam-event-mesh-gateway
-          - sam-mongodb
-          - sam-sql-database
-          - sam-geo-information
-          - sam-rest-gateway
-          - sam-webhook-gateway
           - sam-bedrock-agent
+          - sam-event-mesh-agent
+          - sam-event-mesh-gateway
+          - sam-event-mesh-tool
+          - sam-geo-information
           - sam-mermaid
+          - sam-mongodb
+          - sam-nuclia-tool
+          - sam-rag
+          - sam-rest-gateway
+          - sam-ruleset-lookup-tool
           - sam-slack
           - sam-mcp-server-gateway-adapter
+          - sam-slack-gateway-adapter
+          - sam-sql-database
+          - sam-sql-database-tool
+          - sam-webhook-gateway
 
 permissions:
   contents: write
@@ -41,6 +53,9 @@ permissions:
 jobs:
   build-plugin:
     runs-on: ubuntu-latest
+    outputs:
+      sonarqube_status: ${{ steps.record-sonar-result.outputs.status }}
+      plugin_directory: ${{ inputs.plugin_directory }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -48,44 +63,147 @@ jobs:
           fetch-depth: 0
           sparse-checkout: ${{ inputs.plugin_directory }}
 
-      - name: Set up Python
-        uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55 # v5.5.0
-        with:
-          python-version: "3.12"
-      - name: Cache pip
-        uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
+      - name: Install uv
+        id: setup-uv
+        uses: astral-sh/setup-uv@61cb8a9741eeb8a550a1b8544337180c0fc8476b # v7.2.0
       - name: Install Hatch
+        run: uv tool install hatch
+      - name: Create Hatch Environment
+        working-directory: ${{ inputs.plugin_directory }}
+        run: hatch -v env create hatch-test.py3.13
+
+      - name: Test Plugin ${{ inputs.plugin_directory }} with Python 3.13
+        id: test
+        continue-on-error: true
+        working-directory: ${{ inputs.plugin_directory }}
         shell: bash
         run: |
-          python -m pip install --upgrade pip -q
-          pip install hatch -q
-          pip install virtualenv pipdeptree -q
+          # Check if tests directory exists
+          if [ ! -d "tests" ]; then
+            echo "No tests directory found, skipping tests"
+            echo "junit_exists=false" >> $GITHUB_OUTPUT
+            echo "coverage_exists=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
 
-      - name: Test Plugin
-        shell: bash
+          # Run tests with coverage if pytest-cov is available, otherwise without
+          if hatch -v run hatch-test.py3.13:pip show pytest-cov > /dev/null 2>&1; then
+            echo "Running tests with coverage..."
+            hatch -v run hatch-test.py3.13:pytest tests/ --cov --cov-report=xml:coverage.xml --cov-report=term --junitxml=junit.xml
+          else
+            echo "Running tests without coverage (pytest-cov not available)..."
+            hatch -v run hatch-test.py3.13:pytest tests/ --junitxml=junit.xml
+          fi
+
+          # Check if result files exist
+          if [ -f coverage.xml ]; then
+            echo "coverage_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "coverage_exists=false" >> $GITHUB_OUTPUT
+          fi
+          if [ -f junit.xml ]; then
+            echo "junit_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "junit_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Status Check - Unit Tests
+        uses: mikepenz/action-junit-report@3585e9575db828022551b4231f165eb59a0e74e3 # v5.6.2
+        if: always() && steps.test.outputs.junit_exists == 'true'
+        with:
+          check_name: Unit Tests - ${{ inputs.plugin_directory }}
+          report_paths: ${{ inputs.plugin_directory }}/junit.xml
+          include_passed: true
+
+      - name: SonarQube Scan
+        id: sonarqube-scan
+        continue-on-error: true
+        uses: sonarsource/sonarqube-scan-action@540792c588b5c2740ad2bb4667db5cd46ae678f2 # v2.2.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
+        with:
+          projectBaseDir: ${{ inputs.plugin_directory }}
+          args: >
+            -Dsonar.projectKey=${{ github.repository_owner }}_${{ inputs.plugin_directory }}
+            -Dsonar.projectName=${{ inputs.plugin_directory }}
+            -Dsonar.sources=src
+            -Dsonar.python.version=3.10,3.11,3.12,3.13
+            -Dsonar.sourceEncoding=UTF-8
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.exclusions=**/__pycache__/**,**/dist/**,**/.hatch/**,**/build/**,**/*.egg-info/**,**/tests/**
+            -Dsonar.cpd.exclusions=**/tests/**
+            -Dsonar.pullrequest.github.summary_comment=false
+            -Dsonar.qualitygate.wait=true
+
+      - name: Record SonarQube Result
+        id: record-sonar-result
+        if: always()
         run: |
-          cd ${{ inputs.plugin_directory }}/
-          ls -la
-          dir=$(pwd)
-          echo "Directory: $dir"
-          hatch run pip install solace-agent-mesh twine -q
-          hatch run solace-agent-mesh plugin add test-${{ inputs.plugin_directory }} --plugin $dir
-          hatch test
+          echo "Plugin: ${{ inputs.plugin_directory }}"
+          echo "SonarQube scan outcome: ${{ steps.sonarqube-scan.outcome }}"
+          echo "status=${{ steps.sonarqube-scan.outcome }}" >> $GITHUB_OUTPUT
 
-      - name: Install dependencies
+      - name: Report SonarQube Status via Check
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        env:
+          SONAR_OUTCOME: ${{ steps.sonarqube-scan.outcome }}
+          SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
+        with:
+          script: |
+            const outcome = process.env.SONAR_OUTCOME;
+            const plugin = '${{ inputs.plugin_directory }}';
+            const sonarHostUrl = process.env.SONAR_HOST_URL || 'https://sonarq.solace.com';
+            const prNumber = context.payload.pull_request.number;
+            const headSha = context.payload.pull_request.head.sha;
+
+            const conclusion = outcome === 'success' ? 'success' :
+                              outcome === 'failure' ? 'failure' :
+                              'neutral';
+
+            const summary = outcome === 'success'
+              ? `✅ Quality gate passed for ${plugin}`
+              : outcome === 'failure'
+              ? `❌ Quality gate failed for ${plugin}`
+              : `⚠️ SonarQube scan status: ${outcome}`;
+
+            const sonarUrl = `${sonarHostUrl}dashboard?id=${context.repo.owner}_${plugin}&pullRequest=${prNumber}`;
+
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: `SonarQube: ${plugin}`,
+              head_sha: headSha,
+              status: 'completed',
+              conclusion: conclusion,
+              output: {
+                title: `SonarQube Quality Gate - ${plugin}`,
+                summary: summary,
+                text: `[View detailed analysis on SonarQube](${sonarUrl})`
+              }
+            });
+
+      - name: Build and Verify Package
         shell: bash
         run: |
           cd ${{ inputs.plugin_directory }}
           hatch build
-          ls dist/*.tar.gz | xargs -n1 hatch run python -m twine check
-          ls dist/*.whl | xargs -n1 hatch run python -m twine check
+          # Use uv to run twine for package verification
+          uv tool run twine check dist/*.tar.gz
+          uv tool run twine check dist/*.whl
 
-      - name: sca-scan
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ inputs.plugin_directory }}-dist
+          path: ${{ inputs.plugin_directory }}/dist/
+          retention-days: 7
+
+      # FOSSA Scan - uploads plugin data to FOSSA as unique project
+      # Guard checks run at repo level in ci.yaml on main branch
+      - name: FOSSA Scan
+        continue-on-error: true
         uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@main
         with:
           scanners: "fossa"
@@ -94,30 +212,3 @@ jobs:
             fossa.revision=${{ github.event.pull_request.number && github.head_ref || github.sha }}
             fossa.config=${{ inputs.plugin_directory }}/.fossa.yml
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
-
-
-      - name: FOSSA Licensing
-        id: fossa_licensing
-        if: ${{ always() }}
-        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
-        with:
-          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
-          fossa_project_id: "${{ github.repository_owner }}_${{ inputs.plugin_directory }}"
-          fossa_branch: ${{ github.event.pull_request.number && 'PR' || github.event.repository.default_branch }}
-          fossa_revision: ${{ github.event.pull_request.number && github.head_ref || github.sha }}
-          fossa_category: licensing
-          fossa_mode: BLOCK
-          block_on: policy_conflict
-
-      - name: FOSSA Security Vulnerabilities
-        id: fossa_vulnerabilities
-        if: ${{ always() }}
-        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
-        with:
-          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
-          fossa_project_id: "${{ github.repository_owner }}_${{ inputs.plugin_directory }}"
-          fossa_branch: ${{ github.event.pull_request.number && 'PR' || github.event.repository.default_branch }}
-          fossa_revision: ${{ github.event.pull_request.number && github.head_ref || github.sha }}
-          fossa_category: vulnerability
-          fossa_mode: BLOCK
-          block_on: critical,high
