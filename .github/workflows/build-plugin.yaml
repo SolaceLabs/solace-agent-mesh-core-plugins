@@ -168,7 +168,7 @@ jobs:
               ? `❌ Quality gate failed for ${plugin}`
               : `⚠️ SonarQube scan status: ${outcome}`;
 
-            const sonarUrl = `${sonarHostUrl}/dashboard?id=${context.repo.owner}_${plugin}&pullRequest=${prNumber}`;
+            const sonarUrl = `${sonarHostUrl}dashboard?id=${context.repo.owner}_${plugin}&pullRequest=${prNumber}`;
 
             await github.rest.checks.create({
               owner: context.repo.owner,

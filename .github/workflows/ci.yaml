@@ -267,7 +267,7 @@ jobs:
                 statusEmoji = '⚠️';
               }
 
-              const sonarUrl = `${sonarHostUrl}/dashboard?id=${context.repo.owner}_${plugin}&pullRequest=${prNumber}`;
+              const sonarUrl = `${sonarHostUrl}dashboard?id=${context.repo.owner}_${plugin}&pullRequest=${prNumber}`;
 
               pluginResults.push({
                 plugin: plugin,
