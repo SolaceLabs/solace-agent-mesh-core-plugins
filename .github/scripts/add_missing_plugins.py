@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Add missing plugin directories to the configuration files.
+Add missing plugins to all configuration files.
 
 This script scans the repository for plugin directories (sam-*) and adds
-any missing ones to:
+any missing plugins to:
 - .github/workflows/build-plugin.yaml
+- .github/workflows/sync-plugin-configs.yaml (paths exclusions)
 - .release-please-manifest.json
 - release-please-config.json
 - .github/pr_labeler.yaml
@@ -13,7 +14,6 @@ any missing ones to:
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -31,21 +31,24 @@ def get_plugin_directories(repo_root: Path) -> Set[str]:
     return plugins
 
 
-def get_package_name(plugin_name: str) -> str:
-    """Convert plugin directory name to Python package name."""
-    return plugin_name.replace("-", "_")
+def get_package_name(plugin_dir: str) -> str:
+    """Convert plugin directory name to package name."""
+    # sam-foo-bar -> solace_agent_mesh_foo_bar
+    suffix = plugin_dir.replace("sam-", "").replace("-", "_")
+    return f"solace_agent_mesh_{suffix}"
 
 
 def update_build_workflow(repo_root: Path, plugins: Set[str]) -> bool:
-    """Update build-plugin.yaml with missing plugins."""
+    """Update .github/workflows/build-plugin.yaml with missing plugins."""
     workflow_path = repo_root / ".github" / "workflows" / "build-plugin.yaml"
+
     if not workflow_path.exists():
         print(f"  ⚠️  {workflow_path} does not exist, skipping")
         return False
 
     content = workflow_path.read_text()
 
-    # Find existing plugins in options
+    # Find existing plugins in options (lines like "          - sam-foo")
     existing_plugins = set()
     for match in re.finditer(r"^\s*-\s*(sam-[\w-]+)\s*$", content, re.MULTILINE):
         existing_plugins.add(match.group(1))
@@ -55,48 +58,76 @@ def update_build_workflow(repo_root: Path, plugins: Set[str]) -> bool:
         print("  ✅ build-plugin.yaml already has all plugins")
         return False
 
-    # Find the options block and add missing plugins
+    # Find the last plugin option and add after it
     lines = content.split("\n")
-    new_lines = []
-    in_options = False
-    options_indent = None
     last_option_idx = -1
+    indent = "          "  # Default indent
 
     for i, line in enumerate(lines):
-        new_lines.append(line)
-        if "options:" in line and "plugin_directory" in "\n".join(
-            lines[max(0, i - 5) : i]
-        ):
-            in_options = True
-            # Get indentation of next line (the first option)
-            continue
-        if in_options:
-            match = re.match(r"^(\s*)-\s*sam-[\w-]+", line)
-            if match:
-                options_indent = match.group(1)
-                last_option_idx = len(new_lines) - 1
-            elif (
-                line.strip()
-                and not line.strip().startswith("-")
-                and not line.strip().startswith("#")
-            ):
-                # End of options block
-                in_options = False
+        match = re.match(r"^(\s*)-\s*sam-[\w-]+\s*$", line)
+        if match:
+            indent = match.group(1)
+            last_option_idx = i
 
-    if last_option_idx > 0 and options_indent:
-        # Insert missing plugins after the last option
-        for plugin in sorted(missing):
-            new_lines.insert(last_option_idx + 1, f"{options_indent}- {plugin}")
-            last_option_idx += 1
-
-        workflow_path.write_text("\n".join(new_lines))
-        print(f"  ✅ Added {len(missing)} plugins to build-plugin.yaml:")
-        for plugin in sorted(missing):
-            print(f"      - {plugin}")
-        return True
-    else:
+    if last_option_idx < 0:
         print("  ⚠️  Could not find options block in build-plugin.yaml")
         return False
+
+    # Insert missing plugins after the last option
+    for plugin in sorted(missing, reverse=True):
+        lines.insert(last_option_idx + 1, f"{indent}- {plugin}")
+
+    workflow_path.write_text("\n".join(lines))
+    print(f"  ✅ Added {len(missing)} plugins to build-plugin.yaml:")
+    for plugin in sorted(missing):
+        print(f"      + {plugin}")
+    return True
+
+
+def update_sync_workflow(repo_root: Path, plugins: Set[str]) -> bool:
+    """Update .github/workflows/sync-plugin-configs.yaml paths exclusions with missing plugins."""
+    workflow_path = repo_root / ".github" / "workflows" / "sync-plugin-configs.yaml"
+
+    if not workflow_path.exists():
+        print(f"  ⚠️  {workflow_path} does not exist, skipping")
+        return False
+
+    content = workflow_path.read_text()
+
+    # Find existing plugins in paths exclusions (! prefix)
+    existing_plugins = set()
+    for match in re.finditer(r'^\s*-\s*"!(sam-[\w-]+)/\*\*"', content, re.MULTILINE):
+        existing_plugins.add(match.group(1))
+
+    missing = plugins - existing_plugins
+    if not missing:
+        print("  ✅ sync-plugin-configs.yaml already has all plugins")
+        return False
+
+    # Find the last exclusion pattern (lines with "!sam-*/**") and add after it
+    lines = content.split("\n")
+    last_exclusion_idx = -1
+    indent = "      "  # Default indent
+
+    for i, line in enumerate(lines):
+        match = re.match(r'^(\s*)-\s*"!sam-[\w-]+/\*\*"', line)
+        if match:
+            indent = match.group(1)
+            last_exclusion_idx = i
+
+    if last_exclusion_idx < 0:
+        print("  ⚠️  Could not find paths exclusions in sync-plugin-configs.yaml")
+        return False
+
+    # Insert missing plugins after the last exclusion
+    for plugin in sorted(missing, reverse=True):
+        lines.insert(last_exclusion_idx + 1, f'{indent}- "!{plugin}/**"')
+
+    workflow_path.write_text("\n".join(lines))
+    print(f"  ✅ Added {len(missing)} plugins to sync-plugin-configs.yaml:")
+    for plugin in sorted(missing):
+        print(f"      + {plugin}")
+    return True
 
 
 def update_manifest(repo_root: Path, plugins: Set[str]) -> bool:
@@ -127,7 +158,7 @@ def update_manifest(repo_root: Path, plugins: Set[str]) -> bool:
 
     print(f"  ✅ Added {len(missing)} plugins to .release-please-manifest.json:")
     for plugin in sorted(missing):
-        print(f"      - {plugin}: 0.1.0")
+        print(f"      + {plugin}")
     return True
 
 
@@ -171,7 +202,7 @@ def update_release_config(repo_root: Path, plugins: Set[str]) -> bool:
 
     print(f"  ✅ Added {len(missing)} plugins to release-please-config.json:")
     for plugin in sorted(missing):
-        print(f"      - {plugin}")
+        print(f"      + {plugin}")
     return True
 
 
@@ -183,8 +214,7 @@ def update_pr_labeler(repo_root: Path, plugins: Set[str]) -> bool:
         content = labeler_path.read_text()
     else:
         content = """# PR Labeler configuration
-# Labels PRs based on which plugin directories have changes
-# Used by CI to determine which plugins to build and test
+# This file automatically labels PRs based on changed files.
 
 """
 
@@ -201,10 +231,10 @@ def update_pr_labeler(repo_root: Path, plugins: Set[str]) -> bool:
     # Add missing plugins at the end
     new_entries = []
     for plugin in sorted(missing):
-        new_entries.append(f"""
-{plugin}:
+        new_entries.append(f"""{plugin}:
   - changed-files:
-      - any-glob-to-any-file: {plugin}/**
+    - any-glob-to-any-file: {plugin}/**
+
 """)
 
     content = content.rstrip() + "\n" + "".join(new_entries)
@@ -213,14 +243,14 @@ def update_pr_labeler(repo_root: Path, plugins: Set[str]) -> bool:
 
     print(f"  ✅ Added {len(missing)} plugins to pr_labeler.yaml:")
     for plugin in sorted(missing):
-        print(f"      - {plugin}")
+        print(f"      + {plugin}")
     return True
 
 
 def main():
     # Find repository root
     script_dir = Path(__file__).parent
-    repo_root = script_dir.parent
+    repo_root = script_dir.parent.parent
 
     print(f"Repository root: {repo_root}")
     print()
@@ -237,6 +267,11 @@ def main():
 
     print("Updating build-plugin.yaml...")
     if update_build_workflow(repo_root, actual_plugins):
+        updated_any = True
+    print()
+
+    print("Updating sync-plugin-configs.yaml...")
+    if update_sync_workflow(repo_root, actual_plugins):
         updated_any = True
     print()
 
@@ -257,7 +292,8 @@ def main():
 
     # Summary
     if updated_any:
-        print("✅ Configuration files have been updated!")
+        print("=" * 50)
+        print("✅ Configuration files updated successfully!")
         print("   Please review the changes and commit them.")
     else:
         print("✅ All configuration files are already up to date!")

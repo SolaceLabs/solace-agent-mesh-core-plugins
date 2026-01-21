@@ -5,6 +5,7 @@ Check that all plugin directories are listed in the configuration files.
 This script scans the repository for plugin directories (sam-*) and verifies
 they are properly configured in:
 - .github/workflows/build-plugin.yaml
+- .github/workflows/sync-plugin-configs.yaml (paths exclusions)
 - .release-please-manifest.json
 - release-please-config.json
 - .github/pr_labeler.yaml
@@ -13,7 +14,6 @@ they are properly configured in:
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -40,7 +40,6 @@ def get_plugins_from_build_workflow(repo_root: Path) -> Set[str]:
     content = workflow_path.read_text()
 
     # Find the options list under workflow_dispatch
-    # Look for the pattern after 'options:'
     plugins = set()
     in_options = False
     for line in content.split("\n"):
@@ -48,13 +47,28 @@ def get_plugins_from_build_workflow(repo_root: Path) -> Set[str]:
             in_options = True
             continue
         if in_options:
-            # Check if we've exited the options block
             if line.strip() and not line.strip().startswith("-"):
-                if not line.startswith(" " * 10):  # Less indented than options
+                if not line.startswith(" " * 10):
                     break
             match = re.match(r"\s*-\s*(sam-[\w-]+)", line)
             if match:
                 plugins.add(match.group(1))
+
+    return plugins
+
+
+def get_plugins_from_sync_workflow(repo_root: Path) -> Set[str]:
+    """Extract plugin names from sync-plugin-configs.yaml paths exclusions (!)."""
+    workflow_path = repo_root / ".github" / "workflows" / "sync-plugin-configs.yaml"
+    if not workflow_path.exists():
+        return set()
+
+    content = workflow_path.read_text()
+
+    # Find plugins in paths section with ! prefix (exclusions)
+    plugins = set()
+    for match in re.finditer(r'^\s*-\s*"!(sam-[\w-]+)/\*\*"', content, re.MULTILINE):
+        plugins.add(match.group(1))
 
     return plugins
 
@@ -104,7 +118,7 @@ def get_plugins_from_pr_labeler(repo_root: Path) -> Set[str]:
 def main():
     # Find repository root
     script_dir = Path(__file__).parent
-    repo_root = script_dir.parent
+    repo_root = script_dir.parent.parent
 
     print(f"Repository root: {repo_root}")
     print()
@@ -121,6 +135,7 @@ def main():
 
     configs = [
         ("build-plugin.yaml", get_plugins_from_build_workflow(repo_root)),
+        ("sync-plugin-configs.yaml", get_plugins_from_sync_workflow(repo_root)),
         (".release-please-manifest.json", get_plugins_from_manifest(repo_root)),
         ("release-please-config.json", get_plugins_from_release_config(repo_root)),
         ("pr_labeler.yaml", get_plugins_from_pr_labeler(repo_root)),
@@ -134,13 +149,13 @@ def main():
 
         if missing:
             all_match = False
-            print(f"  ❌ Missing plugins:")
+            print("  ❌ Missing plugins:")
             for plugin in sorted(missing):
                 print(f"      - {plugin}")
 
         if extra:
             all_match = False
-            print(f"  ⚠️  Extra plugins (in config but not in repo):")
+            print("  ⚠️  Extra plugins (in config but not in repo):")
             for plugin in sorted(extra):
                 print(f"      - {plugin}")
 
@@ -155,7 +170,7 @@ def main():
         return 0
     else:
         print("❌ Some configuration files need to be updated.")
-        print("   Run 'python scripts/add_missing_plugins.py' to fix.")
+        print("   Run 'python .github/scripts/add_missing_plugins.py' to fix.")
         return 1
 
 

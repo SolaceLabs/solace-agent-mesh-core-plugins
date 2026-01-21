@@ -2,12 +2,40 @@ name: Sync Plugin Configs
 
 # This workflow runs when new plugin directories are added to ensure they are
 # properly configured in all the necessary files.
+#
+# IMPORTANT: When adding a new plugin, also add it to paths-ignore below
+# so this workflow doesn't trigger unnecessarily for that plugin anymore.
+# The list should match the plugins in:
+# - .github/workflows/build-plugin.yaml (workflow_dispatch options)
+# - .release-please-manifest.json
+# - release-please-config.json
+# - .github/pr_labeler.yaml
 
 on:
   pull_request:
     types: [opened, synchronize]
     paths:
-      - "sam-*/pyproject.toml" # Trigger when a new plugin is added
+      # Trigger on any sam-* directory changes
+      - "sam-*/**"
+      # Exclude existing plugins that are already configured
+      # Keep this list in sync with build-plugin.yaml options
+      - "!sam-bedrock-agent/**"
+      - "!sam-event-mesh-agent/**"
+      - "!sam-event-mesh-gateway/**"
+      - "!sam-event-mesh-tool/**"
+      - "!sam-geo-information/**"
+      - "!sam-mcp-server-gateway-adapter/**"
+      - "!sam-mermaid/**"
+      - "!sam-mongodb/**"
+      - "!sam-nuclia-tool/**"
+      - "!sam-rag/**"
+      - "!sam-rest-gateway/**"
+      - "!sam-ruleset-lookup-tool/**"
+      - "!sam-slack/**"
+      - "!sam-slack-gateway-adapter/**"
+      - "!sam-sql-database/**"
+      - "!sam-sql-database-tool/**"
+      - "!sam-webhook-gateway/**"
 
 permissions:
   contents: write
@@ -72,6 +100,7 @@ jobs:
 
           Automatically added missing plugin(s) to:
           - .github/workflows/build-plugin.yaml
+          - .github/workflows/sync-plugin-configs.yaml
           - .release-please-manifest.json
           - release-please-config.json
           - .github/pr_labeler.yaml"
@@ -86,6 +115,7 @@ jobs:
 
             I detected new plugin directories and automatically updated the configuration files:
             - \`.github/workflows/build-plugin.yaml\`
+            - \`.github/workflows/sync-plugin-configs.yaml\`
             - \`.release-please-manifest.json\`
             - \`release-please-config.json\`
             - \`.github/pr_labeler.yaml\`
@@ -112,6 +142,7 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "The following files were updated:" >> $GITHUB_STEP_SUMMARY
             echo "- \`.github/workflows/build-plugin.yaml\`" >> $GITHUB_STEP_SUMMARY
+            echo "- \`.github/workflows/sync-plugin-configs.yaml\`" >> $GITHUB_STEP_SUMMARY
             echo "- \`.release-please-manifest.json\`" >> $GITHUB_STEP_SUMMARY
             echo "- \`release-please-config.json\`" >> $GITHUB_STEP_SUMMARY
             echo "- \`.github/pr_labeler.yaml\`" >> $GITHUB_STEP_SUMMARY
