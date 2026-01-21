@@ -14,6 +14,8 @@ name: Sync Plugin Configs
 on:
   pull_request:
     types: [opened, synchronize]
+    branches:
+      - main
     paths:
       # Trigger on any sam-* directory changes
       - "sam-*/**"

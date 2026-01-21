@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
   id-token: write # Required for PyPI Trusted Publishing
+  checks: write # For FOSSA status checks
 
 jobs:
   publish:
@@ -98,6 +99,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+        # Run FOSSA scan and tag with version for license tracking
+      - name: FOSSA Scan - Publish
+        uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@main # main
+        with:
+          scanners: fossa
+          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
+          additional_scan_params: |
+            fossa.branch=main
+            fossa.revision=${{ steps.extract.outputs.version }}
+            fossa.config=${{ steps.extract.outputs.path }}/.fossa.yml
+
       - name: Create summary
         run: |
           echo "## 📦 Package Published Successfully" >> $GITHUB_STEP_SUMMARY
@@ -105,6 +117,11 @@ jobs:
           echo "**Package:** ${{ steps.extract.outputs.path }}" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** ${{ steps.extract.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "**Tag:** ${{ github.event.release.tag_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**FOSSA Revision:** ${{ steps.extract.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Security Checks" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ FOSSA Vulnerability Check passed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ FOSSA Licensing Check passed" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Built artifacts:" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
