@@ -7,18 +7,60 @@
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": true,
   "changelog-sections": [
-    { "type": "feat", "section": "Features" },
-    { "type": "fix", "section": "Bug Fixes" },
-    { "type": "perf", "section": "Performance Improvements" },
-    { "type": "deps", "section": "Dependencies" },
-    { "type": "revert", "section": "Reverts" },
-    { "type": "docs", "section": "Documentation" },
-    { "type": "style", "section": "Styles", "hidden": true },
-    { "type": "chore", "section": "Miscellaneous Chores", "hidden": true },
-    { "type": "refactor", "section": "Code Refactoring", "hidden": true },
-    { "type": "test", "section": "Tests", "hidden": true },
-    { "type": "build", "section": "Build System", "hidden": true },
-    { "type": "ci", "section": "Continuous Integration", "hidden": true }
+    {
+      "type": "feat",
+      "section": "Features"
+    },
+    {
+      "type": "fix",
+      "section": "Bug Fixes"
+    },
+    {
+      "type": "perf",
+      "section": "Performance Improvements"
+    },
+    {
+      "type": "deps",
+      "section": "Dependencies"
+    },
+    {
+      "type": "revert",
+      "section": "Reverts"
+    },
+    {
+      "type": "docs",
+      "section": "Documentation"
+    },
+    {
+      "type": "style",
+      "section": "Styles",
+      "hidden": true
+    },
+    {
+      "type": "chore",
+      "section": "Miscellaneous Chores",
+      "hidden": true
+    },
+    {
+      "type": "refactor",
+      "section": "Code Refactoring",
+      "hidden": true
+    },
+    {
+      "type": "test",
+      "section": "Tests",
+      "hidden": true
+    },
+    {
+      "type": "build",
+      "section": "Build System",
+      "hidden": true
+    },
+    {
+      "type": "ci",
+      "section": "Continuous Integration",
+      "hidden": true
+    }
   ],
   "group-pull-request-title-pattern": "chore: release ${branch}",
   "pull-request-header": ":robot: I have created a release *beep* *boop*",
@@ -43,6 +85,10 @@
       "package-name": "sam_geo_information",
       "changelog-path": "CHANGELOG.md"
     },
+    "sam-mcp-server-gateway-adapter": {
+      "package-name": "sam_mcp_server_gateway_adapter",
+      "changelog-path": "CHANGELOG.md"
+    },
     "sam-mermaid": {
       "package-name": "sam_mermaid",
       "changelog-path": "CHANGELOG.md"
@@ -58,7 +104,9 @@
     "sam-rag": {
       "package-name": "sam_rag",
       "changelog-path": "CHANGELOG.md",
-      "extra-files": ["src/sam_rag/__init__.py"]
+      "extra-files": [
+        "src/sam_rag/__init__.py"
+      ]
     },
     "sam-rest-gateway": {
       "package-name": "sam_rest_gateway",

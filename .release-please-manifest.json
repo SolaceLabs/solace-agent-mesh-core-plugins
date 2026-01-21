@@ -4,6 +4,7 @@
   "sam-event-mesh-gateway": "0.1.0",
   "sam-event-mesh-tool": "0.1.0",
   "sam-geo-information": "0.1.0",
+  "sam-mcp-server-gateway-adapter": "0.1.0",
   "sam-mermaid": "0.1.0",
   "sam-mongodb": "0.1.0",
   "sam-nuclia-tool": "0.1.1",
