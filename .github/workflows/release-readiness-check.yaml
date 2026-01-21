@@ -8,13 +8,13 @@ on:
     inputs:
       pr_number:
         description: "PR number to comment on"
-        required: true
+        required: false
         type: number
       ref:
         description: "Git ref to checkout (branch or SHA)"
         required: false
         type: string
-        default: ""
+        default: "release-please--branches--main"
     secrets:
       FOSSA_API_KEY:
         required: true
@@ -32,7 +32,7 @@ on:
         description: "Git ref to checkout (branch or SHA)"
         required: false
         type: string
-        default: ""
+        default: "release-please--branches--main"
 
 permissions:
   contents: read
