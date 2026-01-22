@@ -1,0 +1,653 @@
+name: Release Readiness Check
+
+# This workflow validates that all security checks pass before release.
+# It can be called from release-please workflow or triggered manually.
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        description: "PR number to comment on"
+        required: false
+        type: number
+      ref:
+        description: "Git ref to checkout (branch or SHA)"
+        required: false
+        type: string
+        default: "release-please--branches--main"
+    secrets:
+      FOSSA_API_KEY:
+        required: true
+      SONARQUBE_TOKEN:
+        required: true
+      SONARQUBE_HOST_URL:
+        required: true
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to comment on (optional)"
+        required: false
+        type: number
+      ref:
+        description: "Git ref to checkout (branch or SHA)"
+        required: false
+        type: string
+        default: "release-please--branches--main"
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+  statuses: write
+
+jobs:
+  # First job: Extract plugins being released
+  extract-plugins:
+    name: Extract Plugins
+    runs-on: ubuntu-latest
+    outputs:
+      plugins: ${{ steps.extract.outputs.plugins }}
+      plugins_json: ${{ steps.extract.outputs.plugins_json }}
+      head_sha: ${{ steps.get_sha.outputs.head_sha }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Get HEAD SHA
+        id: get_sha
+        run: |
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "HEAD SHA: $HEAD_SHA"
+
+      - name: Extract plugins being released
+        id: extract
+        run: |
+          # Get the changed files by comparing against main
+          git fetch origin main
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          # Extract unique plugin directories from changed files
+          PLUGINS=$(echo "$CHANGED_FILES" | grep -E '^sam-[^/]+/' | cut -d'/' -f1 | sort -u | tr '\n' ',' | sed 's/,$//')
+          echo "Plugins being released: $PLUGINS"
+          echo "plugins=$PLUGINS" >> $GITHUB_OUTPUT
+
+          # Create JSON array for matrix
+          if [ -z "$PLUGINS" ]; then
+            echo "plugins_json=[]" >> $GITHUB_OUTPUT
+          else
+            JSON="["
+            FIRST=true
+            IFS=',' read -ra PLUGIN_ARRAY <<< "$PLUGINS"
+            for plugin in "${PLUGIN_ARRAY[@]}"; do
+              plugin=$(echo "$plugin" | xargs)
+              if [ -z "$plugin" ]; then continue; fi
+              if [ "$FIRST" = true ]; then FIRST=false; else JSON="$JSON,"; fi
+              JSON="$JSON\"$plugin\""
+            done
+            JSON="$JSON]"
+            echo "plugins_json=$JSON" >> $GITHUB_OUTPUT
+          fi
+
+  # Second job: Check SonarQube hotspots for each plugin
+  sonarqube-check:
+    name: SonarQube - ${{ matrix.plugin }}
+    needs: extract-plugins
+    if: needs.extract-plugins.outputs.plugins_json != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: ${{ fromJSON(needs.extract-plugins.outputs.plugins_json) }}
+    steps:
+      - name: Create Check Run
+        id: create_check
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const headSha = '${{ needs.extract-plugins.outputs.head_sha }}';
+            const plugin = '${{ matrix.plugin }}';
+            const checkName = `SonarQube: ${plugin}`;
+
+            console.log(`Creating check run: ${checkName}`);
+            console.log(`SHA: ${headSha}`);
+
+            const { data: checkRun } = await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: checkName,
+              head_sha: headSha,
+              status: 'in_progress',
+              started_at: new Date().toISOString(),
+              output: {
+                title: `SonarQube Hotspot Check - ${plugin}`,
+                summary: `Checking for HIGH vulnerability hotspots in ${plugin}...`
+              }
+            });
+
+            console.log(`Check run created with ID: ${checkRun.id}`);
+            core.setOutput('check_run_id', checkRun.id);
+            return checkRun.id;
+
+      - name: Check SonarQube Hotspots for ${{ matrix.plugin }}
+        id: sonarqube
+        uses: SolaceDev/maas-build-actions/.github/actions/sonarqube-hotspot-checker@master
+        continue-on-error: true
+        with:
+          sonarqube_project: "${{ github.repository_owner }}_${{ matrix.plugin }}"
+          branch: "main"
+
+      - name: Update Check Run
+        if: always()
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const checkRunId = '${{ steps.create_check.outputs.check_run_id }}';
+            const plugin = '${{ matrix.plugin }}';
+            const outcome = '${{ steps.sonarqube.outcome }}';
+
+            console.log(`Updating check run ID: ${checkRunId}`);
+            console.log(`Plugin: ${plugin}`);
+            console.log(`Outcome: ${outcome}`);
+
+            const conclusion = outcome === 'success' ? 'success' : 'failure';
+            const summary = outcome === 'success'
+              ? `✅ No HIGH vulnerability hotspots found in ${plugin}`
+              : `❌ Found HIGH vulnerability hotspots in ${plugin} that need to be resolved`;
+
+            const outputText = `## SonarQube Hotspot Check\n\n` +
+              `**Plugin:** \`${plugin}\`\n` +
+              `**Project:** \`${{ github.repository_owner }}_${plugin}\`\n` +
+              `**Status:** ${outcome === 'success' ? '✅ Passed' : '❌ Failed'}\n\n` +
+              (outcome === 'success'
+                ? 'No unresolved HIGH vulnerability hotspots were found.'
+                : 'HIGH vulnerability hotspots were detected and must be resolved before release.');
+
+            await github.rest.checks.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              check_run_id: checkRunId,
+              status: 'completed',
+              conclusion: conclusion,
+              completed_at: new Date().toISOString(),
+              output: {
+                title: `SonarQube Hotspot Check - ${plugin}`,
+                summary: summary,
+                text: outputText
+              }
+            });
+
+            console.log(`Check run completed with conclusion: ${conclusion}`);
+
+      - name: Record result
+        if: always()
+        run: |
+          echo "Plugin: ${{ matrix.plugin }}"
+          echo "Status: ${{ steps.sonarqube.outcome }}"
+
+  # Third job: Check FOSSA for the entire repository
+  fossa-check:
+    name: FOSSA Check
+    needs: extract-plugins
+    runs-on: ubuntu-latest
+    outputs:
+      licensing_outcome: ${{ steps.fossa_licensing.outcome }}
+      vulnerabilities_outcome: ${{ steps.fossa_vulnerabilities.outcome }}
+    steps:
+      - name: Create Licensing Check Run
+        id: create_licensing_check
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const headSha = '${{ needs.extract-plugins.outputs.head_sha }}';
+
+            console.log('Creating FOSSA Licensing check run');
+            console.log(`SHA: ${headSha}`);
+
+            const { data: checkRun } = await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'FOSSA: Licensing',
+              head_sha: headSha,
+              status: 'in_progress',
+              started_at: new Date().toISOString(),
+              output: {
+                title: 'FOSSA Licensing Check',
+                summary: 'Checking for licensing policy conflicts...'
+              }
+            });
+
+            console.log(`Licensing check run created with ID: ${checkRun.id}`);
+            core.setOutput('check_run_id', checkRun.id);
+            return checkRun.id;
+
+      - name: Create Vulnerabilities Check Run
+        id: create_vulnerabilities_check
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const headSha = '${{ needs.extract-plugins.outputs.head_sha }}';
+
+            console.log('Creating FOSSA Vulnerabilities check run');
+            console.log(`SHA: ${headSha}`);
+
+            const { data: checkRun } = await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'FOSSA: Vulnerabilities',
+              head_sha: headSha,
+              status: 'in_progress',
+              started_at: new Date().toISOString(),
+              output: {
+                title: 'FOSSA Vulnerability Check',
+                summary: 'Checking for critical and high vulnerabilities...'
+              }
+            });
+
+            console.log(`Vulnerabilities check run created with ID: ${checkRun.id}`);
+            core.setOutput('check_run_id', checkRun.id);
+            return checkRun.id;
+
+      - name: FOSSA Licensing Check
+        id: fossa_licensing
+        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
+        continue-on-error: true
+        with:
+          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
+          fossa_project_id: "${{ github.repository_owner }}_${{ github.event.repository.name }}"
+          fossa_branch: main
+          fossa_revision: ${{ github.sha }}
+          fossa_category: licensing
+          fossa_mode: BLOCK
+          block_on: policy_conflict
+
+      - name: Update Licensing Check Run
+        if: always()
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const checkRunId = '${{ steps.create_licensing_check.outputs.check_run_id }}';
+            const outcome = '${{ steps.fossa_licensing.outcome }}';
+
+            console.log(`Updating licensing check run ID: ${checkRunId}`);
+            console.log(`Outcome: ${outcome}`);
+
+            const conclusion = outcome === 'success' ? 'success' : 'failure';
+            const summary = outcome === 'success'
+              ? '✅ No licensing policy conflicts found'
+              : '❌ Found licensing policy conflicts';
+
+            const outputText = `## FOSSA Licensing Check\n\n` +
+              `**Project:** \`${{ github.repository_owner }}_${{ github.event.repository.name }}\`\n` +
+              `**Branch:** main\n` +
+              `**Status:** ${outcome === 'success' ? '✅ Passed' : '❌ Failed'}\n\n` +
+              (outcome === 'success'
+                ? 'No licensing policy conflicts were found. All dependencies comply with licensing policies.'
+                : 'Licensing policy conflicts were detected. Please review and resolve before release.');
+
+            await github.rest.checks.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              check_run_id: checkRunId,
+              status: 'completed',
+              conclusion: conclusion,
+              completed_at: new Date().toISOString(),
+              output: {
+                title: 'FOSSA Licensing Check',
+                summary: summary,
+                text: outputText
+              }
+            });
+
+            console.log(`Licensing check run completed with conclusion: ${conclusion}`);
+
+      - name: FOSSA Vulnerability Check
+        id: fossa_vulnerabilities
+        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
+        continue-on-error: true
+        with:
+          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
+          fossa_project_id: "${{ github.repository_owner }}_${{ github.event.repository.name }}"
+          fossa_branch: main
+          fossa_revision: ${{ github.sha }}
+          fossa_category: vulnerability
+          fossa_mode: BLOCK
+          block_on: critical,high
+
+      - name: Update Vulnerabilities Check Run
+        if: always()
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const checkRunId = '${{ steps.create_vulnerabilities_check.outputs.check_run_id }}';
+            const outcome = '${{ steps.fossa_vulnerabilities.outcome }}';
+
+            console.log(`Updating vulnerabilities check run ID: ${checkRunId}`);
+            console.log(`Outcome: ${outcome}`);
+
+            const conclusion = outcome === 'success' ? 'success' : 'failure';
+            const summary = outcome === 'success'
+              ? '✅ No critical or high vulnerabilities found'
+              : '❌ Found critical or high vulnerabilities';
+
+            const outputText = `## FOSSA Vulnerability Check\n\n` +
+              `**Project:** \`${{ github.repository_owner }}_${{ github.event.repository.name }}\`\n` +
+              `**Severity Blocking:** critical, high\n` +
+              `**Status:** ${outcome === 'success' ? '✅ Passed' : '❌ Failed'}\n\n` +
+              (outcome === 'success'
+                ? 'No critical or high severity vulnerabilities were found in dependencies.'
+                : 'Critical or high severity vulnerabilities were detected. Please review and resolve before release.');
+
+            await github.rest.checks.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              check_run_id: checkRunId,
+              status: 'completed',
+              conclusion: conclusion,
+              completed_at: new Date().toISOString(),
+              output: {
+                title: 'FOSSA Vulnerability Check',
+                summary: summary,
+                text: outputText
+              }
+            });
+
+            console.log(`Vulnerabilities check run completed with conclusion: ${conclusion}`);
+
+      - name: Record result
+        if: always()
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            console.log(`Licensing Status: ${{ steps.fossa_licensing.outcome }}`);
+            console.log(`Vulnerability Status: ${{ steps.fossa_vulnerabilities.outcome }}`);
+
+  # Fourth job: Aggregate results and comment on PR
+  report-results:
+    name: Report Results
+    needs: [extract-plugins, sonarqube-check, fossa-check]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Check Run
+        id: create_check
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const headSha = '${{ needs.extract-plugins.outputs.head_sha }}';
+            console.log(`Creating check run for SHA: ${headSha}`);
+
+            const { data: checkRun } = await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Release Readiness',
+              head_sha: headSha,
+              status: 'in_progress',
+              started_at: new Date().toISOString(),
+              output: {
+                title: 'Release Readiness Check',
+                summary: 'Running security and compliance checks...'
+              }
+            });
+
+            console.log(`Check run created with ID: ${checkRun.id}`);
+            core.setOutput('check_run_id', checkRun.id);
+            return checkRun.id;
+
+      - name: Create Check Summary
+        run: |
+          echo "## 🔐 Release Readiness Check Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          PLUGINS="${{ needs.extract-plugins.outputs.plugins }}"
+          # Job result will be 'failure' if any step failed (no continue-on-error)
+          SONAR_RESULT="${{ needs.sonarqube-check.result }}"
+          FOSSA_RESULT="${{ needs.fossa-check.result }}"
+
+          echo "SonarQube job result: $SONAR_RESULT"
+          echo "FOSSA job result: $FOSSA_RESULT"
+
+          echo "### SonarQube Hotspots (Per-Plugin)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$SONAR_RESULT" = "success" ]; then
+            echo "✅ **All plugins passed** - No unresolved HIGH vulnerability hotspots" >> $GITHUB_STEP_SUMMARY
+          elif [ "$SONAR_RESULT" = "skipped" ]; then
+            echo "⏭️ **Skipped** - No plugins to check" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ **Some plugins have issues** - Check individual job results above" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -n "$PLUGINS" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Plugin | Project |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|---------|" >> $GITHUB_STEP_SUMMARY
+            IFS=',' read -ra PLUGIN_ARRAY <<< "$PLUGINS"
+            for plugin in "${PLUGIN_ARRAY[@]}"; do
+              plugin=$(echo "$plugin" | xargs)
+              echo "| \`$plugin\` | ${{ github.repository_owner }}_${plugin} |" >> $GITHUB_STEP_SUMMARY
+            done
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### FOSSA Checks (Repository-Level)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$FOSSA_RESULT" = "success" ]; then
+            echo "| Licensing | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+            echo "| Vulnerabilities | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          elif [ "$FOSSA_RESULT" = "skipped" ]; then
+            echo "| Licensing | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+            echo "| Vulnerabilities | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Licensing | ⚠️ Check job results |" >> $GITHUB_STEP_SUMMARY
+            echo "| Vulnerabilities | ⚠️ Check job results |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Plugins Being Released" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$PLUGINS" ]; then
+            IFS=',' read -ra PLUGIN_ARRAY <<< "$PLUGINS"
+            for plugin in "${PLUGIN_ARRAY[@]}"; do
+              echo "- \`$plugin\`" >> $GITHUB_STEP_SUMMARY
+            done
+          else
+            echo "- No specific plugins detected" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Comment on PR
+        if: inputs.pr_number
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const prNumber = ${{ inputs.pr_number }};
+            const pluginsToRelease = '${{ needs.extract-plugins.outputs.plugins }}';
+            const sonarResult = '${{ needs.sonarqube-check.result }}';
+            const fossaResult = '${{ needs.fossa-check.result }}';
+
+            const getStatusEmoji = (status) => {
+              if (status === 'success') return '✅';
+              if (status === 'skipped') return '⏭️';
+              return '⚠️';
+            };
+
+            const getSonarStatusText = (status) => {
+              if (status === 'success') return 'All plugins passed';
+              if (status === 'skipped') return 'Skipped (no plugins)';
+              return 'Some plugins have issues';
+            };
+
+            const getFossaStatusText = (status) => {
+              if (status === 'success') return 'Passed';
+              if (status === 'skipped') return 'Skipped';
+              return 'Issues found';
+            };
+
+            let pluginsList = 'None detected';
+            let pluginsTable = '';
+            if (pluginsToRelease) {
+              const plugins = pluginsToRelease.split(',').map(p => p.trim()).filter(p => p);
+              pluginsList = plugins.map(p => `\`${p}\``).join(', ');
+              
+              pluginsTable = [
+                '',
+                '### SonarQube Projects Checked',
+                '',
+                '| Plugin | SonarQube Project |',
+                '|--------|-------------------|',
+                ...plugins.map(p => `| \`${p}\` | ${{ github.repository_owner }}_${p} |`),
+                ''
+              ].join('\n');
+            }
+
+            const body = [
+              '## 🔐 Release Readiness Check Results',
+              '',
+              '### Overall Status',
+              '',
+              '| Check | Scope | Status |',
+              '|-------|-------|--------|',
+              `| SonarQube Hotspots | Per-Plugin | ${getStatusEmoji(sonarResult)} ${getSonarStatusText(sonarResult)} |`,
+              `| FOSSA Licensing | Repository | ${getStatusEmoji(fossaResult)} ${getFossaStatusText(fossaResult)} |`,
+              `| FOSSA Vulnerabilities | Repository | ${getStatusEmoji(fossaResult)} ${getFossaStatusText(fossaResult)} |`,
+              pluginsTable,
+              '### Plugins Being Released',
+              pluginsList,
+              '',
+              '---',
+              '*This check runs automatically on release-please PRs to ensure compliance before release.*',
+              '*Click on individual job results above for detailed per-plugin SonarQube status.*'
+            ].join('\n');
+
+            // Find and delete existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('Release Readiness Check Results')
+            );
+
+            if (botComment) {
+              console.log(`Deleting existing comment ${botComment.id}`);
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id
+              });
+            }
+
+            // Create new comment
+            console.log(`Creating new comment on PR #${prNumber}`);
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: body
+            });
+
+      - name: Complete Check Run
+        if: always()
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const checkRunId = '${{ steps.create_check.outputs.check_run_id }}';
+            const pluginsToRelease = '${{ needs.extract-plugins.outputs.plugins }}';
+            const sonarResult = '${{ needs.sonarqube-check.result }}';
+            const fossaResult = '${{ needs.fossa-check.result }}';
+            const fossaLicensingOutcome = '${{ needs.fossa-check.outputs.licensing_outcome }}';
+            const fossaVulnerabilitiesOutcome = '${{ needs.fossa-check.outputs.vulnerabilities_outcome }}';
+
+            console.log(`Completing check run ID: ${checkRunId}`);
+            console.log(`SonarQube result: ${sonarResult}`);
+            console.log(`FOSSA result: ${fossaResult}`);
+            console.log(`FOSSA Licensing outcome: ${fossaLicensingOutcome}`);
+            console.log(`FOSSA Vulnerabilities outcome: ${fossaVulnerabilitiesOutcome}`);
+
+            // Determine overall conclusion
+            let conclusion = 'success';
+            if (sonarResult === 'failure' || fossaResult === 'failure') {
+              conclusion = 'failure';
+            } else if (sonarResult === 'cancelled' || fossaResult === 'cancelled') {
+              conclusion = 'cancelled';
+            }
+
+            const getStatusEmoji = (status) => {
+              if (status === 'success') return '✅';
+              if (status === 'skipped') return '⏭️';
+              return '❌';
+            };
+
+            const getSonarStatusText = (status) => {
+              if (status === 'success') return 'All plugins passed';
+              if (status === 'skipped') return 'Skipped (no plugins)';
+              return 'Some plugins have issues';
+            };
+
+            const getFossaOutcomeText = (outcome) => {
+              if (outcome === 'success') return 'Passed';
+              if (outcome === 'skipped') return 'Skipped';
+              return 'Failed';
+            };
+
+            // Build detailed output
+            let outputText = '## Security and Compliance Checks\n\n';
+            outputText += '### Overall Status\n\n';
+            outputText += '| Check | Scope | Status |\n';
+            outputText += '|-------|-------|--------|\n';
+            outputText += `| SonarQube Hotspots | Per-Plugin | ${getStatusEmoji(sonarResult)} ${getSonarStatusText(sonarResult)} |\n`;
+            outputText += `| FOSSA Licensing | Repository | ${getStatusEmoji(fossaLicensingOutcome)} ${getFossaOutcomeText(fossaLicensingOutcome)} |\n`;
+            outputText += `| FOSSA Vulnerabilities | Repository | ${getStatusEmoji(fossaVulnerabilitiesOutcome)} ${getFossaOutcomeText(fossaVulnerabilitiesOutcome)} |\n\n`;
+
+            // Add plugin information
+            if (pluginsToRelease) {
+              const plugins = pluginsToRelease.split(',').map(p => p.trim()).filter(p => p);
+              outputText += '### Plugins Being Released\n\n';
+              for (const plugin of plugins) {
+                outputText += `- \`${plugin}\`\n`;
+              }
+              outputText += '\n### SonarQube Projects Checked\n\n';
+              outputText += '| Plugin | Project |\n';
+              outputText += '|--------|----------|\n';
+              for (const plugin of plugins) {
+                outputText += `| \`${plugin}\` | ${context.repo.owner}_${plugin} |\n`;
+              }
+            } else {
+              outputText += '### Plugins Being Released\n\n';
+              outputText += 'No specific plugins detected\n';
+            }
+
+            // Build summary
+            let summary = '';
+            if (conclusion === 'success') {
+              summary = '✅ All security and compliance checks passed. This release is ready to proceed.';
+            } else {
+              summary = '❌ Some security or compliance checks failed. Please review the details below.';
+            }
+
+            // Update check run
+            await github.rest.checks.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              check_run_id: checkRunId,
+              status: 'completed',
+              conclusion: conclusion,
+              completed_at: new Date().toISOString(),
+              output: {
+                title: 'Release Readiness Check',
+                summary: summary,
+                text: outputText
+              }
+            });
+
+            console.log(`Check run completed with conclusion: ${conclusion}`);

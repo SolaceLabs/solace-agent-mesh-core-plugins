@@ -1,0 +1,129 @@
+name: Publish Package
+
+# This workflow triggers when a GitHub Release is published.
+# Release-please creates releases when the Release PR is merged.
+# Each plugin in the monorepo gets its own release with tag format: <plugin-name>-v<version>
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write # Required for PyPI Trusted Publishing
+  checks: write # For FOSSA status checks
+
+jobs:
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    environment: pypi # Environment with PyPI trusted publisher configured
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Extract package path from release tag
+        id: extract
+        run: |
+          # Release tag format: <package-name>-v<version>
+          # Example: sam-slack-v0.3.0
+          TAG="${{ github.event.release.tag_name }}"
+          echo "Tag: $TAG"
+
+          # Extract package name (everything before -v followed by version number)
+          PACKAGE_PATH=$(echo "$TAG" | sed 's/-v[0-9].*//')
+          VERSION=$(echo "$TAG" | sed 's/.*-v//')
+
+          echo "Package path: $PACKAGE_PATH"
+          echo "Version: $VERSION"
+
+          echo "path=$PACKAGE_PATH" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Verify package exists
+        run: |
+          if [ ! -d "${{ steps.extract.outputs.path }}" ]; then
+            echo "Error: Package directory '${{ steps.extract.outputs.path }}' not found"
+            exit 1
+          fi
+          echo "Found package at ${{ steps.extract.outputs.path }}"
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install hatch twine
+
+      - name: Build package
+        run: |
+          cd ${{ steps.extract.outputs.path }}
+          hatch build
+
+      - name: Show built artifacts
+        run: |
+          echo "Built artifacts for ${{ steps.extract.outputs.path }}:"
+          ls -la ${{ steps.extract.outputs.path }}/dist/
+
+      - name: Verify package version
+        run: |
+          cd ${{ steps.extract.outputs.path }}
+          # Check that the built package version matches the release tag
+          BUILT_VERSION=$(hatch version)
+          EXPECTED_VERSION="${{ steps.extract.outputs.version }}"
+
+          echo "Built version: $BUILT_VERSION"
+          echo "Expected version: $EXPECTED_VERSION"
+
+          if [ "$BUILT_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "Warning: Version mismatch - built=$BUILT_VERSION, expected=$EXPECTED_VERSION"
+          fi
+
+      # Publish using PyPI Trusted Publishing
+      # See: https://docs.pypi.org/trusted-publishers/using-a-publisher/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: ${{ steps.extract.outputs.path }}/dist/
+          verbose: true
+
+      - name: Update Release with build artifacts
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: |
+            ${{ steps.extract.outputs.path }}/dist/*.whl
+            ${{ steps.extract.outputs.path }}/dist/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+        # Run FOSSA scan and tag with version for license tracking
+      - name: FOSSA Scan - Publish
+        uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@main # main
+        with:
+          scanners: fossa
+          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
+          additional_scan_params: |
+            fossa.branch=main
+            fossa.revision=${{ steps.extract.outputs.version }}
+            fossa.config=${{ steps.extract.outputs.path }}/.fossa.yml
+
+      - name: Create summary
+        run: |
+          echo "## 📦 Package Published Successfully" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Package:** ${{ steps.extract.outputs.path }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.extract.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ github.event.release.tag_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**FOSSA Revision:** ${{ steps.extract.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Security Checks" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ FOSSA Vulnerability Check passed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ FOSSA Licensing Check passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Built artifacts:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          ls -la ${{ steps.extract.outputs.path }}/dist/ >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

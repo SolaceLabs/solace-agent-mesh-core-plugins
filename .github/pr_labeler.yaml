@@ -65,3 +65,7 @@ sam-sql-database-tool:
 sam-webhook-gateway:
   - changed-files:
       - any-glob-to-any-file: sam-webhook-gateway/**
+
+sam-mcp-server-gateway-adapter:
+  - changed-files:
+      - any-glob-to-any-file: sam-mcp-server-gateway-adapter/**

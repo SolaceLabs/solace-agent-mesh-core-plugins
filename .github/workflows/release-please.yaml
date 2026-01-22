@@ -1,0 +1,58 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: write
+  statuses: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      prs_created: ${{ steps.release.outputs.prs_created }}
+      pr_number: ${{ steps.get_pr.outputs.pr_number }}
+    steps:
+      - name: Run Release Please
+        id: release
+        uses: googleapis/release-please-action@16a9c90856f42705d54a6fda1823352bdc62cf38 # v4.4.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get PR number
+        id: get_pr
+        if: steps.release.outputs.prs_created == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const prJson = ${{ steps.release.outputs.pr }};
+            console.log('PR Number:', prJson.number);
+            core.setOutput('pr_number', prJson.number);
+
+      - name: Debug outputs
+        run: |
+          echo "releases_created: ${{ steps.release.outputs.releases_created }}"
+          echo "prs_created: ${{ steps.release.outputs.prs_created }}"
+          echo "pr_number: ${{ steps.get_pr.outputs.pr_number }}"
+
+  # Run release readiness checks when a PR is created/updated
+  release-readiness:
+    name: Release Readiness Check
+    needs: release-please
+    if: needs.release-please.outputs.prs_created == 'true'
+    uses: ./.github/workflows/release-readiness-check.yaml
+    with:
+      pr_number: ${{ fromJSON(needs.release-please.outputs.pr_number) }}
+      ref: release-please--branches--main
+    secrets:
+      FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+      SONARQUBE_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+      SONARQUBE_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
