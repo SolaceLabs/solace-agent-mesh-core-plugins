@@ -54,7 +54,13 @@ tools:
 
 -   `tool_name`: (Required) The function name the LLM will use to call the tool.
 -   `tool_description`: (Optional) A clear description for the LLM explaining what the tool does.
--   `connection_string`: (Required) The full database connection string (e.g., `postgresql+psycopg2://user:password@host:port/dbname` for PostgreSQL, `mysql+pymysql://user:password@host:port/dbname` for MySQL/MariaDB, or `mssql+pyodbc://user:password@host:port/dbname?driver=ODBC+Driver+18+for+SQL+Server` for MSSQL). It is highly recommended to use a single environment variable for the entire string.
+-   `connection_string`: (Required) The full database connection string. It is highly recommended to use a single environment variable for the entire string. Supported formats:
+    -   **PostgreSQL**: `postgresql+psycopg2://user:password@host:port/dbname`
+    -   **MySQL**: `mysql+pymysql://user:password@host:port/dbname`
+    -   **MariaDB**: `mysql+pymysql://user:password@host:port/dbname`
+    -   **MSSQL**: `mssql+pyodbc://user:password@host:port/dbname?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes`
+        -   Requires ODBC Driver 17 or 18 installed on the host system.
+        -   Use `TrustServerCertificate=yes` for self-signed certificates or `Encrypt=no` to disable encryption.
 -   `auto_detect_schema`: (Optional, default: `true`) If `true`, the plugin attempts to automatically detect the database schema. If `false`, you must provide `schema_summary_override`.
 -   `schema_summary_override`: (Required if `auto_detect_schema` is `false`) A concise natural language summary of the schema, suitable for direct inclusion in an LLM prompt.
 -   `max_enum_cardinality`: (Optional, default: `100`) Maximum number of distinct values to consider a column as an enum. Increase for columns like countries (190+), decrease for faster init times.
