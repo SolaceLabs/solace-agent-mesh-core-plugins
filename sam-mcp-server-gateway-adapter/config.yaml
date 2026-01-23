@@ -56,7 +56,7 @@ apps:
       namespace: ${NAMESPACE}
 
       # --- Generic Adapter Framework Config ---
-      gateway_adapter: solace_agent_mesh.gateway.mcp.adapter.McpAdapter
+      gateway_adapter: sam_mcp_server_gateway_adapter.McpAdapter
 
       # --- MCP Adapter Config ---
       adapter_config:
