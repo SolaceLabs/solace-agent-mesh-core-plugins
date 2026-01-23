@@ -10,7 +10,7 @@ type = "tool"
 
 [project]
 name = "sam_sql_database_tool"
-version = "0.1.1"
+version = "0.2.0"
 description = "A reusable SQL database tool for Solace Agent Mesh."
 readme = "README.md"
 authors = [
@@ -21,6 +21,7 @@ dependencies = [
   "SQLAlchemy==2.0.40",
   "PyMySQL==1.1.2",
   "psycopg2-binary==2.9.10",
+  "pyodbc==5.3.0",
   "pydantic==2.11.9",
   "PyYAML==6.0.2"
 ]
@@ -50,5 +51,5 @@ dependencies = [
   "solace-agent-mesh>=1.4.9,<2.0.0",
   "testing.postgresql",
   "psycopg2-binary",
-  "testcontainers[mysql,postgres]>=4.4.0"
+  "testcontainers[mysql,postgres,mssql]>=4.4.0"
 ]
