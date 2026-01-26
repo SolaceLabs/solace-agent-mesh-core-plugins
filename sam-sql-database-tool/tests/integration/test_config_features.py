@@ -62,9 +62,9 @@ class TestConfigFeatures:
         assert "temp_col_for_ttl_test" not in initial_schema
 
         # 2. Directly alter the database schema
-        # MSSQL uses different ALTER TABLE syntax (no COLUMN keyword)
+        # MSSQL and Oracle use different ALTER TABLE syntax (no COLUMN keyword for ADD)
         dialect = tool.db_service.engine.dialect.name
-        if dialect == 'mssql':
+        if dialect in ('mssql', 'oracle'):
             add_col_sql = "ALTER TABLE users ADD temp_col_for_ttl_test INT"
             drop_col_sql = "ALTER TABLE users DROP COLUMN temp_col_for_ttl_test"
         else:
@@ -108,9 +108,9 @@ class TestConfigFeatures:
         assert "temp_col_for_clear_test" not in initial_schema
 
         # 2. Directly alter the database schema
-        # MSSQL uses different ALTER TABLE syntax (no COLUMN keyword)
+        # MSSQL and Oracle use different ALTER TABLE syntax (no COLUMN keyword for ADD)
         dialect = tool.db_service.engine.dialect.name
-        if dialect == 'mssql':
+        if dialect in ('mssql', 'oracle'):
             add_col_sql = "ALTER TABLE users ADD temp_col_for_clear_test INT"
             drop_col_sql = "ALTER TABLE users DROP COLUMN temp_col_for_clear_test"
         else:
