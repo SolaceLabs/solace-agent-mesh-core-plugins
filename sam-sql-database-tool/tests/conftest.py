@@ -58,7 +58,7 @@ class DatabaseTestConfig:
         ),
         pytest.param(
             DatabaseTestConfig(
-                name="mssql",
+                name="mssql-msodbc18",
                 container_class=SqlServerContainer,
                 image="mcr.microsoft.com/mssql/server:2022-latest",
                 connection_url_fn=lambda c: (
@@ -67,7 +67,20 @@ class DatabaseTestConfig:
                     f"?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"
                 ),
             ),
-            id="mssql",
+            id="mssql-msodbc18",
+        ),
+        pytest.param(
+            DatabaseTestConfig(
+                name="mssql-freetds",
+                container_class=SqlServerContainer,
+                image="mcr.microsoft.com/mssql/server:2022-latest",
+                connection_url_fn=lambda c: (
+                    f"mssql+pyodbc://sa:{c.password}@"
+                    f"{c.get_container_host_ip()}:{c.get_exposed_port(1433)}/master"
+                    f"?driver=FreeTDS&TrustServerCertificate=yes"
+                ),
+            ),
+            id="mssql-freetds",
         ),
     ],
 )
@@ -79,7 +92,7 @@ def db_config(request):
 @pytest.fixture(scope="session")
 def database_container(db_config: DatabaseTestConfig):
     """Starts and stops a Docker container for the configured database."""
-    if db_config.name == "mssql":
+    if db_config.name.startswith("mssql"):
         # MSSQL container has a different constructor signature
         with db_config.container_class(db_config.image) as container:
             container.db_config = db_config
