@@ -255,6 +255,12 @@ class DatabaseService:
                     "WHERE t.name = :table_name "
                     "AND p.index_id IN (0, 1)"
                 ).bindparams(table_name=table_name)
+            elif self.engine.dialect.name == 'oracle':
+                query = text(
+                    "SELECT num_rows AS estimate "
+                    "FROM user_tables "
+                    "WHERE table_name = UPPER(:table_name)"
+                ).bindparams(table_name=table_name)
             else:
                 query = text(
                     "SELECT table_rows "
@@ -360,7 +366,7 @@ class DatabaseService:
 
                     cardinality_ratio = cardinality / total_samples if total_samples > 0 else 1
 
-                    is_string_type = col_type.upper().startswith(('VARCHAR', 'CHAR', 'TEXT', 'ENUM', 'NVARCHAR', 'NCHAR', 'NTEXT'))
+                    is_string_type = col_type.upper().startswith(('VARCHAR', 'CHAR', 'TEXT', 'ENUM', 'NVARCHAR', 'NCHAR', 'NTEXT', 'VARCHAR2', 'NVARCHAR2', 'CLOB', 'NCLOB'))
                     looks_like_enum = self._looks_like_enum_column(col_name)
                     has_low_cardinality = cardinality_ratio < 0.3
 
