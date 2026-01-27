@@ -58,7 +58,11 @@ tools:
     -   **PostgreSQL**: `postgresql+psycopg2://user:password@host:port/dbname`
     -   **MySQL**: `mysql+pymysql://user:password@host:port/dbname`
     -   **MariaDB**: `mysql+pymysql://user:password@host:port/dbname`
-    -   **MSSQL**: `mssql+pyodbc://user:password@host:port/dbname?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes`
+    -   **MSSQL (FreeTDS - Recommended)**: `mssql+pyodbc://user:password@host:port/dbname?driver=FreeTDS&TrustServerCertificate=yes`
+        -   Open-source driver with simpler installation: `sudo apt-get install freetds-dev freetds-bin tdsodbc && sudo odbcinst -i -d -f /usr/share/tdsodbc/odbcinst.ini`
+        -   Works well for standard SQL operations.
+    -   **MSSQL (Microsoft ODBC)**: `mssql+pyodbc://user:password@host:port/dbname?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes`
+        -   Official Microsoft driver with full feature support (Azure AD auth, Always Encrypted, etc.).
         -   Requires ODBC Driver 17 or 18 installed on the host system.
         -   Use `TrustServerCertificate=yes` for self-signed certificates or `Encrypt=no` to disable encryption.
 -   `auto_detect_schema`: (Optional, default: `true`) If `true`, the plugin attempts to automatically detect the database schema. If `false`, you must provide `schema_summary_override`.
