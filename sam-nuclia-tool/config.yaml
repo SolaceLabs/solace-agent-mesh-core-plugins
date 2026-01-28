@@ -87,7 +87,8 @@ apps:
             artifact_description_query_max_length: 150
             inline_citation_links: true
             include_citations_in_tool_response: false # If true, citations are added as a main field in the tool response. (Include in the main response regardless)
-            
+            remi_publish_topic: ${REMI_PUBLISH_TOPIC}
+
             # --- Dynamic Prompt/Context Configuration ---
             prompt_rephrasing:
               template: |

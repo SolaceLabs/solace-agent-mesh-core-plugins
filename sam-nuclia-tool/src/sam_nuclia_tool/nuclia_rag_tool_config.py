@@ -235,6 +235,13 @@ class NucliaRagToolConfig(BaseModel):
         exclude=True,  # Don't include in serialization
     )
 
+    remi_publish_topic: Optional[str] = Field(
+        description=(
+            "If provided, an event with information (query, context, answer) to calculate "
+            "the REMi score will be published to this topic."
+        ),
+    )
+
     @model_validator(mode="after")
     def handle_deprecated_context_parameters(self) -> Self:
         """

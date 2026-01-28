@@ -761,6 +761,44 @@ class NucliaRagTool(DynamicTool):
             ask_response
         )
 
+        # Emitting an event with query, context, and answer if remi_publish_topic is configured
+        remi_topic = self.tool_config.remi_publish_topic
+        if remi_topic and ask_response.find_result:
+            try:
+                used_context = []
+                resources = ask_response.find_result.resources
+                for resource in resources.values():
+                    fields = resource.fields
+                    for field in fields.values():
+                        paragraphs = field.paragraphs
+                        for paragraph in paragraphs.values():
+                            text = paragraph.text
+                            if text:
+                                used_context.append(text)
+                            
+                remi_payload = {
+                    "query": rephrased_query,
+                    "context": used_context,
+                    "answer": ask_response.answer.decode("utf-8")
+                }
+
+                inv_context = tool_context._invocation_context
+                agent = getattr(inv_context, "agent", None)
+                host_component = getattr(agent, "host_component", None)
+                
+                if host_component:
+                    log.info("%s Publishing REMi payload to %s", self.log_identifier, remi_topic)
+                    host_component.publish_a2a_message(
+                        payload=remi_payload,
+                        topic=remi_topic
+                    ) 
+            except Exception as ctx_err:
+                log.error(
+                    "%s Could not emit message to event mesh: %s",
+                    self.log_identifier,
+                    ctx_err,
+                )
+
         response = {
             "status": "success",
             "nuclia_learning_id": learning_id,
