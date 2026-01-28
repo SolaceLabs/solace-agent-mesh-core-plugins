@@ -93,6 +93,9 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             self.output_handlers_config: List[Dict[str, Any]] = self.get_config(
                 "output_handlers", []
             )
+            self.queue_binding_config: Dict[str, Any] = self.get_config(
+                "queue_binding", {}
+            )
 
             if not self.event_mesh_broker_config:
                 raise ValueError(
@@ -277,12 +280,40 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                             message.call_negative_acknowledgements()
                         return None
 
+                # Determine queue configuration based on queue_binding settings
+                queue_binding = self.queue_binding_config
+                queue_mode = queue_binding.get("mode", "temporary")
+
+                if queue_mode == "existing":
+                    queue_name = queue_binding.get("queue_name")
+                    if not queue_name:
+                        raise ValueError(
+                            "Queue name is required when using 'existing' queue mode"
+                        )
+                    create_queue_on_start = False
+                    temporary_queue = False
+                    log.info(
+                        "%s Using existing queue mode, binding to: %s",
+                        log_id_prefix,
+                        queue_name,
+                    )
+                else:
+                    # Default: temporary queue (current behavior)
+                    queue_name = f"{self.namespace.strip('/')}/q/gdk/event-mesh-gw/data/{self.gateway_id}/{uuid.uuid4().hex}"
+                    create_queue_on_start = True
+                    temporary_queue = True
+                    log.info(
+                        "%s Using temporary queue mode, creating: %s",
+                        log_id_prefix,
+                        queue_name,
+                    )
+
                 broker_input_config = {
                     "component_module": "broker_input",
                     "component_name": f"{self.gateway_id}_data_plane_broker_input",
-                    "broker_queue_name": f"{self.namespace.strip('/')}/q/gdk/event-mesh-gw/data/{self.gateway_id}/{uuid.uuid4().hex}",
-                    "create_queue_on_start": True,
-                    "temporary_queue": True,
+                    "broker_queue_name": queue_name,
+                    "create_queue_on_start": create_queue_on_start,
+                    "temporary_queue": temporary_queue,
                     "component_config": {
                         **self.event_mesh_broker_config,
                         "broker_subscriptions": [],
@@ -425,6 +456,16 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 raise RuntimeError(
                     "Data plane BrokerInput not available for adding subscriptions."
                 )
+
+            # Skip dynamic subscriptions for existing queue mode
+            queue_mode = self.queue_binding_config.get("mode", "temporary")
+            if queue_mode == "existing":
+                log.info(
+                    "%s Existing queue mode - skipping dynamic subscription setup. "
+                    "Subscriptions should be pre-configured on the queue.",
+                    log_id_prefix,
+                )
+                return
 
             all_topics_to_subscribe = set()
             for handler_config in self.event_handlers_config:
@@ -1481,12 +1522,19 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             return False
 
         try:
+            # Build metadata with per-rule response_format if configured
+            task_metadata = {}
+            handler_response_format = matched_handler_config.get("response_format")
+            if handler_response_format:
+                task_metadata["response_format"] = handler_response_format
+
             task_id = await self.submit_a2a_task(
                 target_agent_name=target_agent_name,
                 a2a_parts=a2a_parts,
                 external_request_context=external_request_context,
                 user_identity=user_identity,
                 is_streaming=False,
+                metadata=task_metadata if task_metadata else None,
             )
             log.info(
                 "%s Successfully submitted A2A task %s for Solace message on topic %s",

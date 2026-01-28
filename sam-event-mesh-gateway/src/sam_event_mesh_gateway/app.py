@@ -165,6 +165,25 @@ class EventMeshGatewayApp(BaseGatewayApp):
             },
         },
         {
+            "name": "queue_binding",
+            "required": False,
+            "type": "object",
+            "description": "Queue binding configuration for the data plane.",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "required": False,
+                    "default": "temporary",
+                    "description": "Queue mode: 'temporary' or 'existing'",
+                },
+                "queue_name": {
+                    "type": "string",
+                    "required": False,
+                    "description": "Queue name (required for 'existing' mode)",
+                },
+            },
+        },
+        {
             "name": "output_handlers",
             "required": False,
             "type": "list",
