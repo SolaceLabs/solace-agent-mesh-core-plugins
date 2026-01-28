@@ -93,9 +93,6 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             self.output_handlers_config: List[Dict[str, Any]] = self.get_config(
                 "output_handlers", []
             )
-            self.queue_binding_config: Dict[str, Any] = self.get_config(
-                "queue_binding", {}
-            )
 
             if not self.event_mesh_broker_config:
                 raise ValueError(
@@ -280,20 +277,29 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                             message.call_negative_acknowledgements()
                         return None
 
-                # Determine queue configuration based on queue_binding settings
-                queue_binding = self.queue_binding_config
-                queue_mode = queue_binding.get("mode", "temporary")
+                # Determine queue configuration from event handlers
+                # Find first handler with existingQueueName (queue subscription type)
+                existing_queue_name = None
+                for handler_config in self.event_handlers_config:
+                    handler_queue = handler_config.get("existingQueueName")
+                    if handler_queue:
+                        if existing_queue_name and existing_queue_name != handler_queue:
+                            log.warning(
+                                "%s Multiple different existing queues specified in handlers. "
+                                "Using first queue: %s (ignoring: %s)",
+                                log_id_prefix,
+                                existing_queue_name,
+                                handler_queue,
+                            )
+                        else:
+                            existing_queue_name = handler_queue
 
-                if queue_mode == "existing":
-                    queue_name = queue_binding.get("queue_name")
-                    if not queue_name:
-                        raise ValueError(
-                            "Queue name is required when using 'existing' queue mode"
-                        )
+                if existing_queue_name:
+                    queue_name = existing_queue_name
                     create_queue_on_start = False
                     temporary_queue = False
                     log.info(
-                        "%s Using existing queue mode, binding to: %s",
+                        "%s Binding to existing queue: %s",
                         log_id_prefix,
                         queue_name,
                     )
@@ -303,7 +309,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     create_queue_on_start = True
                     temporary_queue = True
                     log.info(
-                        "%s Using temporary queue mode, creating: %s",
+                        "%s Creating temporary queue: %s",
                         log_id_prefix,
                         queue_name,
                     )
@@ -414,8 +420,8 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 self.data_plane_broker_input = None
                 self.data_plane_broker_output = None
 
-                # Provide clearer error message for existing queue mode failures
-                if queue_mode == "existing":
+                # Provide clearer error message for existing queue failures
+                if existing_queue_name:
                     raise RuntimeError(
                         f"Failed to bind to existing queue '{queue_name}'. "
                         f"Ensure the queue exists on the broker and the client has permission to bind. "
@@ -465,18 +471,21 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     "Data plane BrokerInput not available for adding subscriptions."
                 )
 
-            # Skip dynamic subscriptions for existing queue mode
-            queue_mode = self.queue_binding_config.get("mode", "temporary")
-            if queue_mode == "existing":
-                log.info(
-                    "%s Existing queue mode - skipping dynamic subscription setup. "
-                    "Subscriptions should be pre-configured on the queue.",
-                    log_id_prefix,
-                )
-                return
-
+            # Collect subscriptions from topic-based handlers only
+            # Handlers with subscriptionType="queue" have pre-configured subscriptions
             all_topics_to_subscribe = set()
             for handler_config in self.event_handlers_config:
+                subscription_type = handler_config.get("subscriptionType", "topic")
+                if subscription_type == "queue":
+                    handler_name = handler_config.get("name", "unknown")
+                    log.info(
+                        "%s Handler '%s' uses queue subscription - "
+                        "skipping dynamic subscriptions (pre-configured on queue).",
+                        log_id_prefix,
+                        handler_name,
+                    )
+                    continue
+
                 for sub_config in handler_config.get("subscriptions", []):
                     topic_str = sub_config.get("topic")
                     if topic_str:
