@@ -413,6 +413,14 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 self.data_plane_internal_app = None
                 self.data_plane_broker_input = None
                 self.data_plane_broker_output = None
+
+                # Provide clearer error message for existing queue mode failures
+                if queue_mode == "existing":
+                    raise RuntimeError(
+                        f"Failed to bind to existing queue '{queue_name}'. "
+                        f"Ensure the queue exists on the broker and the client has permission to bind. "
+                        f"Original error: {e}"
+                    ) from e
                 raise
 
     async def _stop_data_plane_client(self):
