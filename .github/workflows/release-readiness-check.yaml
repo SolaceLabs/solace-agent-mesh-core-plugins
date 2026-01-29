@@ -133,15 +133,22 @@ jobs:
             console.log(`Check run created with ID: ${checkRun.id}`);
             core.setOutput('check_run_id', checkRun.id);
             return checkRun.id;
-
       - name: Check SonarQube Hotspots for ${{ matrix.plugin }}
+        uses: docker://ghcr.io/solacedev/maas-build-actions:latest
         id: sonarqube
-        uses: SolaceDev/maas-build-actions/.github/actions/sonarqube-hotspot-checker@master
         continue-on-error: true
+        env:
+          SONARQUBE_PROJECT_KEY: "${{ github.repository_owner }}_${{ matrix.plugin }}"
+          SONARQUBE_PROJECT_MAIN_BRANCH: main
+          SONARQUBE_QUERY_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+          SONARQUBE_HOTSPOTS_API_URL: ${{ secrets.SONARQUBE_HOST_URL }}api/hotspots/search
         with:
-          sonarqube_project: "${{ github.repository_owner }}_${{ matrix.plugin }}"
-          branch: "main"
-
+          entrypoint: /bin/sh
+          args: >
+            -c ". $VIRTUAL_ENV/bin/activate &&
+            cd $ACTIONS_PATH/sonarqube-hotspot-checker &&
+            python sonarqube_checker.py
+            "
       - name: Update Check Run
         if: always()
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
