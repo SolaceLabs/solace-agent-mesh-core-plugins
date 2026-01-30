@@ -1142,7 +1142,7 @@ class SlackGatewayComponent(BaseGatewayComponent):
                                         part.data
                                     )
                                 )
-                                status_signal_text = f":floppy_disk: Creating artifact `{progress_data.filename}` ({progress_data.bytes_saved} bytes)..."
+                                status_signal_text = f":floppy_disk: Creating artifact `{progress_data.filename}` ({progress_data.bytes_transferred} bytes)..."
                                 log.debug(
                                     "%s Processed artifact_creation_progress signal: '%s'",
                                     log_id,
