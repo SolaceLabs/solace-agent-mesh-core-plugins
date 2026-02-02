@@ -83,7 +83,7 @@ jobs:
       - name: Install FreeTDS ODBC Driver
         if: inputs.plugin_directory == 'sam-sql-database-tool'
         run: |
-          sudo apt-get install -y freetds-dev freetds-bin tdsodbc
+          sudo apt-get install -y freetds-dev tdsodbc unixodbc-dev
           sudo odbcinst -i -d -f /usr/share/tdsodbc/odbcinst.ini
 
       - name: Test Plugin ${{ inputs.plugin_directory }} with Python 3.13
