@@ -67,6 +67,7 @@ def setup_dependencies(component: "RestGatewayComponent"):
             auth_service_provider = component.get_config(
                 "external_auth_service_provider", "azure"
             )
+            gateway_token_hash = component.get_config("token_hash")
 
             if request.url.path.startswith(
                 (
@@ -85,16 +86,6 @@ def setup_dependencies(component: "RestGatewayComponent"):
                 if scope["method"] == "OPTIONS":
                     await self.app(scope, receive, send)
                     return
-                if not auth_service_url:
-                    log.error(
-                        "Authentication is enforced, but 'external_auth_service_url' is not configured."
-                    )
-                    response = JSONResponse(
-                        status_code=500,
-                        content={"detail": "Authentication service not configured."},
-                    )
-                    await response(scope, receive, send)
-                    return
 
                 auth_header = request.headers.get("Authorization")
                 if not auth_header or not auth_header.startswith("Bearer "):
@@ -106,6 +97,39 @@ def setup_dependencies(component: "RestGatewayComponent"):
                     return
 
                 token = auth_header.split(" ")[1]
+
+                if gateway_token_hash:
+                    log.debug("Using gateway token authentication")
+                    from platform_service.utils.token_utils import verify_token
+                    if not verify_token(token, gateway_token_hash):
+                        log.warning("Gateway token validation failed")
+                        response = JSONResponse(
+                            status_code=401,
+                            content={"detail": "Invalid or expired token."},
+                        )
+                        await response(scope, receive, send)
+                        return
+
+                    default_identity = component.get_config("default_user_identity", "gateway-user")
+                    request.state.user = {
+                        "id": default_identity,
+                        "name": default_identity,
+                    }
+                    log.debug(f"Gateway token validated, user: {default_identity}")
+                    await self.app(scope, receive, send)
+                    return
+
+                if not auth_service_url:
+                    log.error(
+                        "Authentication is enforced, but 'external_auth_service_url' is not configured."
+                    )
+                    response = JSONResponse(
+                        status_code=500,
+                        content={"detail": "Authentication service not configured."},
+                    )
+                    await response(scope, receive, send)
+                    return
+
                 try:
                     async with httpx.AsyncClient() as client:
                         validation_response = await client.post(
