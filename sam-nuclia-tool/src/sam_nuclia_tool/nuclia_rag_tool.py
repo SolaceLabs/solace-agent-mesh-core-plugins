@@ -762,9 +762,10 @@ class NucliaRagTool(DynamicTool):
         )
 
         # Emitting an event with query, context, and answer if remi_publish_topic is configured
-        remi_topic = self.tool_config.remi_publish_topic
-        if remi_topic and ask_response.find_result:
+        remi_topic_template = self.tool_config.remi_publish_topic
+        if remi_topic_template and ask_response.find_result:
             try:
+                # Extract contexts from find_result
                 used_context = []
                 resources = ask_response.find_result.resources
                 for resource in resources.values():
@@ -775,23 +776,39 @@ class NucliaRagTool(DynamicTool):
                             text = paragraph.text
                             if text:
                                 used_context.append(text)
-                            
+
+                # Get invocation context and extract task_id (interaction_id)
+                inv_context = tool_context._invocation_context
+                task_id = getattr(inv_context, "task_id", None)
+
+                # Build the REMi payload
                 remi_payload = {
-                    "query": rephrased_query,
-                    "context": used_context,
-                    "answer": ask_response.answer.decode("utf-8")
+                    "interactionId": task_id,
+                    "toolName": self.tool_config.tool_name,
+                    "nuclia_learning_id": learning_id,
+                    "question": rephrased_query,
+                    "answer": ask_response.answer.decode("utf-8"),
+                    "contexts": used_context,
+                    "status": ask_response.status
                 }
 
-                inv_context = tool_context._invocation_context
+                # Format the topic with interaction_id and tool_name
+                remi_topic = remi_topic_template.format(
+                    interaction_id=task_id,
+                    tool_name=self.tool_config.tool_name,
+                    learning_id=learning_id
+                )
+
+                # Publish the message
                 agent = getattr(inv_context, "agent", None)
                 host_component = getattr(agent, "host_component", None)
-                
+
                 if host_component:
                     log.info("%s Publishing REMi payload to %s", self.log_identifier, remi_topic)
                     host_component.publish_a2a_message(
                         payload=remi_payload,
                         topic=remi_topic
-                    ) 
+                    )
             except Exception as ctx_err:
                 log.error(
                     "%s Could not emit message to event mesh: %s",

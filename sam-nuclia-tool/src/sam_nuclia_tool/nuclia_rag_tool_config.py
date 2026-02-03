@@ -236,9 +236,12 @@ class NucliaRagToolConfig(BaseModel):
     )
 
     remi_publish_topic: Optional[str] = Field(
+        default=None,
         description=(
-            "If provided, an event with information (query, context, answer) to calculate "
-            "the REMi score will be published to this topic."
+            "Optional topic template for publishing REMi evaluation events. "
+            "Supports dynamic variables: {interaction_id}, {tool_name}, {learning_id}. "
+            "Example: 'sam/remi/created/{interaction_id}/tool/{tool_name}'. "
+            "Published payload includes: interactionId, toolName, nuclia_learning_id, question, answer, contexts, status."
         ),
     )
 
