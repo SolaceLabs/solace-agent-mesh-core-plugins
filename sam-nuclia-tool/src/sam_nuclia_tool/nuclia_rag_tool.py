@@ -777,9 +777,9 @@ class NucliaRagTool(DynamicTool):
                             if text:
                                 used_context.append(text)
 
-                # Get invocation context and extract task_id (interaction_id)
-                inv_context = tool_context._invocation_context
-                task_id = getattr(inv_context, "task_id", None)
+                # Extract task_id (interaction_id)
+                a2a_context = tool_context.state.get("a2a_context", {})
+                task_id = a2a_context.get("logical_task_id")
 
                 # Build the REMi payload
                 remi_payload = {
