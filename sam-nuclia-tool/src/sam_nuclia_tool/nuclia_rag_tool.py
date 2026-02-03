@@ -800,6 +800,7 @@ class NucliaRagTool(DynamicTool):
                 )
 
                 # Publish the message
+                inv_context = tool_context._invocation_context
                 agent = getattr(inv_context, "agent", None)
                 host_component = getattr(agent, "host_component", None)
 
