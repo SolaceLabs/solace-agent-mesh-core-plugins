@@ -84,6 +84,9 @@ class McpAdapter(McpAdapterAuthHandler, GatewayAdapter):
         self.agent_to_tools: Dict[str, List[str]] = (
             {}
         )  # agent_name -> list of tool names
+        self.task_processed_files: Dict[str, set] = (
+            {}
+        )  # task_id -> set of filenames already processed
 
         # Resource management for artifact access
         # Track which artifacts exist per session for resource listing
@@ -469,6 +472,7 @@ class McpAdapter(McpAdapterAuthHandler, GatewayAdapter):
             self.task_futures[task_id] = task_future
             self.task_queues[task_id] = stream_queue
             self.task_buffers[task_id] = []
+            self.task_processed_files[task_id] = set()
             self.active_tasks[task_id] = tool_name
 
             # Report submission to MCP client
@@ -735,6 +739,7 @@ class McpAdapter(McpAdapterAuthHandler, GatewayAdapter):
         self.task_futures.clear()
         self.task_errors.clear()
         self.task_queues.clear()
+        self.task_processed_files.clear()
         self.session_artifacts.clear()
         self.agent_to_tools.clear()
         self.auth_cleanup()
@@ -756,6 +761,8 @@ class McpAdapter(McpAdapterAuthHandler, GatewayAdapter):
             del self.task_errors[task_id]
         if task_id in self.task_queues:
             del self.task_queues[task_id]
+        if task_id in self.task_processed_files:
+            del self.task_processed_files[task_id]
 
     # --- File and Resource Handling Helper Methods ---
 
@@ -1140,6 +1147,20 @@ class McpAdapter(McpAdapterAuthHandler, GatewayAdapter):
 
             elif isinstance(part, SamFilePart):
                 log.info("Received file part: %s", part.name)
+
+                # Initialize processed files set for this task if not exists
+                if task_id not in self.task_processed_files:
+                    self.task_processed_files[task_id] = set()
+
+                # Check if this file has already been processed for this task
+                if part.name in self.task_processed_files[task_id]:
+                    log.info(
+                        f"Skipping duplicate file '{part.name}' for task {task_id}"
+                    )
+                    continue
+
+                # Mark this file as processed
+                self.task_processed_files[task_id].add(part.name)
 
                 # Determine how to return this file
                 content_type = self._determine_content_type(part, config)
