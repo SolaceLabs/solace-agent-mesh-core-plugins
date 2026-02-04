@@ -1154,7 +1154,7 @@ class McpAdapter(McpAdapterAuthHandler, GatewayAdapter):
 
                 # Check if this file has already been processed for this task
                 if part.name in self.task_processed_files[task_id]:
-                    log.info(
+                    log.debug(
                         f"Skipping duplicate file '{part.name}' for task {task_id}"
                     )
                     continue
