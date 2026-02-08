@@ -60,6 +60,63 @@ adapter_config:
   # Tool filtering (optional)
   include_tools: []  # Include only these tools (empty = all)
   exclude_tools: []  # Exclude these tools
+
+  # Agent discovery wait (for clients without tools/list_changed support)
+  init_wait_for_agents: false  # Wait for agents before completing init
+  init_wait_timeout_seconds: 10.0  # Max wait time
+  init_min_agents: 1  # Minimum agents required
+```
+
+## Agent Discovery Wait
+
+Some MCP clients (like Claude Code) don't support the `tools/list_changed` notification and only see tools that exist at connection time. This can cause a race condition where the MCP server initializes before agents register, resulting in an empty tool list.
+
+### The Problem
+
+When the MCP gateway starts:
+1. It connects to the Solace broker
+2. Subscribes to agent discovery topics
+3. Calls `init()` which queries `context.list_agents()` - often returns empty
+4. FastMCP server starts and client connects
+5. Milliseconds later, agent heartbeats arrive and tools are registered
+6. FastMCP sends `tools/list_changed` notification
+7. **But clients like Claude Code ignore this notification** - they're stuck with empty tools
+
+### The Solution
+
+Enable `init_wait_for_agents` to make the adapter wait for agents before completing initialization:
+
+```yaml
+adapter_config:
+  init_wait_for_agents: true
+  init_wait_timeout_seconds: 15.0
+  init_min_agents: 3
+```
+
+### Configuration Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `init_wait_for_agents` | bool | `false` | Enable waiting for agents during initialization |
+| `init_wait_timeout_seconds` | float | `10.0` | Maximum time to wait for agents (seconds) |
+| `init_min_agents` | int | `1` | Minimum number of agents that must register before init completes |
+
+### When to Use
+
+- **Enable** when using MCP clients that don't support `tools/list_changed` (e.g., Claude Code)
+- **Disable** (default) for clients that properly handle dynamic tool registration
+
+### Logs
+
+When enabled, you'll see logs like:
+```
+INFO - Waiting for at least 3 agent(s) to register (timeout: 15.0s)...
+INFO - Agent discovery complete: 3 agent(s) registered with 45 tools in 2.3s
+```
+
+Or on timeout:
+```
+WARNING - Agent discovery timeout after 15.0s: only 2/3 agent(s) registered with 30 tools
 ```
 
 ## Tool Filtering
@@ -413,9 +470,11 @@ Despite RUN_BASED execution, **artifacts persist in the session**:
 
 ### No tools appearing in MCP client
 
+- **For Claude Code or similar clients**: Enable `init_wait_for_agents: true` in your config (see [Agent Discovery Wait](#agent-discovery-wait))
 - Check that agents are registered in the agent registry
 - Verify agents have skills defined in their AgentCard
 - Check gateway logs for tool registration messages
+- If using stdio transport, ensure agents are running before the MCP client connects
 
 ### Connection refused
 
