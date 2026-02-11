@@ -3,6 +3,7 @@ import sqlalchemy as sa
 from testcontainers.postgres import PostgresContainer
 from testcontainers.mysql import MySqlContainer
 from testcontainers.mssql import SqlServerContainer
+from testcontainers.oracle import OracleDbContainer
 from dataclasses import dataclass
 from typing import Type, Callable
 
@@ -82,6 +83,17 @@ class DatabaseTestConfig:
             ),
             id="mssql-freetds",
         ),
+        pytest.param(
+            DatabaseTestConfig(
+                name="oracle",
+                container_class=OracleDbContainer,
+                image="gvenzl/oracle-xe:21-slim",
+                connection_url_fn=lambda c: c.get_connection_url().replace(
+                    "oracle+cx_oracle://", "oracle+oracledb://"
+                ),
+            ),
+            id="oracle",
+        ),
     ],
 )
 def db_config(request):
@@ -95,6 +107,15 @@ def database_container(db_config: DatabaseTestConfig):
     if db_config.name.startswith("mssql"):
         # MSSQL container has a different constructor signature
         with db_config.container_class(db_config.image) as container:
+            container.db_config = db_config
+            yield container
+    elif db_config.name == "oracle":
+        # Oracle container with explicit credentials
+        with db_config.container_class(
+            db_config.image,
+            username="test_user",
+            password="test_password",
+        ) as container:
             container.db_config = db_config
             yield container
     else:

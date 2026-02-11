@@ -3,6 +3,18 @@ import sqlalchemy as sa
 from sam_sql_database_tool.tools import SqlDatabaseTool, DatabaseConfig
 
 
+def get_select_query(db_config, value=1, alias=None):
+    """Get a SELECT query that works for the given database dialect."""
+    if alias:
+        select_expr = f"SELECT {value} as {alias}"
+    else:
+        select_expr = f"SELECT {value}"
+
+    if db_config.name == "oracle":
+        return f"{select_expr} FROM DUAL"
+    return select_expr
+
+
 @pytest.mark.asyncio
 class TestMultiDatabaseDegradation:
     """Tests for graceful degradation with multiple database connections."""
@@ -42,7 +54,7 @@ class TestMultiDatabaseDegradation:
             assert tool.db_service is not None
             assert "✅ Database Connected" in tool.tool_description
 
-            result = await tool._run_async_impl(args={"query": "SELECT 1"})
+            result = await tool._run_async_impl(args={"query": get_select_query(db_config)})
             assert "result" in result
             assert "error" not in result
 
@@ -85,19 +97,19 @@ class TestMultiDatabaseDegradation:
 
         assert tools[0]._connection_healthy is True
         assert "✅ Database Connected" in tools[0].tool_description
-        result = await tools[0]._run_async_impl(args={"query": "SELECT 1"})
+        result = await tools[0]._run_async_impl(args={"query": get_select_query(db_config)})
         assert "result" in result
 
         assert tools[1]._connection_healthy is False
         assert tools[1]._connection_error is not None
         assert "❌ WARNING: This database is currently UNAVAILABLE" in tools[1].tool_description
-        result = await tools[1]._run_async_impl(args={"query": "SELECT 1"})
+        result = await tools[1]._run_async_impl(args={"query": get_select_query(db_config)})
         assert "error" in result
         assert len(result["error"]) > 0
 
         assert tools[2]._connection_healthy is True
         assert "✅ Database Connected" in tools[2].tool_description
-        result = await tools[2]._run_async_impl(args={"query": "SELECT 1"})
+        result = await tools[2]._run_async_impl(args={"query": get_select_query(db_config)})
         assert "result" in result
 
         for tool in tools:
@@ -170,7 +182,7 @@ class TestMultiDatabaseDegradation:
         assert tools[0]._connection_healthy is True
         assert tools[0].db_service is not None
 
-        result = await tools[0]._run_async_impl(args={"query": "SELECT 1"})
+        result = await tools[0]._run_async_impl(args={"query": get_select_query(db_config)})
         assert "result" in result
 
         for tool in tools:
@@ -224,7 +236,7 @@ class TestMultiDatabaseDegradation:
         assert "Test healthy database" in description
         assert "❌" not in description
 
-        result = await tool._run_async_impl(args={"query": "SELECT 1"})
+        result = await tool._run_async_impl(args={"query": get_select_query(db_config)})
         assert "result" in result
         assert "error" not in result
 
@@ -256,8 +268,8 @@ class TestMultiDatabaseDegradation:
         assert tool1.db_service is not tool2.db_service
         assert tool1.db_service.engine is not tool2.db_service.engine
 
-        result1 = await tool1._run_async_impl(args={"query": "SELECT 1 as value"})
-        result2 = await tool2._run_async_impl(args={"query": "SELECT 2 as value"})
+        result1 = await tool1._run_async_impl(args={"query": get_select_query(db_config, 1, "value")})
+        result2 = await tool2._run_async_impl(args={"query": get_select_query(db_config, 2, "value")})
 
         assert "result" in result1
         assert "result" in result2

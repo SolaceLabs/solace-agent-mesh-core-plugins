@@ -2,6 +2,20 @@ import pytest
 import time
 from sam_sql_database_tool.tools import SqlDatabaseTool, DatabaseConfig
 
+
+def get_add_column_sql(dialect, table_name, column_name, column_type="INT"):
+    """Get dialect-specific ALTER TABLE ADD COLUMN SQL."""
+    if dialect in ('mssql', 'oracle'):
+        return f"ALTER TABLE {table_name} ADD {column_name} {column_type}"
+    else:
+        return f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
+
+
+def get_drop_column_sql(dialect, table_name, column_name):
+    """Get dialect-specific ALTER TABLE DROP COLUMN SQL."""
+    return f"ALTER TABLE {table_name} DROP COLUMN {column_name}"
+
+
 @pytest.mark.asyncio
 class TestConfigFeatures:
     """Tests for specific configuration features of the SqlDatabaseTool."""
@@ -62,14 +76,9 @@ class TestConfigFeatures:
         assert "temp_col_for_ttl_test" not in initial_schema
 
         # 2. Directly alter the database schema
-        # MSSQL uses different ALTER TABLE syntax (no COLUMN keyword)
         dialect = tool.db_service.engine.dialect.name
-        if dialect == 'mssql':
-            add_col_sql = "ALTER TABLE users ADD temp_col_for_ttl_test INT"
-            drop_col_sql = "ALTER TABLE users DROP COLUMN temp_col_for_ttl_test"
-        else:
-            add_col_sql = "ALTER TABLE users ADD COLUMN temp_col_for_ttl_test INT"
-            drop_col_sql = "ALTER TABLE users DROP COLUMN temp_col_for_ttl_test"
+        add_col_sql = get_add_column_sql(dialect, "users", "temp_col_for_ttl_test")
+        drop_col_sql = get_drop_column_sql(dialect, "users", "temp_col_for_ttl_test")
 
         conn = tool.db_service.engine.connect()
         try:
@@ -108,14 +117,9 @@ class TestConfigFeatures:
         assert "temp_col_for_clear_test" not in initial_schema
 
         # 2. Directly alter the database schema
-        # MSSQL uses different ALTER TABLE syntax (no COLUMN keyword)
         dialect = tool.db_service.engine.dialect.name
-        if dialect == 'mssql':
-            add_col_sql = "ALTER TABLE users ADD temp_col_for_clear_test INT"
-            drop_col_sql = "ALTER TABLE users DROP COLUMN temp_col_for_clear_test"
-        else:
-            add_col_sql = "ALTER TABLE users ADD COLUMN temp_col_for_clear_test INT"
-            drop_col_sql = "ALTER TABLE users DROP COLUMN temp_col_for_clear_test"
+        add_col_sql = get_add_column_sql(dialect, "users", "temp_col_for_clear_test")
+        drop_col_sql = get_drop_column_sql(dialect, "users", "temp_col_for_clear_test")
 
         conn = tool.db_service.engine.connect()
         try:
