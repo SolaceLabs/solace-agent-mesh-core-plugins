@@ -72,6 +72,20 @@ jobs:
         working-directory: ${{ inputs.plugin_directory }}
         run: hatch -v env create hatch-test.py3.13
 
+      - name: Install ODBC Driver 18 for SQL Server
+        if: inputs.plugin_directory == 'sam-sql-database-tool'
+        run: |
+          curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /usr/share/keyrings/microsoft-prod.gpg > /dev/null
+          curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
+
+      - name: Install FreeTDS ODBC Driver
+        if: inputs.plugin_directory == 'sam-sql-database-tool'
+        run: |
+          sudo apt-get install -y freetds-dev tdsodbc unixodbc-dev
+          sudo odbcinst -i -d -f /usr/share/tdsodbc/odbcinst.ini
+
       - name: Test Plugin ${{ inputs.plugin_directory }} with Python 3.13
         id: test
         continue-on-error: true

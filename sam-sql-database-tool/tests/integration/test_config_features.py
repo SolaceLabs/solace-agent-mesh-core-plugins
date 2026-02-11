@@ -52,7 +52,7 @@ class TestConfigFeatures:
         # Re-initialize the tool with a short TTL
         tool_config_dict = db_tool_provider.tool_config.model_dump()
         tool_config_dict['cache_ttl_seconds'] = 2
-        
+
         custom_config = DatabaseConfig(**tool_config_dict)
         tool = SqlDatabaseTool(custom_config)
         await tool.init(component=None, tool_config={})
@@ -62,9 +62,18 @@ class TestConfigFeatures:
         assert "temp_col_for_ttl_test" not in initial_schema
 
         # 2. Directly alter the database schema
+        # MSSQL uses different ALTER TABLE syntax (no COLUMN keyword)
+        dialect = tool.db_service.engine.dialect.name
+        if dialect == 'mssql':
+            add_col_sql = "ALTER TABLE users ADD temp_col_for_ttl_test INT"
+            drop_col_sql = "ALTER TABLE users DROP COLUMN temp_col_for_ttl_test"
+        else:
+            add_col_sql = "ALTER TABLE users ADD COLUMN temp_col_for_ttl_test INT"
+            drop_col_sql = "ALTER TABLE users DROP COLUMN temp_col_for_ttl_test"
+
         conn = tool.db_service.engine.connect()
         try:
-            conn.execute(pytest.importorskip("sqlalchemy").text("ALTER TABLE users ADD COLUMN temp_col_for_ttl_test INT;"))
+            conn.execute(pytest.importorskip("sqlalchemy").text(add_col_sql))
             conn.commit()
 
             # 3. Wait for the cache TTL to expire
@@ -79,13 +88,13 @@ class TestConfigFeatures:
 
             # 6. Get the schema a third time; it should now be refreshed from the background job.
             refreshed_schema = tool.db_service.get_optimized_schema_for_llm()
-            
+
             # 7. Assert that the new column is now present
             assert "temp_col_for_ttl_test" in refreshed_schema, "Schema should be refreshed with the new column"
 
         finally:
             # Clean up the added column
-            conn.execute(pytest.importorskip("sqlalchemy").text("ALTER TABLE users DROP COLUMN temp_col_for_ttl_test;"))
+            conn.execute(pytest.importorskip("sqlalchemy").text(drop_col_sql))
             conn.commit()
             conn.close()
             await tool.cleanup(component=None, tool_config={})
@@ -99,9 +108,18 @@ class TestConfigFeatures:
         assert "temp_col_for_clear_test" not in initial_schema
 
         # 2. Directly alter the database schema
+        # MSSQL uses different ALTER TABLE syntax (no COLUMN keyword)
+        dialect = tool.db_service.engine.dialect.name
+        if dialect == 'mssql':
+            add_col_sql = "ALTER TABLE users ADD temp_col_for_clear_test INT"
+            drop_col_sql = "ALTER TABLE users DROP COLUMN temp_col_for_clear_test"
+        else:
+            add_col_sql = "ALTER TABLE users ADD COLUMN temp_col_for_clear_test INT"
+            drop_col_sql = "ALTER TABLE users DROP COLUMN temp_col_for_clear_test"
+
         conn = tool.db_service.engine.connect()
         try:
-            conn.execute(pytest.importorskip("sqlalchemy").text("ALTER TABLE users ADD COLUMN temp_col_for_clear_test INT;"))
+            conn.execute(pytest.importorskip("sqlalchemy").text(add_col_sql))
             conn.commit()
 
             # 3. Manually clear the cache
@@ -115,6 +133,6 @@ class TestConfigFeatures:
 
         finally:
             # Clean up the added column
-            conn.execute(pytest.importorskip("sqlalchemy").text("ALTER TABLE users DROP COLUMN temp_col_for_clear_test;"))
+            conn.execute(pytest.importorskip("sqlalchemy").text(drop_col_sql))
             conn.commit()
             conn.close()
