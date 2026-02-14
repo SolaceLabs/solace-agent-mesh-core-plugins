@@ -7,7 +7,7 @@ Unlike the `sam-sql-database` agent, which provides a complete Natural-Language-
 ## Key Features
 
 - **Dynamic Tool Creation**: Define custom SQL query tools directly in your agent's YAML configuration. Each tool instance is completely independent.
-- **Multi-Database Support**: Natively supports PostgreSQL, MySQL, and MariaDB.
+- **Multi-Database Support**: Natively supports PostgreSQL, MySQL, MariaDB, MSSQL, and Oracle.
 - **Dedicated Connections**: Each tool instance creates its own dedicated database connection, allowing for fine-grained configuration.
 - **Flexible Schema Handling**:
     -   Automatic schema detection and summarization for LLM prompting.
@@ -54,7 +54,20 @@ tools:
 
 -   `tool_name`: (Required) The function name the LLM will use to call the tool.
 -   `tool_description`: (Optional) A clear description for the LLM explaining what the tool does.
--   `connection_string`: (Required) The full database connection string (e.g., `postgresql+psycopg2://user:password@host:port/dbname` for PostgreSQL, or `mysql+pymysql://user:password@host:port/dbname` for MySQL/MariaDB). It is highly recommended to use a single environment variable for the entire string.
+-   `connection_string`: (Required) The full database connection string. It is highly recommended to use a single environment variable for the entire string. Supported formats:
+    -   **PostgreSQL**: `postgresql+psycopg2://user:password@host:port/dbname`
+    -   **MySQL**: `mysql+pymysql://user:password@host:port/dbname`
+    -   **MariaDB**: `mysql+pymysql://user:password@host:port/dbname`
+    -   **MSSQL (FreeTDS - Recommended)**: `mssql+pyodbc://user:password@host:port/dbname?driver=FreeTDS&TrustServerCertificate=yes`
+        -   Open-source driver with simpler installation: `sudo apt-get install freetds-dev freetds-bin tdsodbc && sudo odbcinst -i -d -f /usr/share/tdsodbc/odbcinst.ini`
+        -   Works well for standard SQL operations.
+    -   **MSSQL (Microsoft ODBC)**: `mssql+pyodbc://user:password@host:port/dbname?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes`
+        -   Official Microsoft driver with full feature support (Azure AD auth, Always Encrypted, etc.).
+        -   Requires ODBC Driver 17 or 18 installed on the host system.
+        -   Use `TrustServerCertificate=yes` for self-signed certificates or `Encrypt=no` to disable encryption.
+    -   **Oracle**: `oracle+oracledb://user:password@host:port/?service_name=SERVICE_NAME`
+        -   Uses the `oracledb` driver in thin mode (no Oracle Instant Client required).
+        -   Replace `SERVICE_NAME` with your Oracle service name (e.g., `XEPDB1`, `ORCL`).
 -   `auto_detect_schema`: (Optional, default: `true`) If `true`, the plugin attempts to automatically detect the database schema. If `false`, you must provide `schema_summary_override`.
 -   `schema_summary_override`: (Required if `auto_detect_schema` is `false`) A concise natural language summary of the schema, suitable for direct inclusion in an LLM prompt.
 -   `max_enum_cardinality`: (Optional, default: `100`) Maximum number of distinct values to consider a column as an enum. Increase for columns like countries (190+), decrease for faster init times.

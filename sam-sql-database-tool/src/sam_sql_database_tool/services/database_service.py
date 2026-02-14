@@ -8,7 +8,7 @@ import threading
 
 from sqlalchemy.engine import Engine, Connection
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import inspect, text, select, func, distinct, Table, MetaData
+from sqlalchemy import inspect, text, select, distinct, Table, MetaData
 
 import sqlalchemy as sa
 import yaml
@@ -247,6 +247,20 @@ class DatabaseService:
                     "FROM pg_class "
                     "WHERE relname = :table_name"
                 ).bindparams(table_name=table_name)
+            elif self.engine.dialect.name == 'mssql':
+                query = text(
+                    "SELECT SUM(p.rows) AS estimate "
+                    "FROM sys.tables t "
+                    "INNER JOIN sys.partitions p ON t.object_id = p.object_id "
+                    "WHERE t.name = :table_name "
+                    "AND p.index_id IN (0, 1)"
+                ).bindparams(table_name=table_name)
+            elif self.engine.dialect.name == 'oracle':
+                query = text(
+                    "SELECT num_rows AS estimate "
+                    "FROM user_tables "
+                    "WHERE table_name = UPPER(:table_name)"
+                ).bindparams(table_name=table_name)
             else:
                 query = text(
                     "SELECT table_rows "
@@ -352,7 +366,7 @@ class DatabaseService:
 
                     cardinality_ratio = cardinality / total_samples if total_samples > 0 else 1
 
-                    is_string_type = col_type.upper().startswith(('VARCHAR', 'CHAR', 'TEXT', 'ENUM'))
+                    is_string_type = col_type.upper().startswith(('VARCHAR', 'CHAR', 'TEXT', 'ENUM', 'NVARCHAR', 'NCHAR', 'NTEXT', 'VARCHAR2', 'NVARCHAR2', 'CLOB', 'NCLOB'))
                     looks_like_enum = self._looks_like_enum_column(col_name)
                     has_low_cardinality = cardinality_ratio < 0.3
 

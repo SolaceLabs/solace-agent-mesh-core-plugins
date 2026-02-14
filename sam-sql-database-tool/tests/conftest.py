@@ -2,6 +2,8 @@ import pytest
 import sqlalchemy as sa
 from testcontainers.postgres import PostgresContainer
 from testcontainers.mysql import MySqlContainer
+from testcontainers.mssql import SqlServerContainer
+from testcontainers.oracle import OracleDbContainer
 from dataclasses import dataclass
 from typing import Type, Callable
 
@@ -55,6 +57,43 @@ class DatabaseTestConfig:
             ),
             id="mariadb",
         ),
+        pytest.param(
+            DatabaseTestConfig(
+                name="mssql-msodbc18",
+                container_class=SqlServerContainer,
+                image="mcr.microsoft.com/mssql/server:2022-latest",
+                connection_url_fn=lambda c: (
+                    f"mssql+pyodbc://sa:{c.password}@"
+                    f"{c.get_container_host_ip()}:{c.get_exposed_port(1433)}/master"
+                    f"?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"
+                ),
+            ),
+            id="mssql-msodbc18",
+        ),
+        pytest.param(
+            DatabaseTestConfig(
+                name="mssql-freetds",
+                container_class=SqlServerContainer,
+                image="mcr.microsoft.com/mssql/server:2022-latest",
+                connection_url_fn=lambda c: (
+                    f"mssql+pyodbc://sa:{c.password}@"
+                    f"{c.get_container_host_ip()}:{c.get_exposed_port(1433)}/master"
+                    f"?driver=FreeTDS&TrustServerCertificate=yes"
+                ),
+            ),
+            id="mssql-freetds",
+        ),
+        pytest.param(
+            DatabaseTestConfig(
+                name="oracle",
+                container_class=OracleDbContainer,
+                image="gvenzl/oracle-xe:21-slim",
+                connection_url_fn=lambda c: c.get_connection_url().replace(
+                    "oracle+cx_oracle://", "oracle+oracledb://"
+                ),
+            ),
+            id="oracle",
+        ),
     ],
 )
 def db_config(request):
@@ -65,14 +104,29 @@ def db_config(request):
 @pytest.fixture(scope="session")
 def database_container(db_config: DatabaseTestConfig):
     """Starts and stops a Docker container for the configured database."""
-    with db_config.container_class(
-        db_config.image, dbname="test_db", username="test_user", password="test_password"
-    ) as container:
-        if db_config.name in ["mysql", "mariadb"]:
-            container.with_env("MYSQL_ROOT_PASSWORD", "root_password")
-        # Attach the config to the container object for easy access in other fixtures
-        container.db_config = db_config
-        yield container
+    if db_config.name.startswith("mssql"):
+        # MSSQL container has a different constructor signature
+        with db_config.container_class(db_config.image) as container:
+            container.db_config = db_config
+            yield container
+    elif db_config.name == "oracle":
+        # Oracle container with explicit credentials
+        with db_config.container_class(
+            db_config.image,
+            username="test_user",
+            password="test_password",
+        ) as container:
+            container.db_config = db_config
+            yield container
+    else:
+        with db_config.container_class(
+            db_config.image, dbname="test_db", username="test_user", password="test_password"
+        ) as container:
+            if db_config.name in ["mysql", "mariadb"]:
+                container.with_env("MYSQL_ROOT_PASSWORD", "root_password")
+            # Attach the config to the container object for easy access in other fixtures
+            container.db_config = db_config
+            yield container
 
 
 @pytest.fixture(scope="function")

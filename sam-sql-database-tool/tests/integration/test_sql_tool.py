@@ -90,7 +90,7 @@ class TestSqlDatabaseTool:
 
         first_call_start = time.time()
         schema1 = db_tool_provider.db_service.get_optimized_schema_for_llm()
-        first_call_time = time.time() - first_call_start
+        _first_call_time = time.time() - first_call_start
 
         second_call_start = time.time()
         schema2 = db_tool_provider.db_service.get_optimized_schema_for_llm()
@@ -140,10 +140,12 @@ class TestSqlDatabaseTool:
 
     async def test_aggregation_with_join(self, db_tool_provider: SqlDatabaseTool):
         """Test a query that uses aggregation across joined tables."""
+        # Cast rating to Float to ensure consistent decimal results across databases
+        # (MSSQL returns integer for AVG of integer columns)
         query = (
             sa.select(
                 categories.c.name,
-                sa.func.avg(reviews.c.rating).label("average_rating")
+                sa.func.avg(sa.cast(reviews.c.rating, sa.Float)).label("average_rating")
             )
             .join(product_categories, categories.c.id == product_categories.c.category_id)
             .join(products, product_categories.c.product_id == products.c.id)

@@ -1,6 +1,5 @@
 import pytest
-import time
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 from sam_sql_database_tool.services.database_service import DatabaseService
 
 @pytest.fixture
@@ -43,11 +42,11 @@ class TestDatabaseService:
 
     def test_looks_like_enum_column(self, mock_db_service):
         """Test enum column detection heuristic."""
-        assert mock_db_service._looks_like_enum_column("status") == True
-        assert mock_db_service._looks_like_enum_column("user_type") == True
-        assert mock_db_service._looks_like_enum_column("category") == True
-        assert mock_db_service._looks_like_enum_column("email") == False
-        assert mock_db_service._looks_like_enum_column("description") == False
+        assert mock_db_service._looks_like_enum_column("status")
+        assert mock_db_service._looks_like_enum_column("user_type")
+        assert mock_db_service._looks_like_enum_column("category")
+        assert not mock_db_service._looks_like_enum_column("email")
+        assert not mock_db_service._looks_like_enum_column("description")
 
     def test_execute_query_no_engine(self):
         """Test that executing a query without an engine raises an error."""
