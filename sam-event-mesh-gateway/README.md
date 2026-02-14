@@ -13,6 +13,7 @@ The Solace Agent Mesh (SAM) Event Mesh Gateway is a powerful plugin that acts as
 *   **Differentiated Success/Error Handling**: Routes successful agent responses and error conditions to different topics with different payload structures.
 *   **Self-Contained Payloads**: Intelligently embeds agent-produced artifacts (text and binary files) directly into the output message payload.
 *   **Workflow Integration**: Supports structured invocation mode for invoking SAM workflows with schema-validated input and output through artifacts.
+*   **Deferred Acknowledgment**: Optionally defer Solace message acknowledgment until agent/workflow processing completes, providing at-least-once delivery semantics.
 
 ## Installation
 To install the SAM Event Mesh Gateway plugin, run the following command in your SAM project directory:
@@ -82,6 +83,147 @@ Each item in the `output_handlers` list defines a template for publishing a resp
 *   `payload_expression` (string, required): A SAC expression to generate the output payload.
 *   `max_file_size_for_base64_bytes` (integer, optional, default: 1048576): The maximum size in bytes for an artifact file to be embedded in the payload.
 *   `output_transforms` (list, optional): A list of standard SAC transforms to process the agent response before the payload expression is evaluated.
+
+### `acknowledgment_policy`
+
+The acknowledgment policy controls when and how the gateway acknowledges (ACKs) incoming Solace messages from the data plane. This is critical for controlling message delivery guarantees.
+
+#### Default Behavior: Immediate Acknowledgment (`on_receive`)
+
+By default, the gateway ACKs each message immediately upon receipt, before any processing begins. This is a **fire-and-forget** model: if the gateway crashes mid-processing or the agent/workflow fails, the message is lost and will not be redelivered.
+
+This is suitable for:
+*   Non-critical events where occasional message loss is acceptable.
+*   High-throughput scenarios where redelivery would cause problems.
+*   Events that are idempotent or where duplicates are undesirable.
+
+#### Deferred Acknowledgment (`on_completion`)
+
+When `mode` is set to `"on_completion"`, the gateway defers the ACK until the A2A task has been fully processed and the response has been successfully published back to the data plane. This provides **at-least-once delivery semantics**: if the gateway crashes or processing fails, the message remains unacknowledged and the broker will redeliver it.
+
+This is suitable for:
+*   Critical events that must not be lost (orders, financial transactions, compliance events).
+*   Workflows where processing failure should trigger automatic retry via broker redelivery.
+*   Scenarios where the cost of processing a duplicate message is lower than the cost of losing a message.
+
+#### Configuration
+
+The acknowledgment policy can be set at two levels:
+
+1.  **Gateway level** (top-level `acknowledgment_policy`): Sets the default for all event handlers.
+2.  **Handler level** (inside an `event_handlers` item): Overrides the gateway default for a specific handler. Any field set at the handler level takes precedence.
+
+**Full schema:**
+
+```yaml
+acknowledgment_policy:
+  mode: "on_receive"          # "on_receive" (default) | "on_completion"
+  on_failure:
+    action: "nack"            # "nack" (default) | "ack"
+    nack_outcome: "rejected"  # "rejected" (default) | "failed"
+  timeout_seconds: 300        # Default: 300 (5 minutes)
+```
+
+**Fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `mode` | string | `"on_receive"` | When to ACK. `"on_receive"`: immediately on receipt. `"on_completion"`: after successful processing. |
+| `on_failure.action` | string | `"nack"` | What to do when processing fails. `"nack"`: negatively acknowledge (triggers redelivery or DLQ). `"ack"`: acknowledge even on failure (discard the message). |
+| `on_failure.nack_outcome` | string | `"rejected"` | The NACK outcome when `action` is `"nack"`. `"rejected"`: message is redelivered to the queue. `"failed"`: message is moved to the dead letter queue (DLQ). |
+| `timeout_seconds` | integer | `300` | Maximum seconds to wait for task completion. If the task has not completed within this time, the message is settled as a failure using the `on_failure` policy. |
+
+> **Note:** The `on_failure`, `nack_outcome`, and `timeout_seconds` fields only apply when `mode` is `"on_completion"`. They are ignored in `"on_receive"` mode.
+
+#### Message Settlement Behavior
+
+The following table summarizes when and how messages are settled under each configuration:
+
+| Scenario | `on_receive` mode | `on_completion` mode |
+|----------|-------------------|----------------------|
+| Message received | ACK immediately | Hold (no ACK yet) |
+| No matching handler | ACK (already done) | NACK (using `on_failure` policy) |
+| Authentication failure | ACK (already done) | NACK (using `on_failure` policy) |
+| Translation/submission failure | ACK (already done) | NACK (using `on_failure` policy) |
+| Task completes successfully, response published | N/A | ACK |
+| Task completes successfully, no `on_success` handler | N/A | ACK |
+| Task fails (agent error) | N/A | Settle per `on_failure` policy |
+| Response publish fails | N/A | Settle per `on_failure` policy |
+| Timeout exceeded | N/A | Settle per `on_failure` policy |
+| Gateway shutdown | N/A | NACK all pending (redelivered on restart) |
+
+#### Per-Handler Override Example
+
+You can set a gateway-wide default and override it for specific handlers:
+
+```yaml
+app_config:
+  # Gateway-level default: immediate ACK
+  acknowledgment_policy:
+    mode: "on_receive"
+
+  event_handlers:
+    # This handler uses the gateway default (on_receive)
+    - name: "low_priority_handler"
+      subscriptions:
+        - topic: "telemetry/>"
+      input_expression: "template:Process telemetry: {{json://input.payload}}"
+      target_agent_name: "TelemetryAgent"
+
+    # This handler overrides to deferred ACK
+    - name: "critical_order_handler"
+      subscriptions:
+        - topic: "orders/>"
+      input_expression: "template:Process order: {{json://input.payload}}"
+      target_agent_name: "OrderAgent"
+      on_success: "order_success_handler"
+      on_error: "order_error_handler"
+      acknowledgment_policy:
+        mode: "on_completion"
+        on_failure:
+          action: "nack"
+          nack_outcome: "failed"  # Send to DLQ on failure
+        timeout_seconds: 120       # 2 minute timeout for orders
+```
+
+#### Failure Handling Patterns
+
+**Pattern 1: Retry via redelivery (default)**
+
+Messages that fail processing are redelivered by the broker for another attempt. This is the default behavior when `on_failure.nack_outcome` is `"rejected"`.
+
+```yaml
+acknowledgment_policy:
+  mode: "on_completion"
+  on_failure:
+    action: "nack"
+    nack_outcome: "rejected"  # Broker redelivers the message
+```
+
+> **Warning:** Ensure your processing is idempotent when using this pattern, as messages may be delivered more than once.
+
+**Pattern 2: Dead letter queue**
+
+Messages that fail processing are moved to a dead letter queue (DLQ) for later inspection and manual reprocessing.
+
+```yaml
+acknowledgment_policy:
+  mode: "on_completion"
+  on_failure:
+    action: "nack"
+    nack_outcome: "failed"  # Broker moves message to DLQ
+```
+
+**Pattern 3: Acknowledge on failure (discard)**
+
+Messages are acknowledged even when processing fails. Use this when you want deferred ACK for crash protection but don't want failed messages to be redelivered.
+
+```yaml
+acknowledgment_policy:
+  mode: "on_completion"
+  on_failure:
+    action: "ack"  # ACK even on failure — message is discarded
+```
 
 ## Data Flow and Expression Selectors
 
@@ -318,6 +460,14 @@ In your output handler, use `task_response:structured_output` to access the pars
       broker_username: ${DATAPLANE_SOLACE_BROKER_USERNAME}
       broker_password: ${DATAPLANE_SOLACE_BROKER_PASSWORD}
 
+    # --- Acknowledgment Policy: Gateway-level default ---
+    acknowledgment_policy:
+      mode: "on_completion"       # Defer ACK until processing completes
+      on_failure:
+        action: "nack"
+        nack_outcome: "rejected"  # Redeliver on failure
+      timeout_seconds: 300        # 5 minute timeout
+
     # --- Event Handlers: Define how to process incoming messages ---
     event_handlers:
       - name: "process_json_order_handler"
@@ -330,6 +480,10 @@ In your output handler, use `task_response:structured_output` to access the pars
         forward_context:
           order_id: "json://input.payload:orderId"
           reply_topic: "input.user_properties:replyTo"
+        # Override: send failed orders to DLQ instead of redelivering
+        acknowledgment_policy:
+          on_failure:
+            nack_outcome: "failed"
 
     # --- Output Handlers: Define how to publish agent responses ---
     output_handlers:
