@@ -214,7 +214,32 @@ acknowledgment_policy:
     nack_outcome: "failed"  # Broker moves message to DLQ
 ```
 
-**Pattern 3: Acknowledge on failure (discard)**
+**Pattern 3: Rate-limiting with broker-side flow control**
+
+Deferred acknowledgment can be combined with Solace broker queue settings to rate-limit how many events the gateway processes concurrently. When `mode` is `"on_completion"`, messages remain unacknowledged while they are being processed. The Solace broker tracks the number of delivered-but-unacknowledged messages per consumer flow, and you can cap this using the queue's **Max Delivered Unacked Msgs Per Flow** setting.
+
+For example, if you set `max-delivered-unacked-msgs-per-flow` to `5` on the queue, the broker will deliver at most 5 messages to the gateway at a time. Once 5 messages are in-flight (delivered but not yet ACKed), the broker stops delivering new messages until the gateway ACKs one of the in-flight messages. This provides natural backpressure without any gateway-side configuration.
+
+To configure this on the broker (CLI example):
+
+```
+solace(configure)# message-spool
+solace(configure/message-spool)# queue <queue-name>
+solace(configure/message-spool/queue)# max-delivered-unacked-msgs-per-flow 5
+```
+
+On the gateway side, simply enable deferred acknowledgment:
+
+```yaml
+acknowledgment_policy:
+  mode: "on_completion"  # Messages stay unacked while processing
+```
+
+The broker default for this setting is 10,000, which effectively means no rate limiting. By lowering it, you can control concurrency to match the capacity of your agents or workflows. This is especially useful for resource-intensive tasks (e.g., LLM inference, image processing) where you want to avoid overwhelming downstream systems.
+
+> **Tip:** This pattern works because the gateway holds a single consumer flow to the queue. Each unacknowledged message counts against the flow's limit, so the broker naturally throttles delivery to match the gateway's processing rate.
+
+**Pattern 4: Acknowledge on failure (discard)**
 
 Messages are acknowledged even when processing fails. Use this when you want deferred ACK for crash protection but don't want failed messages to be redelivered.
 
