@@ -3,6 +3,8 @@ Solace Agent Mesh - Event Mesh Gateway Plugin: Component Definition
 """
 
 import asyncio
+import csv
+import io
 import logging
 import queue
 import uuid
@@ -12,6 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from datetime import datetime, timezone
 
 import jsonschema
+import yaml
 from solace_ai_connector.common.message import Message as SolaceMessage
 from solace_ai_connector.components.component_base import ComponentBase
 from solace_ai_connector.transforms.transforms import Transforms
@@ -81,6 +84,13 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
 
     _RESOLVE_EMBEDS_IN_FINAL_RESPONSE = True
 
+    _FORMAT_MAP: Dict[str, Dict[str, str]] = {
+        "json": {"mime_type": "application/json", "extension": "json"},
+        "yaml": {"mime_type": "application/yaml", "extension": "yaml"},
+        "text": {"mime_type": "text/plain", "extension": "txt"},
+        "csv": {"mime_type": "text/csv", "extension": "csv"},
+    }
+
     def __init__(self, **kwargs: Any):
         super().__init__(**kwargs)
         log.info("%s Initializing Event Mesh Gateway Component...", self.log_identifier)
@@ -144,6 +154,19 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     )
             log.debug("%s Initialized output_handler_transforms.", self.log_identifier)
 
+            # Acknowledgment policy
+            self.default_ack_policy: Dict[str, Any] = self.get_config(
+                "acknowledgment_policy", {}
+            )
+            self.any_handler_defers_ack: bool = any(
+                self._is_deferred_ack(hc) for hc in self.event_handlers_config
+            )
+            if self.any_handler_defers_ack:
+                log.info(
+                    "%s Deferred acknowledgment enabled for one or more event handlers.",
+                    self.log_identifier,
+                )
+
             self.data_plane_internal_app: Optional[SACApp] = None
             self.data_plane_broker_input: Optional[BrokerInput] = None
             self.data_plane_broker_output: Optional[BrokerOutput] = None
@@ -164,6 +187,47 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 e,
             )
             raise
+
+    def _resolve_ack_policy(self, handler_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Resolves the effective acknowledgment policy by merging handler-level
+        overrides over the gateway-level default.
+
+        Returns a fully-resolved dict with keys: mode, timeout_seconds, on_failure.action, on_failure.nack_outcome.
+        """
+        default = self.default_ack_policy
+        override = handler_config.get("acknowledgment_policy", {})
+        if not override:
+            # Ensure defaults are filled even when gateway-level config is sparse
+            default_on_failure = default.get("on_failure", {})
+            return {
+                "mode": default.get("mode", "on_receive"),
+                "timeout_seconds": default.get("timeout_seconds", 300),
+                "on_failure": {
+                    "action": default_on_failure.get("action", "nack"),
+                    "nack_outcome": default_on_failure.get("nack_outcome", "rejected"),
+                },
+            }
+
+        default_on_failure = default.get("on_failure", {})
+        override_on_failure = override.get("on_failure", {})
+        return {
+            "mode": override.get("mode", default.get("mode", "on_receive")),
+            "timeout_seconds": override.get(
+                "timeout_seconds", default.get("timeout_seconds", 300)
+            ),
+            "on_failure": {
+                "action": override_on_failure.get(
+                    "action", default_on_failure.get("action", "nack")
+                ),
+                "nack_outcome": override_on_failure.get(
+                    "nack_outcome", default_on_failure.get("nack_outcome", "rejected")
+                ),
+            },
+        }
+
+    def _is_deferred_ack(self, handler_config: Dict[str, Any]) -> bool:
+        """Returns True if the resolved acknowledgment mode is 'on_completion'."""
+        return self._resolve_ack_policy(handler_config)["mode"] == "on_completion"
 
     async def _process_file_part_for_output(
         self, part: FilePart, context: Dict, handler_config: Dict
@@ -245,7 +309,13 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                             "name": "target_queue_ref",
                             "required": True,
                             "type": "queue.Queue",
-                        }
+                        },
+                        {
+                            "name": "defer_ack",
+                            "required": False,
+                            "type": "boolean",
+                            "default": False,
+                        },
                     ],
                     "input_schema": {"type": "object"},
                     "output_schema": None,
@@ -257,13 +327,15 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                         self.target_queue: queue.Queue = self.get_config(
                             "target_queue_ref"
                         )
+                        self.defer_ack: bool = self.get_config("defer_ack", False)
 
                     def invoke(
                         self, message: SolaceMessage, data: Dict[str, Any]
                     ) -> None:
                         try:
                             self.target_queue.put_nowait(message)
-                            message.call_acknowledgements()
+                            if not self.defer_ack:
+                                message.call_acknowledgements()
                         except queue.Full:
                             log.error(
                                 "%s Target queue full. Message NACKed.",
@@ -295,7 +367,8 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     "component_class": EventForwarderComponent,
                     "component_name": f"{self.gateway_id}_data_plane_forwarder",
                     "component_config": {
-                        "target_queue_ref": self.data_plane_message_queue
+                        "target_queue_ref": self.data_plane_message_queue,
+                        "defer_ack": self.any_handler_defers_ack,
                     },
                 }
                 input_flow_config = {
@@ -492,9 +565,10 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     solace_msg.get_topic(),
                 )
 
-                # The SolaceMessage was already ACKed by EventForwarderComponent to the internal BrokerInput.
-                # _handle_incoming_solace_message is responsible for the business logic.
-                # Its boolean return can be used for logging or further error handling if needed.
+                # When any_handler_defers_ack is False, all messages were already
+                # ACKed by EventForwarderComponent. When True, _handle_incoming_solace_message
+                # is responsible for settlement: either immediate ACK for on_receive handlers,
+                # or carrying the message reference through for deferred settlement.
                 await self._handle_incoming_solace_message(solace_msg)
 
             except queue.Empty:
@@ -510,8 +584,13 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     log_id_prefix,
                     e,
                 )
-                # If an error occurs here, the message was already ACKed by the forwarder.
-                # Log and continue. Consider if specific error handling for the original message is needed.
+                # If the forwarder deferred the ACK, settle the message since
+                # _handle_incoming_solace_message didn't get to run/complete.
+                if self.any_handler_defers_ack and solace_msg is not None:
+                    try:
+                        solace_msg.call_negative_acknowledgements()
+                    except Exception:
+                        pass
                 await asyncio.sleep(1)  # Avoid tight loop on unexpected errors
             finally:
                 if solace_msg is not None and self.data_plane_message_queue is not None:
@@ -630,22 +709,12 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
         Get mime type and file extension for a payload format.
         Supported formats: json, yaml, text, csv
         """
-        format_map = {
-            "json": {"mime_type": "application/json", "extension": "json"},
-            "yaml": {"mime_type": "application/yaml", "extension": "yaml"},
-            "text": {"mime_type": "text/plain", "extension": "txt"},
-            "csv": {"mime_type": "text/csv", "extension": "csv"},
-        }
-        return format_map.get(payload_format, format_map["json"])
+        return self._FORMAT_MAP.get(payload_format, self._FORMAT_MAP["json"])
 
     def _serialize_for_format(self, data: Any, payload_format: str) -> bytes:
         """
         Serialize data to bytes for the specified payload format.
         """
-        import yaml
-        import csv
-        import io
-
         if payload_format == "json":
             return json.dumps(data).encode("utf-8")
         elif payload_format == "yaml":
@@ -795,7 +864,13 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
 
                 if save_result["status"] in ["success", "partial_success"]:
                     data_version = save_result.get("data_version", 0)
-                    artifact_uri = f"artifact://{self.gateway_id}/{user_identity.get('id')}/{a2a_session_id}/{filename}?version={data_version}"
+                    artifact_uri = format_artifact_uri(
+                        app_name=self.gateway_id,
+                        user_id=user_identity.get("id"),
+                        session_id=a2a_session_id,
+                        filename=filename,
+                        version=data_version,
+                    )
                     created_artifact_uris.append(artifact_uri)
                     log.info(
                         "%s Successfully created artifact: %s",
@@ -1037,6 +1112,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 )
                 return None, [], {"error": f"Input expression evaluation failed: {e}"}
 
+        deferred_ack = self._is_deferred_ack(handler_config)
         external_request_context = {
             "event_handler_name": handler_config.get("name"),
             "original_solace_topic": external_event_data.get_topic(),
@@ -1048,6 +1124,8 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             "user_id_for_a2a": user_identity.get("id"),
             "target_agent_name": target_agent_name,
             "is_structured_invocation": is_structured,
+            "deferred_ack_enabled": deferred_ack,
+            "original_data_plane_message": external_event_data if deferred_ack else None,
         }
 
         if is_structured:
@@ -1084,6 +1162,36 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
     ) -> None:
         """
         Sends the final A2A Task response back to the Solace Event Mesh.
+        Wraps _publish_final_response to centralize deferred ACK settlement.
+        """
+        settled_as_error = False
+        try:
+            settled_as_error = await self._publish_final_response(
+                external_request_context, task_data
+            )
+        except Exception as e:
+            log.exception(
+                "%s[SendFinalResponse] Error sending final response for task %s: %s",
+                self.log_identifier,
+                task_data.id,
+                e,
+            )
+            self._settle_deferred_ack(external_request_context, success=False)
+            return
+        # If the structured error path already settled the ACK, don't settle again
+        if not settled_as_error:
+            self._settle_deferred_ack(external_request_context, success=True)
+
+    async def _publish_final_response(
+        self, external_request_context: Dict, task_data: Task
+    ) -> bool:
+        """
+        Inner implementation for publishing the final A2A Task response.
+
+        Returns True if the structured invocation error path was taken
+        (meaning settlement was already handled by _send_error_to_external).
+        Returns False on normal publish (caller should settle as success).
+        Raises on failure (caller should settle as failure).
         """
         log_id_prefix = f"{self.log_identifier}[SendFinalResponse]"
         event_handler_name = external_request_context.get("event_handler_name")
@@ -1092,13 +1200,16 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
         output_handler_name = event_handler_config.get("on_success")
 
         if not output_handler_name:
+            # No output handler configured — treat as intentional fire-and-forget.
+            # Deferred ACK will still be settled as success by the caller.
             log.debug(
-                "%s No on_success or output_handler_name in context for handler '%s'. Response for task %s will not be published.",
+                "%s No on_success handler configured for '%s'. "
+                "Response for task %s will not be published to Solace (fire-and-forget).",
                 log_id_prefix,
                 event_handler_name,
                 task_data.id,
             )
-            return
+            return False
 
         handler_config = self.output_handler_map.get(output_handler_name)
         if not handler_config:
@@ -1108,7 +1219,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 output_handler_name,
                 task_data.id,
             )
-            return
+            return False
 
         log.debug(
             "%s Processing final response for task %s using output_handler '%s'",
@@ -1117,256 +1228,154 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             output_handler_name,
         )
 
-        try:
-            simplified_payload = {
-                "text": None,
-                "files": [],
-                "data": [],
-                "a2a_task_response": task_data.model_dump(exclude_none=True),
-            }
+        simplified_payload = {
+            "text": None,
+            "files": [],
+            "data": [],
+            "a2a_task_response": task_data.model_dump(exclude_none=True),
+        }
 
-            # Check if this was a structured invocation
-            is_structured = external_request_context.get("is_structured_invocation", False)
-            structured_result = None
+        # Check if this was a structured invocation
+        is_structured = external_request_context.get("is_structured_invocation", False)
+        structured_result = None
 
-            # Process the final status message for text and data parts
-            if task_data.status and task_data.status.message:
-                message = task_data.status.message
-                parts = a2a.get_parts_from_message(message)
-                text_parts_content = []
+        # Process the final status message for text and data parts
+        if task_data.status and task_data.status.message:
+            message = task_data.status.message
+            parts = a2a.get_parts_from_message(message)
+            text_parts_content = []
+            for part in parts:
+                if isinstance(part, TextPart):
+                    text_parts_content.append(part.text)
+                elif isinstance(part, DataPart):
+                    # Check if this is a StructuredInvocationResult
+                    part_data = part.model_dump(exclude_none=True)
+                    data_content = part_data.get("data", {})
+                    if isinstance(data_content, dict) and data_content.get("type") == "structured_invocation_result":
+                        structured_result = data_content
+                    simplified_payload["data"].append(part_data)
+            if text_parts_content:
+                simplified_payload["text"] = "\n".join(text_parts_content)
+
+        # Process artifacts for file parts
+        if task_data.artifacts:
+            for artifact in task_data.artifacts:
+                parts = a2a.get_parts_from_artifact(artifact)
                 for part in parts:
-                    if isinstance(part, TextPart):
-                        text_parts_content.append(part.text)
-                    elif isinstance(part, DataPart):
-                        # Check if this is a StructuredInvocationResult
-                        part_data = part.model_dump(exclude_none=True)
-                        data_content = part_data.get("data", {})
-                        if isinstance(data_content, dict) and data_content.get("type") == "structured_invocation_result":
-                            structured_result = data_content
-                        simplified_payload["data"].append(part_data)
-                if text_parts_content:
-                    simplified_payload["text"] = "\n".join(text_parts_content)
-
-            # Process artifacts for file parts
-            if task_data.artifacts:
-                for artifact in task_data.artifacts:
-                    parts = a2a.get_parts_from_artifact(artifact)
-                    for part in parts:
-                        if isinstance(part, FilePart):
-                            file_info = await self._process_file_part_for_output(
-                                part, external_request_context, handler_config
-                            )
-                            simplified_payload["files"].append(file_info)
-
-            # For structured invocations, extract the output artifact content
-            if is_structured and structured_result:
-                simplified_payload["structured_result"] = structured_result
-
-                if structured_result.get("status") == "success":
-                    artifact_ref = structured_result.get("output_artifact_ref")
-                    if artifact_ref:
-                        try:
-                            artifact_name = artifact_ref.get("name")
-                            artifact_version = artifact_ref.get("version", 0)
-
-                            artifact_content = await load_artifact_content_or_metadata(
-                                artifact_service=self.shared_artifact_service,
-                                app_name=external_request_context.get("app_name_for_artifacts"),
-                                user_id=external_request_context.get("user_id_for_artifacts"),
-                                session_id=external_request_context.get("a2a_session_id"),
-                                filename=artifact_name,
-                                version=artifact_version,
-                                return_raw_bytes=True,
-                            )
-
-                            if artifact_content.get("status") == "success":
-                                # Parse the artifact content as JSON
-                                content_bytes = artifact_content.get("raw_bytes")
-                                if content_bytes:
-                                    if isinstance(content_bytes, bytes):
-                                        content_str = content_bytes.decode("utf-8")
-                                    else:
-                                        content_str = content_bytes
-                                    try:
-                                        simplified_payload["structured_output"] = json.loads(content_str)
-                                    except json.JSONDecodeError:
-                                        simplified_payload["structured_output"] = content_str
-                            else:
-                                log.warning(
-                                    "%s Failed to load structured output artifact '%s': %s",
-                                    log_id_prefix,
-                                    artifact_name,
-                                    artifact_content.get("message"),
-                                )
-                        except Exception as artifact_err:
-                            log.warning(
-                                "%s Error loading structured output artifact: %s",
-                                log_id_prefix,
-                                artifact_err,
-                                exc_info=True,
-                            )
-                elif structured_result.get("status") == "error":
-                    # Structured invocation failed - route to error handler
-                    error_message = structured_result.get("error_message", "Unknown structured invocation error")
-                    log.warning(
-                        "%s Structured invocation returned error: %s",
-                        log_id_prefix,
-                        error_message,
-                    )
-                    # Create a JSONRPCError and delegate to error handler
-                    structured_error = JSONRPCError(
-                        code=-32000,
-                        message=f"Structured invocation failed: {error_message}",
-                        data={
-                            "structured_result": structured_result,
-                            "error_type": "structured_invocation_error",
-                        },
-                    )
-                    await self._send_error_to_external(external_request_context, structured_error)
-                    return  # Don't continue with success handler
-            elif is_structured:
-                log.warning(
-                    "%s Structured invocation expected but no structured_result found in response",
-                    log_id_prefix,
-                )
-
-            original_user_props = external_request_context.get(
-                "original_solace_user_properties", {}
-            )
-            forwarded_context_data = external_request_context.get(
-                "forwarded_context", {}
-            )
-
-            msg_for_expression = SolaceMessage(
-                payload=simplified_payload, user_properties=original_user_props
-            )
-            msg_for_expression.set_data(
-                "user_data.forward_context", forwarded_context_data
-            )
-
-            if output_handler_name in self.output_handler_transforms:
-                transform_engine = self.output_handler_transforms[output_handler_name]
-                transform_engine.transform(msg_for_expression, calling_object=self)
-                log.debug(
-                    "%s Applied output_transforms for handler '%s'",
-                    log_id_prefix,
-                    output_handler_name,
-                )
-
-            topic_expression = handler_config.get("topic_expression", "").replace(
-                "task_response:", "input.payload:", 1
-            )
-            if not topic_expression:
-                log.error(
-                    "%s 'topic_expression' missing in output_handler '%s'. Cannot publish.",
-                    log_id_prefix,
-                    output_handler_name,
-                )
-                return
-            target_topic = msg_for_expression.get_data(topic_expression)
-            if not target_topic:
-                log.error(
-                    "%s 'topic_expression' for handler '%s' evaluated to empty. Cannot publish.",
-                    log_id_prefix,
-                    output_handler_name,
-                )
-                return
-
-            payload_expression = handler_config.get("payload_expression", "").replace(
-                "task_response:", "input.payload:", 1
-            )
-            if not payload_expression:
-                log.error(
-                    "%s 'payload_expression' missing in output_handler '%s'. Cannot publish.",
-                    log_id_prefix,
-                    output_handler_name,
-                )
-                return
-            raw_payload_for_solace = msg_for_expression.get_data(payload_expression)
-            if raw_payload_for_solace is None:
-                log.warning(
-                    "%s 'payload_expression' for handler '%s' evaluated to None. Publishing empty payload.",
-                    log_id_prefix,
-                    output_handler_name,
-                )
-                raw_payload_for_solace = ""
-
-            output_schema = handler_config.get("output_schema")
-            if output_schema and isinstance(output_schema, dict) and output_schema:
-                try:
-                    payload_to_validate = raw_payload_for_solace
-                    if isinstance(raw_payload_for_solace, str):
-                        try:
-                            payload_to_validate = json.loads(raw_payload_for_solace)
-                        except json.JSONDecodeError:
-                            pass
-
-                    jsonschema.validate(
-                        instance=payload_to_validate, schema=output_schema
-                    )
-                    log.debug(
-                        "%s Output payload validated successfully against schema for handler '%s'.",
-                        log_id_prefix,
-                        output_handler_name,
-                    )
-                except jsonschema.ValidationError as ve:
-                    log.error(
-                        "%s Output payload validation failed for handler '%s': %s",
-                        log_id_prefix,
-                        output_handler_name,
-                        ve.message,
-                    )
-                    if handler_config.get("on_validation_error", "log") == "drop":
-                        log.warning(
-                            "%s Dropping message due to schema validation failure for handler '%s'.",
-                            log_id_prefix,
-                            output_handler_name,
+                    if isinstance(part, FilePart):
+                        file_info = await self._process_file_part_for_output(
+                            part, external_request_context, handler_config
                         )
-                        return
+                        simplified_payload["files"].append(file_info)
 
-            encoded_payload = encode_payload(
-                payload=raw_payload_for_solace,
-                encoding=handler_config.get("payload_encoding", "utf-8"),
-                payload_format=handler_config.get("payload_format", "json"),
-            )
-            if self.data_plane_broker_output:
-                output_data = {
-                    "payload": encoded_payload,
-                    "topic": target_topic,
-                    "user_properties": {},
-                }
-                output_message = SolaceMessage()
-                output_message.set_previous(output_data)
-                event = Event(EventType.MESSAGE, output_message)
-                self.data_plane_broker_output.enqueue(event)
-                log.info(
-                    "%s Enqueued final response for task %s to topic '%s' via data plane output flow.",
-                    log_id_prefix,
-                    task_data.id,
-                    target_topic,
-                )
-            else:
-                log.error(
-                    "%s Data plane broker output service not available. Cannot publish response for task %s.",
-                    log_id_prefix,
-                    task_data.id,
-                )
+        # For structured invocations, extract the output artifact content
+        if is_structured and structured_result:
+            simplified_payload["structured_result"] = structured_result
 
-        except Exception as e:
-            log.exception(
-                "%s Error sending final response for task %s using handler '%s': %s",
+            if structured_result.get("status") == "success":
+                artifact_ref = structured_result.get("output_artifact_ref")
+                if artifact_ref:
+                    try:
+                        artifact_name = artifact_ref.get("name")
+                        artifact_version = artifact_ref.get("version", 0)
+
+                        artifact_content = await load_artifact_content_or_metadata(
+                            artifact_service=self.shared_artifact_service,
+                            app_name=external_request_context.get("app_name_for_artifacts"),
+                            user_id=external_request_context.get("user_id_for_artifacts"),
+                            session_id=external_request_context.get("a2a_session_id"),
+                            filename=artifact_name,
+                            version=artifact_version,
+                            return_raw_bytes=True,
+                        )
+
+                        if artifact_content.get("status") == "success":
+                            # Parse the artifact content as JSON
+                            content_bytes = artifact_content.get("raw_bytes")
+                            if content_bytes:
+                                if isinstance(content_bytes, bytes):
+                                    content_str = content_bytes.decode("utf-8")
+                                else:
+                                    content_str = content_bytes
+                                try:
+                                    simplified_payload["structured_output"] = json.loads(content_str)
+                                except json.JSONDecodeError:
+                                    simplified_payload["structured_output"] = content_str
+                        else:
+                            log.warning(
+                                "%s Failed to load structured output artifact '%s': %s",
+                                log_id_prefix,
+                                artifact_name,
+                                artifact_content.get("message"),
+                            )
+                    except Exception as artifact_err:
+                        log.warning(
+                            "%s Error loading structured output artifact: %s",
+                            log_id_prefix,
+                            artifact_err,
+                            exc_info=True,
+                        )
+            elif structured_result.get("status") == "error":
+                # Structured invocation failed — delegate to the error path.
+                # _send_error_to_external handles its own deferred ACK settlement,
+                # so we return True to tell the caller NOT to settle again.
+                error_message = structured_result.get("error_message", "Unknown structured invocation error")
+                log.warning(
+                    "%s Structured invocation returned error: %s",
+                    log_id_prefix,
+                    error_message,
+                )
+                structured_error = JSONRPCError(
+                    code=-32000,
+                    message=f"Structured invocation failed: {error_message}",
+                    data={
+                        "structured_result": structured_result,
+                        "error_type": "structured_invocation_error",
+                    },
+                )
+                await self._send_error_to_external(external_request_context, structured_error)
+                return True  # Settlement already handled
+        elif is_structured:
+            log.warning(
+                "%s Structured invocation expected but no structured_result found in response",
                 log_id_prefix,
-                task_data.id,
-                output_handler_name,
-                e,
             )
+
+        await self._transform_validate_and_publish(
+            simplified_payload=simplified_payload,
+            external_request_context=external_request_context,
+            output_handler_name=output_handler_name,
+            handler_config=handler_config,
+            task_id_for_log=task_data.id,
+            log_id_prefix=log_id_prefix,
+        )
+        return False
 
     async def _send_error_to_external(
         self, external_request_context: Dict, error_data: JSONRPCError
     ) -> None:
         """
         Sends an A2A Error response back to the Solace Event Mesh.
-        Uses the same output handler logic as final responses.
+        Wraps _publish_error_response to centralize deferred ACK settlement.
+        Error responses always settle as failure.
+        """
+        try:
+            await self._publish_error_response(external_request_context, error_data)
+        except Exception as e:
+            log.exception(
+                "%s[SendErrorResponse] Error sending error response: %s",
+                self.log_identifier,
+                e,
+            )
+        finally:
+            self._settle_deferred_ack(external_request_context, success=False)
+
+    async def _publish_error_response(
+        self, external_request_context: Dict, error_data: JSONRPCError
+    ) -> None:
+        """
+        Inner implementation for publishing an A2A Error response.
+        Settlement is handled by the wrapper (_send_error_to_external).
         """
         log_id_prefix = f"{self.log_identifier}[SendErrorResponse]"
         event_handler_name = external_request_context.get("event_handler_name")
@@ -1379,7 +1388,8 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
 
         if not output_handler_name:
             log.debug(
-                "%s No on_error or output_handler_name in context for handler '%s'. Error for task %s will not be published.",
+                "%s No on_error handler configured for '%s'. "
+                "Error for task %s will not be published to Solace.",
                 log_id_prefix,
                 event_handler_name,
                 task_id_for_log,
@@ -1403,146 +1413,162 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             output_handler_name,
         )
 
-        try:
-            # Create a standard error response using the helper
-            error_response = a2a.create_error_response(
-                error=error_data, request_id=None
+        # Create a standard error response using the helper
+        error_response = a2a.create_error_response(
+            error=error_data, request_id=None
+        )
+
+        simplified_payload = {
+            "text": None,
+            "files": [],
+            "data": [],
+            "a2a_task_response": {
+                "error": error_response.model_dump(exclude_none=True)["error"]
+            },
+        }
+
+        await self._transform_validate_and_publish(
+            simplified_payload=simplified_payload,
+            external_request_context=external_request_context,
+            output_handler_name=output_handler_name,
+            handler_config=handler_config,
+            task_id_for_log=task_id_for_log,
+            log_id_prefix=log_id_prefix,
+        )
+
+    async def _transform_validate_and_publish(
+        self,
+        simplified_payload: Dict[str, Any],
+        external_request_context: Dict[str, Any],
+        output_handler_name: str,
+        handler_config: Dict[str, Any],
+        task_id_for_log: str,
+        log_id_prefix: str,
+    ) -> None:
+        """
+        Shared logic for transforming, validating, and publishing a response payload
+        to the Solace data plane. Used by both success and error response paths.
+
+        Raises RuntimeError if the data plane broker output is not available.
+        """
+        original_user_props = external_request_context.get(
+            "original_solace_user_properties", {}
+        )
+        forwarded_context_data = external_request_context.get(
+            "forwarded_context", {}
+        )
+
+        msg_for_expression = SolaceMessage(
+            payload=simplified_payload, user_properties=original_user_props
+        )
+        msg_for_expression.set_data(
+            "user_data.forward_context", forwarded_context_data
+        )
+
+        if output_handler_name in self.output_handler_transforms:
+            transform_engine = self.output_handler_transforms[output_handler_name]
+            transform_engine.transform(msg_for_expression, calling_object=self)
+            log.debug(
+                "%s Applied output_transforms for handler '%s'",
+                log_id_prefix,
+                output_handler_name,
             )
 
-            simplified_payload = {
-                "text": None,
-                "files": [],
-                "data": [],
-                "a2a_task_response": {
-                    "error": error_response.model_dump(exclude_none=True)["error"]
-                },
-            }
+        topic_expression = handler_config.get("topic_expression", "").replace(
+            "task_response:", "input.payload:", 1
+        )
+        if not topic_expression:
+            log.error(
+                "%s 'topic_expression' missing in output_handler '%s'. Cannot publish.",
+                log_id_prefix,
+                output_handler_name,
+            )
+            return
+        target_topic = msg_for_expression.get_data(topic_expression)
+        if not target_topic:
+            log.error(
+                "%s 'topic_expression' for handler '%s' evaluated to empty. Cannot publish.",
+                log_id_prefix,
+                output_handler_name,
+            )
+            return
 
-            original_user_props = external_request_context.get(
-                "original_solace_user_properties", {}
+        payload_expression = handler_config.get("payload_expression", "").replace(
+            "task_response:", "input.payload:", 1
+        )
+        if not payload_expression:
+            log.error(
+                "%s 'payload_expression' missing in output_handler '%s'. Cannot publish.",
+                log_id_prefix,
+                output_handler_name,
             )
-            forwarded_context_data = external_request_context.get(
-                "forwarded_context", {}
+            return
+        raw_payload_for_solace = msg_for_expression.get_data(payload_expression)
+        if raw_payload_for_solace is None:
+            log.warning(
+                "%s 'payload_expression' for handler '%s' evaluated to None. Publishing empty payload.",
+                log_id_prefix,
+                output_handler_name,
             )
+            raw_payload_for_solace = ""
 
-            msg_for_expression = SolaceMessage(
-                payload=simplified_payload, user_properties=original_user_props
-            )
-            msg_for_expression.set_data(
-                "user_data.forward_context", forwarded_context_data
-            )
+        output_schema = handler_config.get("output_schema")
+        if output_schema and isinstance(output_schema, dict) and output_schema:
+            try:
+                payload_to_validate = raw_payload_for_solace
+                if isinstance(raw_payload_for_solace, str):
+                    try:
+                        payload_to_validate = json.loads(raw_payload_for_solace)
+                    except json.JSONDecodeError:
+                        pass
 
-            if output_handler_name in self.output_handler_transforms:
-                transform_engine = self.output_handler_transforms[output_handler_name]
-                transform_engine.transform(msg_for_expression, calling_object=self)
+                jsonschema.validate(
+                    instance=payload_to_validate, schema=output_schema
+                )
                 log.debug(
-                    "%s Applied output_transforms for error handler '%s'",
+                    "%s Output payload validated against schema for handler '%s'.",
                     log_id_prefix,
                     output_handler_name,
                 )
-
-            topic_expression = handler_config.get("topic_expression", "").replace(
-                "task_response:", "input.payload:", 1
-            )
-            if not topic_expression:
+            except jsonschema.ValidationError as ve:
                 log.error(
-                    "%s 'topic_expression' missing in error output_handler '%s'. Cannot publish.",
+                    "%s Output payload validation failed for handler '%s': %s",
                     log_id_prefix,
                     output_handler_name,
+                    ve.message,
                 )
-                return
-            target_topic = msg_for_expression.get_data(topic_expression)
-            if not target_topic:
-                log.error(
-                    "%s 'topic_expression' for error handler '%s' evaluated to empty. Cannot publish.",
-                    log_id_prefix,
-                    output_handler_name,
-                )
-                return
-
-            payload_expression = handler_config.get("payload_expression", "").replace(
-                "task_response:", "input.payload:", 1
-            )
-            if not payload_expression:
-                log.error(
-                    "%s 'payload_expression' missing in error output_handler '%s'. Cannot publish.",
-                    log_id_prefix,
-                    output_handler_name,
-                )
-                return
-            raw_payload_for_solace = msg_for_expression.get_data(payload_expression)
-            if raw_payload_for_solace is None:
-                log.warning(
-                    "%s 'payload_expression' for error handler '%s' evaluated to None. Publishing empty payload.",
-                    log_id_prefix,
-                    output_handler_name,
-                )
-                raw_payload_for_solace = ""
-
-            output_schema = handler_config.get("output_schema")
-            if output_schema and isinstance(output_schema, dict) and output_schema:
-                try:
-                    payload_to_validate = raw_payload_for_solace
-                    if isinstance(raw_payload_for_solace, str):
-                        try:
-                            payload_to_validate = json.loads(raw_payload_for_solace)
-                        except json.JSONDecodeError:
-                            pass
-                    jsonschema.validate(
-                        instance=payload_to_validate, schema=output_schema
-                    )
-                except jsonschema.ValidationError as ve:
-                    log.error(
-                        "%s Error payload validation failed for handler '%s': %s",
+                if handler_config.get("on_validation_error", "log") == "drop":
+                    log.warning(
+                        "%s Dropping message due to schema validation failure for handler '%s'.",
                         log_id_prefix,
                         output_handler_name,
-                        ve.message,
                     )
-                    if handler_config.get("on_validation_error", "log") == "drop":
-                        log.warning(
-                            "%s Dropping error message due to schema validation failure for handler '%s'.",
-                            log_id_prefix,
-                            output_handler_name,
-                        )
-                        return
+                    return
 
-            encoded_payload = encode_payload(
-                payload=raw_payload_for_solace,
-                encoding=handler_config.get("payload_encoding", "utf-8"),
-                payload_format=handler_config.get("payload_format", "json"),
+        encoded_payload = encode_payload(
+            payload=raw_payload_for_solace,
+            encoding=handler_config.get("payload_encoding", "utf-8"),
+            payload_format=handler_config.get("payload_format", "json"),
+        )
+        if not self.data_plane_broker_output:
+            raise RuntimeError(
+                f"Data plane broker output not available. Cannot publish for task {task_id_for_log}."
             )
-
-            if self.data_plane_broker_output:
-                output_data = {
-                    "payload": encoded_payload,
-                    "topic": target_topic,
-                    "user_properties": {},
-                }
-                output_message = SolaceMessage()
-                output_message.set_previous(output_data)
-                event = Event(EventType.MESSAGE, output_message)
-                self.data_plane_broker_output.enqueue(event)
-                log.info(
-                    "%s Enqueued error response for task %s to topic '%s' via data plane output flow.",
-                    log_id_prefix,
-                    task_id_for_log,
-                    target_topic,
-                )
-            else:
-                log.error(
-                    "%s Data plane broker output service not available. Cannot publish error for task %s.",
-                    log_id_prefix,
-                    task_id_for_log,
-                )
-
-        except Exception as e:
-            log.exception(
-                "%s Error sending error response for task %s using handler '%s': %s",
-                log_id_prefix,
-                task_id_for_log,
-                output_handler_name,
-                e,
-            )
+        output_data = {
+            "payload": encoded_payload,
+            "topic": target_topic,
+            "user_properties": {},
+        }
+        output_message = SolaceMessage()
+        output_message.set_previous(output_data)
+        event = Event(EventType.MESSAGE, output_message)
+        self.data_plane_broker_output.enqueue(event)
+        log.info(
+            "%s Enqueued response for task %s to topic '%s' via data plane output flow.",
+            log_id_prefix,
+            task_id_for_log,
+            target_topic,
+        )
 
     async def _send_update_to_external(
         self,
@@ -1606,7 +1632,10 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             "%s Stopping listener: scheduling data plane client stop and terminating processor...",
             log_id_prefix,
         )
-        
+
+        # NACK all pending deferred ACK messages before shutting down
+        self._nack_all_pending_deferred(log_id_prefix)
+
         async_loop = self.get_async_loop()
 
         if async_loop and async_loop.is_running():
@@ -1680,10 +1709,37 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
 
     async def _handle_incoming_solace_message(self, solace_msg: SolaceMessage) -> bool:
         """
+        Boundary wrapper for incoming Solace message processing.
+        Delegates to _process_incoming_solace_message and handles NACK
+        settlement centrally on failure.
+
+        Returns True if task submission was initiated, False otherwise.
+        """
+        handler_config = None
+        try:
+            handler_config, success = await self._process_incoming_solace_message(
+                solace_msg
+            )
+        except Exception as e:
+            log.exception(
+                "%s[HandleIncomingMsg] Unexpected error processing incoming message: %s",
+                self.log_identifier,
+                e,
+            )
+            success = False
+        if not success:
+            self._nack_if_deferred(solace_msg, handler_config)
+        return success
+
+    async def _process_incoming_solace_message(
+        self, solace_msg: SolaceMessage
+    ) -> Tuple[Optional[Dict[str, Any]], bool]:
+        """
         Processes an incoming SolaceMessage from the data plane.
         Finds a matching event handler, authenticates, translates, and submits an A2A task.
-        The SolaceMessage is already ACKed by the EventForwarderComponent in the internal flow.
-        Returns True if task submission was initiated, False otherwise.
+
+        Returns a tuple of (matched_handler_config, success).
+        The caller is responsible for NACK settlement on failure.
         """
         log_id_prefix = f"{self.log_identifier}[HandleIncomingMsg]"
         incoming_topic = solace_msg.get_topic()
@@ -1715,7 +1771,8 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 log_id_prefix,
                 incoming_topic,
             )
-            return False
+            return None, False
+
         try:
             event_data_for_auth = {
                 "solace_message": solace_msg,
@@ -1728,7 +1785,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     log_id_prefix,
                     incoming_topic,
                 )
-                return False
+                return matched_handler_config, False
         except Exception as auth_err:
             log.exception(
                 "%s Error during authentication/enrichment for topic %s: %s",
@@ -1736,7 +1793,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 incoming_topic,
                 auth_err,
             )
-            return False
+            return matched_handler_config, False
 
         try:
             target_agent_name, a2a_parts, external_request_context = (
@@ -1750,7 +1807,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     log_id_prefix,
                     incoming_topic,
                 )
-                return False
+                return matched_handler_config, False
         except Exception as trans_err:
             log.exception(
                 "%s Error during _translate_external_input for topic %s: %s",
@@ -1758,7 +1815,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 incoming_topic,
                 trans_err,
             )
-            return False
+            return matched_handler_config, False
 
         try:
             # Set session behavior for structured invocations (workflows require RUN_BASED)
@@ -1782,7 +1839,19 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 task_id,
                 incoming_topic,
             )
-            return True
+
+            # Start timeout timer for deferred ACK
+            if self._is_deferred_ack(matched_handler_config):
+                policy = self._resolve_ack_policy(matched_handler_config)
+                timeout_ms = policy["timeout_seconds"] * 1000
+                timer_id = f"deferred_ack_timeout_{task_id}"
+                self.add_timer(
+                    delay_ms=timeout_ms,
+                    timer_id=timer_id,
+                    callback=lambda td, tid=task_id: self._handle_deferred_ack_timeout(tid),
+                )
+
+            return matched_handler_config, True
         except PermissionError as perm_err:
             log.error(
                 "%s Permission denied during A2A task submission for topic %s: %s",
@@ -1790,7 +1859,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 incoming_topic,
                 perm_err,
             )
-            return False
+            return matched_handler_config, False
         except Exception as submit_err:
             log.exception(
                 "%s Error submitting A2A task for Solace message on topic %s: %s",
@@ -1798,4 +1867,167 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 incoming_topic,
                 submit_err,
             )
-            return False
+            return matched_handler_config, False
+
+    def _nack_if_deferred(
+        self,
+        solace_msg: SolaceMessage,
+        handler_config: Optional[Dict[str, Any]],
+    ) -> None:
+        """NACKs the message if deferred acknowledgment is enabled for the matched handler.
+        Used for pre-submission failures where the message hasn't been stored in context yet.
+
+        When handler_config is None (no handler matched), we can only NACK if
+        any_handler_defers_ack is True (meaning the forwarder did not ACK).
+        In that case we use gateway-level default policy for the NACK outcome.
+        """
+        if not self.any_handler_defers_ack:
+            # Forwarder ACKed all messages immediately — nothing to settle
+            return
+        if handler_config is not None and not self._is_deferred_ack(handler_config):
+            # This specific handler uses on_receive, but the forwarder still
+            # deferred because another handler requires it. We must ACK the
+            # message since the forwarder didn't.
+            try:
+                solace_msg.call_acknowledgements()
+                log.debug(
+                    "%s ACKed message for on_receive handler (forwarder deferred globally).",
+                    self.log_identifier,
+                )
+            except Exception as e:
+                log.error(
+                    "%s Error ACKing message for on_receive handler: %s",
+                    self.log_identifier,
+                    e,
+                )
+            return
+        # Either handler_config is None (no match) or handler uses on_completion — NACK
+        try:
+            policy = self._resolve_ack_policy(handler_config or {})
+            nack_outcome = policy["on_failure"]["nack_outcome"]
+            solace_msg.call_negative_acknowledgements(nack_outcome)
+            log.debug(
+                "%s NACKed deferred message (pre-submission failure) with outcome '%s'.",
+                self.log_identifier,
+                nack_outcome,
+            )
+        except Exception as e:
+            log.error(
+                "%s Error NACKing deferred message: %s", self.log_identifier, e
+            )
+
+    def _settle_deferred_ack(
+        self, external_request_context: Dict[str, Any], success: bool = True
+    ) -> None:
+        """Settles the deferred ACK/NACK for the original data plane message.
+
+        This method is idempotent — the original message reference is popped from
+        the context on first call, so subsequent calls are no-ops.
+
+        Args:
+            external_request_context: The task context containing the original message reference.
+            success: True to ACK (processing succeeded), False to settle as failure
+                    (ACK or NACK depending on acknowledgment_policy.on_failure.action).
+        """
+        if not external_request_context.get("deferred_ack_enabled"):
+            return
+
+        original_msg = external_request_context.pop("original_data_plane_message", None)
+        if original_msg is None:
+            return  # Already settled (idempotent guard)
+
+        # Cancel the timeout timer if still running
+        task_id = external_request_context.get("a2a_task_id_for_event")
+        if task_id:
+            self.cancel_timer(f"deferred_ack_timeout_{task_id}")
+
+        handler_name = external_request_context.get("event_handler_name")
+        handler_config = self.event_handler_map.get(handler_name, {})
+        policy = self._resolve_ack_policy(handler_config)
+
+        try:
+            if success:
+                original_msg.call_acknowledgements()
+                log.debug(
+                    "%s Deferred ACK sent for task %s.",
+                    self.log_identifier,
+                    task_id or "unknown",
+                )
+            else:
+                failure_action = policy["on_failure"]["action"]
+                if failure_action == "ack":
+                    original_msg.call_acknowledgements()
+                    log.debug(
+                        "%s Deferred ACK sent on failure (configured action='ack') for task %s.",
+                        self.log_identifier,
+                        task_id or "unknown",
+                    )
+                else:
+                    nack_outcome = policy["on_failure"]["nack_outcome"]
+                    original_msg.call_negative_acknowledgements(nack_outcome)
+                    log.debug(
+                        "%s Deferred NACK sent with outcome '%s' for task %s.",
+                        self.log_identifier,
+                        nack_outcome,
+                        task_id or "unknown",
+                    )
+        except Exception as e:
+            log.error(
+                "%s Error settling deferred ACK/NACK for task %s: %s",
+                self.log_identifier,
+                task_id or "unknown",
+                e,
+            )
+
+    def _handle_deferred_ack_timeout(self, task_id: str) -> None:
+        """Called when a deferred ACK timeout fires. NACKs the original message.
+
+        This may race with the normal response path — both call _settle_deferred_ack,
+        which is idempotent via the pop() guard on original_data_plane_message.
+        """
+        log.warning(
+            "%s Deferred ACK timeout for task %s. Settling as failure.",
+            self.log_identifier,
+            task_id,
+        )
+        context = self.task_context_manager.remove_context(task_id)
+        self.task_context_manager.remove_context(f"{task_id}_stream_buffer")
+        if context:
+            self._settle_deferred_ack(context, success=False)
+
+    def _nack_all_pending_deferred(self, log_id_prefix: str) -> None:
+        """NACKs all messages with pending deferred acknowledgments during shutdown."""
+        if not self.any_handler_defers_ack:
+            return
+
+        try:
+            pending = self.task_context_manager.scan_contexts(
+                lambda tid, ctx: (
+                    ctx.get("deferred_ack_enabled")
+                    and ctx.get("original_data_plane_message") is not None
+                )
+            )
+            for task_id, context in pending:
+                log.warning(
+                    "%s Shutdown: NACKing deferred message for task %s",
+                    log_id_prefix,
+                    task_id,
+                )
+                self._settle_deferred_ack(context, success=False)
+
+            # Drain the message queue and NACK any unprocessed messages
+            while self.data_plane_message_queue and not self.data_plane_message_queue.empty():
+                try:
+                    msg = self.data_plane_message_queue.get_nowait()
+                    if msg is not None:
+                        msg.call_negative_acknowledgements()
+                except queue.Empty:
+                    break
+                except Exception:
+                    pass
+        except Exception as e:
+            log.error(
+                "%s Error during deferred ACK cleanup on shutdown: %s",
+                log_id_prefix,
+                e,
+            )
