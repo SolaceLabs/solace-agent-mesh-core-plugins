@@ -5,6 +5,7 @@ Solace Agent Mesh - Event Mesh Gateway Plugin: Component Definition
 import asyncio
 import logging
 import queue
+import time
 import uuid
 import base64
 import json
@@ -144,6 +145,19 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     )
             log.debug("%s Initialized output_handler_transforms.", self.log_identifier)
 
+            # Acknowledgment policy
+            self.default_ack_policy: Dict[str, Any] = self.get_config(
+                "acknowledgment_policy", {}
+            )
+            self.any_handler_defers_ack: bool = any(
+                self._is_deferred_ack(hc) for hc in self.event_handlers_config
+            )
+            if self.any_handler_defers_ack:
+                log.info(
+                    "%s Deferred acknowledgment enabled for one or more event handlers.",
+                    self.log_identifier,
+                )
+
             self.data_plane_internal_app: Optional[SACApp] = None
             self.data_plane_broker_input: Optional[BrokerInput] = None
             self.data_plane_broker_output: Optional[BrokerOutput] = None
@@ -164,6 +178,52 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 e,
             )
             raise
+
+    def _resolve_ack_policy(self, handler_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Resolves the effective acknowledgment policy by merging handler-level
+        overrides over the gateway-level default."""
+        default = self.default_ack_policy
+        override = handler_config.get("acknowledgment_policy", {})
+        if not override:
+            return default
+
+        resolved = {
+            "mode": override.get("mode", default.get("mode", "on_receive")),
+            "timeout_seconds": override.get(
+                "timeout_seconds", default.get("timeout_seconds", 300)
+            ),
+        }
+        default_on_failure = default.get("on_failure", {})
+        override_on_failure = override.get("on_failure", {})
+        resolved["on_failure"] = {
+            "action": override_on_failure.get(
+                "action", default_on_failure.get("action", "nack")
+            ),
+            "nack_outcome": override_on_failure.get(
+                "nack_outcome", default_on_failure.get("nack_outcome", "rejected")
+            ),
+        }
+        return resolved
+
+    def _is_deferred_ack(self, handler_config: Dict[str, Any]) -> bool:
+        """Returns True if the resolved acknowledgment mode is 'on_completion'."""
+        policy = self._resolve_ack_policy(handler_config)
+        return policy.get("mode", "on_receive") == "on_completion"
+
+    def _get_ack_timeout(self, handler_config: Dict[str, Any]) -> int:
+        """Returns the resolved timeout in seconds for deferred acknowledgment."""
+        policy = self._resolve_ack_policy(handler_config)
+        return policy.get("timeout_seconds", 300)
+
+    def _get_failure_action(self, handler_config: Dict[str, Any]) -> str:
+        """Returns the resolved on_failure action ('ack' or 'nack')."""
+        policy = self._resolve_ack_policy(handler_config)
+        return policy.get("on_failure", {}).get("action", "nack")
+
+    def _get_nack_outcome(self, handler_config: Dict[str, Any]) -> str:
+        """Returns the resolved NACK outcome ('rejected' or 'failed')."""
+        policy = self._resolve_ack_policy(handler_config)
+        return policy.get("on_failure", {}).get("nack_outcome", "rejected")
 
     async def _process_file_part_for_output(
         self, part: FilePart, context: Dict, handler_config: Dict
@@ -245,7 +305,13 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                             "name": "target_queue_ref",
                             "required": True,
                             "type": "queue.Queue",
-                        }
+                        },
+                        {
+                            "name": "defer_ack",
+                            "required": False,
+                            "type": "boolean",
+                            "default": False,
+                        },
                     ],
                     "input_schema": {"type": "object"},
                     "output_schema": None,
@@ -257,13 +323,15 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                         self.target_queue: queue.Queue = self.get_config(
                             "target_queue_ref"
                         )
+                        self.defer_ack: bool = self.get_config("defer_ack", False)
 
                     def invoke(
                         self, message: SolaceMessage, data: Dict[str, Any]
                     ) -> None:
                         try:
                             self.target_queue.put_nowait(message)
-                            message.call_acknowledgements()
+                            if not self.defer_ack:
+                                message.call_acknowledgements()
                         except queue.Full:
                             log.error(
                                 "%s Target queue full. Message NACKed.",
@@ -295,7 +363,8 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     "component_class": EventForwarderComponent,
                     "component_name": f"{self.gateway_id}_data_plane_forwarder",
                     "component_config": {
-                        "target_queue_ref": self.data_plane_message_queue
+                        "target_queue_ref": self.data_plane_message_queue,
+                        "defer_ack": self.any_handler_defers_ack,
                     },
                 }
                 input_flow_config = {
@@ -492,9 +561,9 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     solace_msg.get_topic(),
                 )
 
-                # The SolaceMessage was already ACKed by EventForwarderComponent to the internal BrokerInput.
-                # _handle_incoming_solace_message is responsible for the business logic.
-                # Its boolean return can be used for logging or further error handling if needed.
+                # If deferred ACK is disabled, the message was already ACKed by EventForwarderComponent.
+                # If deferred ACK is enabled, _handle_incoming_solace_message is responsible for
+                # carrying the message reference through to response handlers for later settlement.
                 await self._handle_incoming_solace_message(solace_msg)
 
             except queue.Empty:
@@ -510,8 +579,12 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     log_id_prefix,
                     e,
                 )
-                # If an error occurs here, the message was already ACKed by the forwarder.
-                # Log and continue. Consider if specific error handling for the original message is needed.
+                # If deferred ACK is enabled, NACK the message on unhandled errors
+                if self.any_handler_defers_ack and solace_msg is not None:
+                    try:
+                        solace_msg.call_negative_acknowledgements()
+                    except Exception:
+                        pass
                 await asyncio.sleep(1)  # Avoid tight loop on unexpected errors
             finally:
                 if solace_msg is not None and self.data_plane_message_queue is not None:
@@ -1037,6 +1110,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 )
                 return None, [], {"error": f"Input expression evaluation failed: {e}"}
 
+        deferred_ack = self._is_deferred_ack(handler_config)
         external_request_context = {
             "event_handler_name": handler_config.get("name"),
             "original_solace_topic": external_event_data.get_topic(),
@@ -1048,6 +1122,8 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             "user_id_for_a2a": user_identity.get("id"),
             "target_agent_name": target_agent_name,
             "is_structured_invocation": is_structured,
+            "deferred_ack_enabled": deferred_ack,
+            "original_data_plane_message": external_event_data if deferred_ack else None,
         }
 
         if is_structured:
@@ -1098,6 +1174,8 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 event_handler_name,
                 task_data.id,
             )
+            # Processing succeeded even though there's no output handler — ACK
+            self._settle_deferred_ack(external_request_context, success=True)
             return
 
         handler_config = self.output_handler_map.get(output_handler_name)
@@ -1108,6 +1186,8 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 output_handler_name,
                 task_data.id,
             )
+            # Processing succeeded but output handler misconfigured — still ACK
+            self._settle_deferred_ack(external_request_context, success=True)
             return
 
         log.debug(
@@ -1262,6 +1342,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     log_id_prefix,
                     output_handler_name,
                 )
+                self._settle_deferred_ack(external_request_context, success=True)
                 return
             target_topic = msg_for_expression.get_data(topic_expression)
             if not target_topic:
@@ -1270,6 +1351,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     log_id_prefix,
                     output_handler_name,
                 )
+                self._settle_deferred_ack(external_request_context, success=True)
                 return
 
             payload_expression = handler_config.get("payload_expression", "").replace(
@@ -1281,6 +1363,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     log_id_prefix,
                     output_handler_name,
                 )
+                self._settle_deferred_ack(external_request_context, success=True)
                 return
             raw_payload_for_solace = msg_for_expression.get_data(payload_expression)
             if raw_payload_for_solace is None:
@@ -1322,6 +1405,8 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                             log_id_prefix,
                             output_handler_name,
                         )
+                        # Validation drop — processing succeeded but output dropped
+                        self._settle_deferred_ack(external_request_context, success=True)
                         return
 
             encoded_payload = encode_payload(
@@ -1345,12 +1430,14 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     task_data.id,
                     target_topic,
                 )
+                self._settle_deferred_ack(external_request_context, success=True)
             else:
                 log.error(
                     "%s Data plane broker output service not available. Cannot publish response for task %s.",
                     log_id_prefix,
                     task_data.id,
                 )
+                self._settle_deferred_ack(external_request_context, success=False)
 
         except Exception as e:
             log.exception(
@@ -1360,6 +1447,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 output_handler_name,
                 e,
             )
+            self._settle_deferred_ack(external_request_context, success=False)
 
     async def _send_error_to_external(
         self, external_request_context: Dict, error_data: JSONRPCError
@@ -1384,6 +1472,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 event_handler_name,
                 task_id_for_log,
             )
+            self._settle_deferred_ack(external_request_context, success=False)
             return
 
         handler_config = self.output_handler_map.get(output_handler_name)
@@ -1394,6 +1483,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 output_handler_name,
                 task_id_for_log,
             )
+            self._settle_deferred_ack(external_request_context, success=False)
             return
 
         log.info(
@@ -1450,6 +1540,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     log_id_prefix,
                     output_handler_name,
                 )
+                self._settle_deferred_ack(external_request_context, success=False)
                 return
             target_topic = msg_for_expression.get_data(topic_expression)
             if not target_topic:
@@ -1458,6 +1549,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     log_id_prefix,
                     output_handler_name,
                 )
+                self._settle_deferred_ack(external_request_context, success=False)
                 return
 
             payload_expression = handler_config.get("payload_expression", "").replace(
@@ -1469,6 +1561,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     log_id_prefix,
                     output_handler_name,
                 )
+                self._settle_deferred_ack(external_request_context, success=False)
                 return
             raw_payload_for_solace = msg_for_expression.get_data(payload_expression)
             if raw_payload_for_solace is None:
@@ -1504,6 +1597,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                             log_id_prefix,
                             output_handler_name,
                         )
+                        self._settle_deferred_ack(external_request_context, success=False)
                         return
 
             encoded_payload = encode_payload(
@@ -1534,6 +1628,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     log_id_prefix,
                     task_id_for_log,
                 )
+            self._settle_deferred_ack(external_request_context, success=False)
 
         except Exception as e:
             log.exception(
@@ -1543,6 +1638,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 output_handler_name,
                 e,
             )
+            self._settle_deferred_ack(external_request_context, success=False)
 
     async def _send_update_to_external(
         self,
@@ -1606,7 +1702,10 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             "%s Stopping listener: scheduling data plane client stop and terminating processor...",
             log_id_prefix,
         )
-        
+
+        # NACK all pending deferred ACK messages before shutting down
+        self._nack_all_pending_deferred(log_id_prefix)
+
         async_loop = self.get_async_loop()
 
         if async_loop and async_loop.is_running():
@@ -1682,7 +1781,12 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
         """
         Processes an incoming SolaceMessage from the data plane.
         Finds a matching event handler, authenticates, translates, and submits an A2A task.
-        The SolaceMessage is already ACKed by the EventForwarderComponent in the internal flow.
+
+        When deferred ACK is disabled, the message was already ACKed by EventForwarderComponent.
+        When deferred ACK is enabled, this method NACKs the message on any pre-submission failure.
+        On successful submission, the message reference is carried in external_request_context
+        for later settlement by the response handlers.
+
         Returns True if task submission was initiated, False otherwise.
         """
         log_id_prefix = f"{self.log_identifier}[HandleIncomingMsg]"
@@ -1715,7 +1819,11 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 log_id_prefix,
                 incoming_topic,
             )
+            self._nack_if_deferred(solace_msg, None)
             return False
+
+        deferred = self._is_deferred_ack(matched_handler_config)
+
         try:
             event_data_for_auth = {
                 "solace_message": solace_msg,
@@ -1728,6 +1836,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     log_id_prefix,
                     incoming_topic,
                 )
+                self._nack_if_deferred(solace_msg, matched_handler_config)
                 return False
         except Exception as auth_err:
             log.exception(
@@ -1736,6 +1845,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 incoming_topic,
                 auth_err,
             )
+            self._nack_if_deferred(solace_msg, matched_handler_config)
             return False
 
         try:
@@ -1750,6 +1860,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     log_id_prefix,
                     incoming_topic,
                 )
+                self._nack_if_deferred(solace_msg, matched_handler_config)
                 return False
         except Exception as trans_err:
             log.exception(
@@ -1758,6 +1869,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 incoming_topic,
                 trans_err,
             )
+            self._nack_if_deferred(solace_msg, matched_handler_config)
             return False
 
         try:
@@ -1782,6 +1894,17 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 task_id,
                 incoming_topic,
             )
+
+            # Start timeout timer for deferred ACK
+            if deferred:
+                timeout_ms = self._get_ack_timeout(matched_handler_config) * 1000
+                timer_id = f"deferred_ack_timeout_{task_id}"
+                self.add_timer(
+                    delay_ms=timeout_ms,
+                    timer_id=timer_id,
+                    callback=lambda td, tid=task_id: self._handle_deferred_ack_timeout(tid),
+                )
+
             return True
         except PermissionError as perm_err:
             log.error(
@@ -1790,6 +1913,7 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 incoming_topic,
                 perm_err,
             )
+            self._nack_if_deferred(solace_msg, matched_handler_config)
             return False
         except Exception as submit_err:
             log.exception(
@@ -1798,4 +1922,139 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 incoming_topic,
                 submit_err,
             )
+            self._nack_if_deferred(solace_msg, matched_handler_config)
             return False
+
+    def _nack_if_deferred(
+        self,
+        solace_msg: SolaceMessage,
+        handler_config: Optional[Dict[str, Any]],
+    ) -> None:
+        """NACKs the message if deferred acknowledgment is enabled for the handler.
+        Used for pre-submission failures where the message hasn't been stored in context yet."""
+        if handler_config is not None:
+            if not self._is_deferred_ack(handler_config):
+                return
+        elif not self.any_handler_defers_ack:
+            # No handler config available (e.g., no match) — use gateway-level default
+            return
+        try:
+            nack_outcome = self._get_nack_outcome(handler_config or {})
+            solace_msg.call_negative_acknowledgements(nack_outcome)
+            log.debug(
+                "%s NACKed deferred message (pre-submission failure) with outcome '%s'.",
+                self.log_identifier,
+                nack_outcome,
+            )
+        except Exception as e:
+            log.error(
+                "%s Error NACKing deferred message: %s", self.log_identifier, e
+            )
+
+    def _settle_deferred_ack(
+        self, external_request_context: Dict[str, Any], success: bool = True
+    ) -> None:
+        """Settles the deferred ACK/NACK for the original data plane message.
+
+        Args:
+            external_request_context: The task context containing the original message reference.
+            success: True to ACK (processing succeeded), False to settle as failure
+                    (ACK or NACK depending on acknowledgment_policy.on_failure.action).
+        """
+        if not external_request_context.get("deferred_ack_enabled"):
+            return
+
+        original_msg = external_request_context.pop("original_data_plane_message", None)
+        if original_msg is None:
+            return  # Already settled
+
+        # Cancel the timeout timer if still running
+        task_id = external_request_context.get("a2a_task_id_for_event")
+        if task_id:
+            self.cancel_timer(f"deferred_ack_timeout_{task_id}")
+
+        handler_name = external_request_context.get("event_handler_name")
+        handler_config = self.event_handler_map.get(handler_name, {})
+
+        try:
+            if success:
+                original_msg.call_acknowledgements()
+                log.debug(
+                    "%s Deferred ACK sent for task %s.",
+                    self.log_identifier,
+                    task_id or "unknown",
+                )
+            else:
+                failure_action = self._get_failure_action(handler_config)
+                if failure_action == "ack":
+                    original_msg.call_acknowledgements()
+                    log.debug(
+                        "%s Deferred ACK sent on failure (configured action='ack') for task %s.",
+                        self.log_identifier,
+                        task_id or "unknown",
+                    )
+                else:
+                    nack_outcome = self._get_nack_outcome(handler_config)
+                    original_msg.call_negative_acknowledgements(nack_outcome)
+                    log.debug(
+                        "%s Deferred NACK sent with outcome '%s' for task %s.",
+                        self.log_identifier,
+                        nack_outcome,
+                        task_id or "unknown",
+                    )
+        except Exception as e:
+            log.error(
+                "%s Error settling deferred ACK/NACK for task %s: %s",
+                self.log_identifier,
+                task_id or "unknown",
+                e,
+            )
+
+    def _handle_deferred_ack_timeout(self, task_id: str) -> None:
+        """Called when a deferred ACK timeout fires. NACKs the original message."""
+        log.warning(
+            "%s Deferred ACK timeout for task %s. Settling as failure.",
+            self.log_identifier,
+            task_id,
+        )
+        context = self.task_context_manager.remove_context(task_id)
+        self.task_context_manager.remove_context(f"{task_id}_stream_buffer")
+        if context:
+            self._settle_deferred_ack(context, success=False)
+
+    def _nack_all_pending_deferred(self, log_id_prefix: str) -> None:
+        """NACKs all messages with pending deferred acknowledgments during shutdown."""
+        if not self.any_handler_defers_ack:
+            return
+
+        try:
+            pending = self.task_context_manager.scan_contexts(
+                lambda tid, ctx: (
+                    ctx.get("deferred_ack_enabled")
+                    and ctx.get("original_data_plane_message") is not None
+                )
+            )
+            for task_id, context in pending:
+                log.warning(
+                    "%s Shutdown: NACKing deferred message for task %s",
+                    log_id_prefix,
+                    task_id,
+                )
+                self._settle_deferred_ack(context, success=False)
+
+            # Drain the message queue and NACK any unprocessed messages
+            while self.data_plane_message_queue and not self.data_plane_message_queue.empty():
+                try:
+                    msg = self.data_plane_message_queue.get_nowait()
+                    if msg is not None:
+                        msg.call_negative_acknowledgements()
+                except queue.Empty:
+                    break
+                except Exception:
+                    pass
+        except Exception as e:
+            log.error(
+                "%s Error during deferred ACK cleanup on shutdown: %s",
+                log_id_prefix,
+                e,
+            )

@@ -26,6 +26,8 @@ class TestMessageProcessorLoopBehavior:
         component.data_plane_message_queue = queue.Queue(maxsize=100)
         component.stop_signal = asyncio.Event()
 
+        component.any_handler_defers_ack = False
+
         # Mock the message handler
         component._handle_incoming_solace_message = AsyncMock(return_value=True)
 
