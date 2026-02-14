@@ -202,6 +202,20 @@ acknowledgment_policy:
 
 > **Warning:** Ensure your processing is idempotent when using this pattern, as messages may be delivered more than once.
 
+To prevent infinite redelivery loops, configure a **Maximum Redelivery Count** on the broker queue. When a message exceeds the maximum number of redelivery attempts, the broker automatically moves it to the queue's dead message queue (DMQ) instead of redelivering it again. This gives you automatic retry with a safety net.
+
+To configure this on the broker (CLI example):
+
+```
+solace(configure)# message-spool
+solace(configure/message-spool)# queue <queue-name>
+solace(configure/message-spool/queue)# max-redelivery 3
+```
+
+This sets a limit of 3 redelivery attempts. After the third failed attempt, the message is moved to the DMQ. If no max redelivery count is set (the default), messages will be redelivered indefinitely.
+
+> **Tip:** Combine this with a DMQ (dead message queue) configured on the queue so that messages that exhaust their redelivery attempts are preserved for inspection rather than discarded.
+
 **Pattern 2: Dead letter queue**
 
 Messages that fail processing are moved to a dead letter queue (DLQ) for later inspection and manual reprocessing.
