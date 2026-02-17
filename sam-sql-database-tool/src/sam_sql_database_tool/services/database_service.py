@@ -13,6 +13,9 @@ from sqlalchemy import inspect, text, select, distinct, Table, MetaData
 import sqlalchemy as sa
 import yaml
 import logging
+
+from .connection_validator import validate_connection_string
+
 log = logging.getLogger(__name__)
 
 
@@ -26,6 +29,8 @@ class DatabaseService:
             connection_string: Database connection string.
             cache_ttl_seconds: Time-to-live for schema cache in seconds (default: 3600 = 1 hour).
         """
+        validate_connection_string(connection_string)
+
         self.connection_string = connection_string
         self.engine: Optional[Engine] = None
         self._schema_cache: Optional[str] = None
