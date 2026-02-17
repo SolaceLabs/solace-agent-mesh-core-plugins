@@ -13,6 +13,14 @@ class ConnectionStringError(ValueError):
     """Raised when connection string validation fails."""
     pass
 
+env_var_pattern = re.compile(r'''
+    \$\{            
+        [A-Za-z_][A-Za-z0-9_]*  
+        \}              
+        |
+        \$[A-Za-z_][A-Za-z0-9_]*
+''', re.VERBOSE)
+
 
 def validate_connection_string(connection_string: str) -> None:
     """Validate database connection string format and required components.
@@ -37,7 +45,6 @@ def validate_connection_string(connection_string: str) -> None:
             "Please provide a valid connection string."
         )
 
-    env_var_pattern = re.compile(r'\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*')
     env_vars = env_var_pattern.findall(connection_string)
     if env_vars:
         log.error("Connection string contains unresolved environment variables: %s", env_vars)
