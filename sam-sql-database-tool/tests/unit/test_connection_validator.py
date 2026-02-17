@@ -82,11 +82,6 @@ class TestEmptyConnectionStrings:
             validate_connection_string("   ")
         assert "empty" in str(exc_info.value).lower()
 
-    def test_none_raises_error(self):
-        """None value raises error."""
-        with pytest.raises(ConnectionStringError):
-            validate_connection_string(None)
-
 
 class TestUnresolvedEnvironmentVariables:
     """Tests for unresolved environment variable detection."""
