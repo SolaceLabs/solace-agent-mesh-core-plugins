@@ -1,10 +1,12 @@
 """Unit tests for connection string validation."""
 
 import pytest
+from pydantic import ValidationError
 from sam_sql_database_tool.services.connection_validator import (
     ConnectionStringError,
     validate_connection_string,
 )
+from sam_sql_database_tool.tools import DatabaseConfig
 
 
 class TestValidConnectionStrings:
@@ -205,3 +207,52 @@ class TestDatabaseSpecificFormats:
     def test_oracle_with_service_name(self):
         """Oracle connection string format."""
         validate_connection_string("oracle+oracledb://user:pass@localhost:1521/mydb")
+
+
+class TestPydanticIntegration:
+    """Tests for Pydantic model validation of connection strings."""
+
+    def test_valid_config(self):
+        """Valid DatabaseConfig with proper connection string."""
+        config = DatabaseConfig(
+            tool_name="test_tool",
+            connection_string="postgresql://user:pass@localhost:5432/mydb"
+        )
+        assert config.tool_name == "test_tool"
+
+    def test_invalid_connection_string_raises_validation_error(self):
+        """Invalid connection string raises Pydantic ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            DatabaseConfig(
+                tool_name="test_tool",
+                connection_string="bad-connection-string"
+            )
+        assert "connection_string" in str(exc_info.value)
+
+    def test_empty_connection_string_raises_validation_error(self):
+        """Empty connection string raises Pydantic ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            DatabaseConfig(
+                tool_name="test_tool",
+                connection_string=""
+            )
+        assert "connection_string" in str(exc_info.value)
+
+    def test_env_var_in_connection_string_raises_validation_error(self):
+        """Unresolved env var in connection string raises Pydantic ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            DatabaseConfig(
+                tool_name="test_tool",
+                connection_string="postgresql://user:pass@${DB_HOST}:5432/mydb"
+            )
+        assert "connection_string" in str(exc_info.value)
+
+    def test_missing_host_raises_validation_error(self):
+        """Connection string missing host raises Pydantic ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            DatabaseConfig(
+                tool_name="test_tool",
+                connection_string="postgresql://"
+            )
+        assert "connection_string" in str(exc_info.value)
+

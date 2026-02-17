@@ -1,7 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from sam_sql_database_tool.services.database_service import DatabaseService
-from sam_sql_database_tool.services.connection_validator import ConnectionStringError
 
 @pytest.fixture
 def mock_db_service():
@@ -50,9 +49,10 @@ class TestDatabaseService:
         assert not mock_db_service._looks_like_enum_column("description")
 
     def test_execute_query_no_engine(self):
-        """Test that an invalid connection string raises ConnectionStringError."""
-        with pytest.raises(ConnectionStringError, match="Invalid database connection string format"):
-            DatabaseService("bad-connection-string")
+        """Test that an invalid connection string causes engine creation to fail."""
+        with patch('sqlalchemy.create_engine', side_effect=Exception("Connection failed")):
+            with pytest.raises(Exception, match="Connection failed"):
+                DatabaseService("postgresql://localhost/testdb")
 
     def test_cache_initialization(self, mock_db_service):
         """Test that cache is properly initialized."""

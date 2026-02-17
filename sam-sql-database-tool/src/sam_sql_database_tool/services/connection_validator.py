@@ -2,7 +2,10 @@
 
 import re
 import logging
+from typing import Any
 
+from pydantic import GetCoreSchemaHandler
+from pydantic_core import CoreSchema, core_schema
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import ArgumentError
 
@@ -13,20 +16,24 @@ class ConnectionStringError(ValueError):
     """Raised when connection string validation fails."""
     pass
 
+
 env_var_pattern = re.compile(r'''
-    \$\{            
-        [A-Za-z_][A-Za-z0-9_]*  
-        \}              
+    \$\{
+        [A-Za-z_][A-Za-z0-9_]*
+        \}
         |
         \$[A-Za-z_][A-Za-z0-9_]*
 ''', re.VERBOSE)
 
 
-def validate_connection_string(connection_string: str) -> None:
+def validate_connection_string(connection_string: str) -> str:
     """Validate database connection string format and required components.
 
     Args:
         connection_string: Database connection string to validate.
+
+    Returns:
+        The validated connection string.
 
     Raises:
         ConnectionStringError: If validation fails with a descriptive message.
@@ -73,3 +80,22 @@ def validate_connection_string(connection_string: str) -> None:
         "Connection string validated: dialect=%s, host=%s, database=%s",
         url.drivername, url.host, url.database
     )
+    return connection_string
+
+
+class ValidatedConnectionString(str):
+    """A string type that validates database connection strings via Pydantic."""
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source_type: Any, handler: GetCoreSchemaHandler
+    ) -> CoreSchema:
+        return core_schema.no_info_after_validator_function(
+            cls._validate,
+            core_schema.str_schema(),
+        )
+
+    @classmethod
+    def _validate(cls, value: str) -> str:
+        validate_connection_string(value)
+        return value
