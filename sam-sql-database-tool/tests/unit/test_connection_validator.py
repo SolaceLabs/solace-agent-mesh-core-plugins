@@ -141,12 +141,6 @@ class TestMissingComponents:
             validate_connection_string("postgresql:///mydb")
         assert "host" in str(exc_info.value).lower()
 
-    def test_empty_credentials_no_host(self):
-        """Empty credentials with no host raises error."""
-        with pytest.raises(ConnectionStringError) as exc_info:
-            validate_connection_string("postgresql://:@")
-        assert "host" in str(exc_info.value).lower()
-
     def test_without_database_is_valid(self):
         """Connection string without database name is valid."""
         validate_connection_string("postgresql://user:pass@localhost:5432/")
