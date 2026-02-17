@@ -12,17 +12,14 @@ from sqlalchemy.exc import ArgumentError
 log = logging.getLogger(__name__)
 
 
-class ConnectionStringError(ValueError):
-    """Raised when connection string validation fails."""
-    pass
-
-
 env_var_pattern = re.compile(r'''
     \$\{
         [A-Za-z_][A-Za-z0-9_]*
-        \}
-        |
-        \$[A-Za-z_][A-Za-z0-9_]*
+    \}
+    |
+    \$\{\}
+    |
+    \$[A-Za-z_][A-Za-z0-9_]*
 ''', re.VERBOSE)
 
 
@@ -36,42 +33,42 @@ def validate_connection_string(connection_string: str) -> str:
         The validated connection string.
 
     Raises:
-        ConnectionStringError: If validation fails with a descriptive message.
+        ValueError: If validation fails with a descriptive message.
     """
     if not connection_string or not connection_string.strip():
-        log.error("Connection string is empty or whitespace only")
-        raise ConnectionStringError(
+        raise ValueError(
             "Database connection string is empty. "
             "Please provide a valid connection string."
         )
 
     env_vars = env_var_pattern.findall(connection_string)
     if env_vars:
-        log.error("Connection string contains unresolved environment variables: %s", env_vars)
-        raise ConnectionStringError(
+        raise ValueError(
             f"Database connection string contains unresolved environment variable(s): {', '.join(env_vars)}. "
             "Ensure the environment variable is set and properly configured."
         )
 
     try:
         url = make_url(connection_string)
-    except ArgumentError as e:
-        log.error("Invalid connection string format: %s", e)
-        raise ConnectionStringError(
+    except (ArgumentError) as e:
+        raise ValueError(
             f"Invalid database connection string format: {e}. "
             "Expected format: dialect+driver://user:password@host:port/database"
         ) from e
+    except ValueError as e:
+        message = str(e)
+        if "invalid literal for int() with base 10" in message:
+            message = "Invalid port number in connection string"
+        raise ValueError(f"Failed to parse database connection string: {message}") from e
 
     if not url.drivername:
-        log.error("Connection string missing database dialect")
-        raise ConnectionStringError(
+        raise ValueError(
             "Database connection string missing dialect (e.g., postgresql, mysql). "
             "Expected format: dialect+driver://user:password@host:port/database"
         )
 
     if not url.host:
-        log.error("Connection string missing host")
-        raise ConnectionStringError(
+        raise ValueError(
             "Database connection string missing host. "
             "Expected format: dialect+driver://user:password@host:port/database"
         )

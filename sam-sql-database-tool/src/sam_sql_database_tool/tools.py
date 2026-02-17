@@ -40,11 +40,11 @@ class DatabaseConfig(BaseModel):
         description="Time-to-live for schema cache in seconds (default: 3600 = 1 hour).",
     )
 
-    @field_validator('connection_string', mode='after')
+    @field_validator('connection_string', mode='before')
     @classmethod
-    def validate_connection_string(cls, v: SecretStr) -> SecretStr:
-        """Validate the connection string format."""
-        validate_connection_string(v.get_secret_value())
+    def validate_connection_string_format(cls, v: str) -> str:
+        """Validate connection string format before converting to SecretStr."""
+        validate_connection_string(v)
         return v
 
     @model_validator(mode='after')

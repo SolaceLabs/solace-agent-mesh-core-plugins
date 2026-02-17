@@ -2,10 +2,7 @@
 
 import pytest
 from pydantic import ValidationError
-from sam_sql_database_tool.services.connection_validator import (
-    ConnectionStringError,
-    validate_connection_string,
-)
+from sam_sql_database_tool.services.connection_validator import validate_connection_string
 from sam_sql_database_tool.tools import DatabaseConfig
 
 
@@ -74,13 +71,13 @@ class TestEmptyConnectionStrings:
 
     def test_empty_string(self):
         """Empty string raises error."""
-        with pytest.raises(ConnectionStringError) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             validate_connection_string("")
         assert "empty" in str(exc_info.value).lower()
 
     def test_whitespace_only(self):
         """Whitespace-only string raises error."""
-        with pytest.raises(ConnectionStringError) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             validate_connection_string("   ")
         assert "empty" in str(exc_info.value).lower()
 
@@ -90,20 +87,20 @@ class TestUnresolvedEnvironmentVariables:
 
     def test_bash_style_env_var(self):
         """Detects ${VAR} style env vars."""
-        with pytest.raises(ConnectionStringError) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             validate_connection_string("postgresql://user:pass@${DB_HOST}:5432/mydb")
         assert "DB_HOST" in str(exc_info.value)
         assert "environment variable" in str(exc_info.value).lower()
 
     def test_simple_env_var(self):
         """Detects $VAR style env vars."""
-        with pytest.raises(ConnectionStringError) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             validate_connection_string("postgresql://user:pass@$DB_HOST:5432/mydb")
         assert "DB_HOST" in str(exc_info.value)
 
     def test_multiple_env_vars(self):
         """Detects multiple unresolved env vars."""
-        with pytest.raises(ConnectionStringError) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             validate_connection_string("postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:5432/mydb")
         error_msg = str(exc_info.value)
         assert "DB_USER" in error_msg
@@ -112,13 +109,13 @@ class TestUnresolvedEnvironmentVariables:
 
     def test_entire_string_is_env_var(self):
         """Entire connection string is an unresolved env var."""
-        with pytest.raises(ConnectionStringError) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             validate_connection_string("${DATABASE_URL}")
         assert "DATABASE_URL" in str(exc_info.value)
 
     def test_empty_env_var_braces(self):
         """Empty braces ${} are detected."""
-        with pytest.raises(ConnectionStringError) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             validate_connection_string("postgresql://user:pass@${}:5432/mydb")
         assert "environment variable" in str(exc_info.value).lower()
 
@@ -128,13 +125,13 @@ class TestMissingComponents:
 
     def test_missing_host_empty(self):
         """Missing host (empty) raises error."""
-        with pytest.raises(ConnectionStringError) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             validate_connection_string("postgresql://user:pass@:5432/mydb")
         assert "host" in str(exc_info.value).lower()
 
     def test_missing_host_completely(self):
         """Missing host completely raises error."""
-        with pytest.raises(ConnectionStringError) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             validate_connection_string("postgresql:///mydb")
         assert "host" in str(exc_info.value).lower()
 
@@ -146,7 +143,7 @@ class TestMissingComponents:
 
     def test_only_dialect(self):
         """Only dialect provided raises error (missing host)."""
-        with pytest.raises(ConnectionStringError) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             validate_connection_string("postgresql://")
         assert "host" in str(exc_info.value).lower()
 
@@ -156,7 +153,7 @@ class TestInvalidFormat:
 
     def test_random_string(self):
         """Random string raises error."""
-        with pytest.raises(ConnectionStringError) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             validate_connection_string("not-a-connection-string")
         assert "format" in str(exc_info.value).lower() or "host" in str(exc_info.value).lower()
 
@@ -169,7 +166,7 @@ class TestInvalidFormat:
 
     def test_malformed_url(self):
         """Malformed URL raises error."""
-        with pytest.raises(ConnectionStringError):
+        with pytest.raises(ValueError):
             validate_connection_string("postgresql:user:pass@localhost/db")
 
 
@@ -187,6 +184,12 @@ class TestPortValidation:
     def test_port_65535(self):
         """Port 65535 is valid."""
         validate_connection_string("postgresql://user:pass@localhost:65535/mydb")
+
+    def test_empty_port_string(self):
+        """Empty port string raises error with helpful message."""
+        with pytest.raises(ValueError) as exc_info:
+            validate_connection_string("postgresql://user:pass@localhost:/mydb")
+        assert "invalid port number" in str(exc_info.value).lower()
 
 
 class TestDatabaseSpecificFormats:
@@ -207,6 +210,42 @@ class TestDatabaseSpecificFormats:
     def test_oracle_with_service_name(self):
         """Oracle connection string format."""
         validate_connection_string("oracle+oracledb://user:pass@localhost:1521/mydb")
+
+
+class TestReadmeExamples:
+    """Tests for connection string formats documented in README.md.
+
+    These tests validate that the connection string formats shown in the
+    README documentation are accepted by the validator.
+    """
+
+    def test_postgresql_psycopg2(self):
+        """PostgreSQL format: postgresql+psycopg2://user:password@host:port/dbname"""
+        validate_connection_string("postgresql+psycopg2://user:password@localhost:5432/dbname")
+
+    def test_mysql_pymysql(self):
+        """MySQL format: mysql+pymysql://user:password@host:port/dbname"""
+        validate_connection_string("mysql+pymysql://user:password@localhost:3306/dbname")
+
+    def test_mariadb_pymysql(self):
+        """MariaDB format: mysql+pymysql://user:password@host:port/dbname"""
+        validate_connection_string("mysql+pymysql://user:password@localhost:3306/dbname")
+
+    def test_mssql_freetds(self):
+        """MSSQL FreeTDS format with query params."""
+        validate_connection_string(
+            "mssql+pyodbc://user:password@localhost:1433/dbname?driver=FreeTDS&TrustServerCertificate=yes"
+        )
+
+    def test_mssql_microsoft_odbc(self):
+        """MSSQL Microsoft ODBC format with query params."""
+        validate_connection_string(
+            "mssql+pyodbc://user:password@localhost:1433/dbname?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"
+        )
+
+    def test_oracle_oracledb_service_name(self):
+        """Oracle format: oracle+oracledb://user:password@host:port/?service_name=NAME"""
+        validate_connection_string("oracle+oracledb://user:password@localhost:1521/?service_name=XEPDB1")
 
 
 class TestPydanticIntegration:
