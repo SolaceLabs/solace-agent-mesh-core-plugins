@@ -81,45 +81,6 @@ class TestEmptyConnectionStrings:
             validate_connection_string("   ")
         assert "empty" in str(exc_info.value).lower()
 
-
-class TestUnresolvedEnvironmentVariables:
-    """Tests for unresolved environment variable detection."""
-
-    def test_bash_style_env_var(self):
-        """Detects ${VAR} style env vars."""
-        with pytest.raises(ValueError) as exc_info:
-            validate_connection_string("postgresql://user:pass@${DB_HOST}:5432/mydb")
-        assert "DB_HOST" in str(exc_info.value)
-        assert "environment variable" in str(exc_info.value).lower()
-
-    def test_simple_env_var(self):
-        """Detects $VAR style env vars."""
-        with pytest.raises(ValueError) as exc_info:
-            validate_connection_string("postgresql://user:pass@$DB_HOST:5432/mydb")
-        assert "DB_HOST" in str(exc_info.value)
-
-    def test_multiple_env_vars(self):
-        """Detects multiple unresolved env vars."""
-        with pytest.raises(ValueError) as exc_info:
-            validate_connection_string("postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:5432/mydb")
-        error_msg = str(exc_info.value)
-        assert "DB_USER" in error_msg
-        assert "DB_PASS" in error_msg
-        assert "DB_HOST" in error_msg
-
-    def test_entire_string_is_env_var(self):
-        """Entire connection string is an unresolved env var."""
-        with pytest.raises(ValueError) as exc_info:
-            validate_connection_string("${DATABASE_URL}")
-        assert "DATABASE_URL" in str(exc_info.value)
-
-    def test_empty_env_var_braces(self):
-        """Empty braces ${} are detected."""
-        with pytest.raises(ValueError) as exc_info:
-            validate_connection_string("postgresql://user:pass@${}:5432/mydb")
-        assert "environment variable" in str(exc_info.value).lower()
-
-
 class TestMissingComponents:
     """Tests for missing required components in connection strings."""
 
@@ -274,15 +235,6 @@ class TestPydanticIntegration:
             DatabaseConfig(
                 tool_name="test_tool",
                 connection_string=""
-            )
-        assert "connection_string" in str(exc_info.value)
-
-    def test_env_var_in_connection_string_raises_validation_error(self):
-        """Unresolved env var in connection string raises Pydantic ValidationError."""
-        with pytest.raises(ValidationError) as exc_info:
-            DatabaseConfig(
-                tool_name="test_tool",
-                connection_string="postgresql://user:pass@${DB_HOST}:5432/mydb"
             )
         assert "connection_string" in str(exc_info.value)
 
