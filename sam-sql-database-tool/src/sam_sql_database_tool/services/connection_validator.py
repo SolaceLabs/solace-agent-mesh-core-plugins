@@ -69,13 +69,6 @@ def validate_connection_string(connection_string: str) -> None:
             "Expected format: dialect+driver://user:password@host:port/database"
         )
 
-    if not url.database:
-        log.error("Connection string missing database name")
-        raise ConnectionStringError(
-            "Database connection string missing database name. "
-            "Expected format: dialect+driver://user:password@host:port/database"
-        )
-
     if url.port is not None:
         if not isinstance(url.port, int) or url.port <= 0 or url.port > 65535:
             log.error("Connection string has invalid port: %s", url.port)

@@ -141,20 +141,14 @@ class TestMissingComponents:
             validate_connection_string("postgresql:///mydb")
         assert "host" in str(exc_info.value).lower()
 
-    def test_missing_database(self):
-        """Missing database name raises error."""
-        with pytest.raises(ConnectionStringError) as exc_info:
-            validate_connection_string("postgresql://user:pass@localhost:5432/")
-        assert "database" in str(exc_info.value).lower()
-
-    def test_missing_database_no_slash(self):
-        """Missing database (no trailing slash) raises error."""
-        with pytest.raises(ConnectionStringError) as exc_info:
-            validate_connection_string("postgresql://user:pass@localhost:5432")
-        assert "database" in str(exc_info.value).lower()
+    def test_without_database_is_valid(self):
+        """Connection string without database name is valid."""
+        validate_connection_string("postgresql://user:pass@localhost:5432/")
+        validate_connection_string("postgresql://user:pass@localhost:5432")
+        validate_connection_string("postgresql://localhost")
 
     def test_only_dialect(self):
-        """Only dialect provided raises error."""
+        """Only dialect provided raises error (missing host)."""
         with pytest.raises(ConnectionStringError) as exc_info:
             validate_connection_string("postgresql://")
         assert "host" in str(exc_info.value).lower()
@@ -169,10 +163,12 @@ class TestInvalidFormat:
             validate_connection_string("not-a-connection-string")
         assert "format" in str(exc_info.value).lower() or "host" in str(exc_info.value).lower()
 
-    def test_http_url(self):
-        """HTTP URL raises error (wrong protocol)."""
-        with pytest.raises(ConnectionStringError):
-            validate_connection_string("http://example.com/database")
+    def test_http_url_passes_validation(self):
+        """HTTP URL passes validation (has valid structure, dialect checked later by SQLAlchemy).
+
+        Note: We only validate URL structure (host present, no unresolved env vars).
+        """
+        validate_connection_string("http://example.com")
 
     def test_malformed_url(self):
         """Malformed URL raises error."""
