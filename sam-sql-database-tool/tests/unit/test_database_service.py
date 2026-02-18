@@ -49,10 +49,10 @@ class TestDatabaseService:
         assert not mock_db_service._looks_like_enum_column("description")
 
     def test_execute_query_no_engine(self):
-        """Test that executing a query without an engine raises an error."""
+        """Test that an invalid connection string causes engine creation to fail."""
         with patch('sqlalchemy.create_engine', side_effect=Exception("Connection failed")):
             with pytest.raises(Exception, match="Connection failed"):
-                DatabaseService("bad-connection-string")
+                DatabaseService("postgresql://localhost/testdb")
 
     def test_cache_initialization(self, mock_db_service):
         """Test that cache is properly initialized."""

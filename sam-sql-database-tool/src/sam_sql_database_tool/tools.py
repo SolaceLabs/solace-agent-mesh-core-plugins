@@ -1,9 +1,10 @@
 from typing import Dict, Any, Optional
-from pydantic import BaseModel, Field, model_validator, SecretStr
+from pydantic import BaseModel, Field, model_validator, field_validator, SecretStr
 from google.genai import types as adk_types
 from solace_agent_mesh.agent.tools.dynamic_tool import DynamicTool
 from solace_agent_mesh.agent.sac.component import SamAgentComponent
 from .services.database_service import DatabaseService
+from .services.connection_validator import validate_connection_string
 
 import logging
 log = logging.getLogger(__name__)
@@ -38,6 +39,13 @@ class DatabaseConfig(BaseModel):
         default=3600,
         description="Time-to-live for schema cache in seconds (default: 3600 = 1 hour).",
     )
+
+    @field_validator('connection_string', mode='before')
+    @classmethod
+    def validate_connection_string_format(cls, v: str) -> str:
+        """Validate connection string format before converting to SecretStr."""
+        validate_connection_string(v)
+        return v
 
     @model_validator(mode='after')
     def check_required_fields(self) -> 'DatabaseConfig':
