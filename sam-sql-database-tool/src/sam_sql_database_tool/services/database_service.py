@@ -13,7 +13,6 @@ from sqlalchemy import inspect, text, select, distinct, Table, MetaData
 import sqlalchemy as sa
 import yaml
 import logging
-
 log = logging.getLogger(__name__)
 
 
