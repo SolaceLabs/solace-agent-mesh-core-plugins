@@ -13,6 +13,7 @@ class TestConnectionValidationIntegration:
         tool_config_dict = db_tool_provider.tool_config.model_dump()
         conn_str = tool_config_dict['connection_string'].get_secret_value()
 
+        # test valid string
         config = DatabaseConfig(
             tool_name="test_tool",
             connection_string=SecretStr(conn_str)
@@ -22,6 +23,7 @@ class TestConnectionValidationIntegration:
     def test_invalid_connection_string_rejected(self):
         """Invalid connection string is rejected at config creation."""
         with pytest.raises(ValidationError) as exc_info:
+            # test invalid string
             DatabaseConfig(
                 tool_name="test_tool",
                 connection_string="not-a-valid-connection-string"
