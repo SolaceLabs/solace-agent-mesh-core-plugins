@@ -1,7 +1,7 @@
 """Unit tests for connection string validation."""
 
 import pytest
-from pydantic import ValidationError
+from pydantic import ValidationError, SecretStr
 from sam_sql_database_tool.services.connection_validator import validate_connection_string
 from sam_sql_database_tool.tools import DatabaseConfig
 
@@ -64,6 +64,12 @@ class TestValidConnectionStrings:
     def test_with_ipv4_host(self):
         """IPv4 address as host."""
         validate_connection_string("postgresql://user:pass@192.168.1.100:5432/mydb")
+
+    def test_secretstr_value(self):
+        """SecretStr wrapped connection string is unwrapped and validated."""
+        secret = SecretStr("postgresql://user:pass@localhost:5432/mydb")
+        result = validate_connection_string(secret)
+        assert result == "postgresql://user:pass@localhost:5432/mydb"
 
 
 class TestEmptyConnectionStrings:
