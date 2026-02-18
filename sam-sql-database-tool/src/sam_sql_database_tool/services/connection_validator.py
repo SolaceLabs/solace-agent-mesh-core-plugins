@@ -1,11 +1,6 @@
 """Validation utilities for database connection strings."""
 
-import re
 import logging
-from typing import Any
-
-from pydantic import GetCoreSchemaHandler
-from pydantic_core import CoreSchema, core_schema
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import ArgumentError
 
