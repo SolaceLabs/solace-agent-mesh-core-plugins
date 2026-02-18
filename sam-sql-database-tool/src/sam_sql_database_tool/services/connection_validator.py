@@ -61,21 +61,3 @@ def validate_connection_string(connection_string: str) -> str:
         url.drivername, url.host, url.database
     )
     return connection_string
-
-
-class ValidatedConnectionString(str):
-    """A string type that validates database connection strings via Pydantic."""
-
-    @classmethod
-    def __get_pydantic_core_schema__(
-        cls, source_type: Any, handler: GetCoreSchemaHandler
-    ) -> CoreSchema:
-        return core_schema.no_info_after_validator_function(
-            cls._validate,
-            core_schema.str_schema(),
-        )
-
-    @classmethod
-    def _validate(cls, value: str) -> str:
-        validate_connection_string(value)
-        return value
