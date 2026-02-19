@@ -157,7 +157,7 @@ class NucliaRagToolConfig(BaseModel):
         description="The Nuclia Service Account API token for authentication",
         min_length=1,
     )
-    api_key: str = Field(description="The Nuclia Account ID", min_length=1)
+    account_id: str = Field(description="The Nuclia Account ID", min_length=1)
 
     # --- Performance & Cost Control ---
     top_k: int = Field(

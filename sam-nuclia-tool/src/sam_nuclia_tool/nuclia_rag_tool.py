@@ -338,12 +338,9 @@ class NucliaRagTool(DynamicTool):
         Create an ephemeral token for accessing resources.
         """
         base_url = self.tool_config.base_url
-        api_key = self.tool_config.api_key
+        account_id = self.tool_config.account_id
         kb_id = self.tool_config.kb_id
         token = self.tool_config.token
-
-        # Use api_key as the account ID
-        account_id = api_key
 
         # Construct the API endpoint
         endpoint = f"{base_url}/account/{account_id}/kb/{kb_id}/ephemeral_tokens"
