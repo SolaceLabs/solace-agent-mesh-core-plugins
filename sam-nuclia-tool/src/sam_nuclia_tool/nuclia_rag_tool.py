@@ -338,12 +338,9 @@ class NucliaRagTool(DynamicTool):
         Create an ephemeral token for accessing resources.
         """
         base_url = self.tool_config.base_url
-        api_key = self.tool_config.api_key
+        account_id = self.tool_config.account_id
         kb_id = self.tool_config.kb_id
         token = self.tool_config.token
-
-        # Use api_key as the account ID
-        account_id = api_key
 
         # Construct the API endpoint
         endpoint = f"{base_url}/account/{account_id}/kb/{kb_id}/ephemeral_tokens"
@@ -760,6 +757,62 @@ class NucliaRagTool(DynamicTool):
         formatted_answer, _, markdown_citations = self._format_answer_with_citations(
             ask_response
         )
+
+        # Emitting an event with query, context, and answer if remi_publish_topic is configured
+        remi_topic_template = self.tool_config.remi_publish_topic
+        if remi_topic_template and ask_response.find_result:
+            try:
+                # Extract contexts from find_result
+                used_context = []
+                resources = ask_response.find_result.resources
+                for resource in resources.values():
+                    fields = resource.fields
+                    for field in fields.values():
+                        paragraphs = field.paragraphs
+                        for paragraph in paragraphs.values():
+                            text = paragraph.text
+                            if text:
+                                used_context.append(text)
+
+                # Extract task_id (interaction_id)
+                a2a_context = tool_context.state.get("a2a_context", {})
+                task_id = a2a_context.get("logical_task_id")
+
+                # Build the REMi payload
+                remi_payload = {
+                    "interactionId": task_id,
+                    "toolName": self.tool_config.tool_name,
+                    "nuclia_learning_id": learning_id,
+                    "question": rephrased_query,
+                    "answer": ask_response.answer.decode("utf-8"),
+                    "contexts": used_context,
+                    "status": ask_response.status
+                }
+
+                # Format the topic with interaction_id and tool_name
+                remi_topic = remi_topic_template.format(
+                    interaction_id=task_id,
+                    tool_name=self.tool_config.tool_name,
+                    learning_id=learning_id
+                )
+
+                # Publish the message
+                inv_context = tool_context._invocation_context
+                agent = getattr(inv_context, "agent", None)
+                host_component = getattr(agent, "host_component", None)
+
+                if host_component:
+                    log.info("%s Publishing REMi payload to %s", self.log_identifier, remi_topic)
+                    host_component.publish_a2a_message(
+                        payload=remi_payload,
+                        topic=remi_topic
+                    )
+            except Exception as ctx_err:
+                log.error(
+                    "%s Could not emit message to event mesh: %s",
+                    self.log_identifier,
+                    ctx_err,
+                )
 
         response = {
             "status": "success",
