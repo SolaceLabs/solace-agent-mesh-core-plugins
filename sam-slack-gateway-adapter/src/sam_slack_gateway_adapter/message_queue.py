@@ -8,6 +8,7 @@ are posted, preventing race conditions and out-of-order message appearance.
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from functools import wraps
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, TypeVar
@@ -28,6 +29,14 @@ DEFAULT_MAX_RETRIES = 5
 DEFAULT_INITIAL_BACKOFF = 1.0  # seconds
 DEFAULT_MAX_BACKOFF = 60.0  # seconds
 DEFAULT_BACKOFF_MULTIPLIER = 2.0
+
+# Throttling constants - Slack's rate limits are typically:
+# - Tier 1 (chat.postMessage): ~1 request per second
+# - Tier 2 (chat.update): ~20 requests per minute (~3 seconds between calls)
+# - Tier 3 (files.*): ~20 requests per minute
+# We use conservative values to stay well under the limits
+MIN_API_CALL_INTERVAL = 0.5  # Minimum seconds between any Slack API calls
+MIN_MESSAGE_UPDATE_INTERVAL = 1.0  # Minimum seconds between message updates (chat.update)
 
 
 async def retry_with_backoff(
@@ -226,7 +235,46 @@ class SlackMessageQueue:
         self.current_text_message_ts: Optional[str] = None
         self.text_buffer: str = ""
 
+        # Throttling state - track last API call times
+        self._last_api_call_time: float = 0.0
+        self._last_message_update_time: float = 0.0
+
         log.debug("[Queue:%s] Initialized for channel %s", task_id, channel_id)
+
+    async def _throttle(self, is_message_update: bool = False) -> None:
+        """
+        Apply throttling before making a Slack API call.
+
+        This ensures we don't exceed Slack's rate limits by enforcing
+        minimum intervals between API calls.
+
+        Args:
+            is_message_update: If True, applies stricter throttling for chat.update calls
+        """
+        current_time = time.monotonic()
+
+        # Calculate required wait time based on operation type
+        if is_message_update:
+            # chat.update has stricter rate limits (Tier 2)
+            time_since_last_update = current_time - self._last_message_update_time
+            required_wait = MIN_MESSAGE_UPDATE_INTERVAL - time_since_last_update
+        else:
+            # General API call throttling
+            time_since_last_call = current_time - self._last_api_call_time
+            required_wait = MIN_API_CALL_INTERVAL - time_since_last_call
+
+        if required_wait > 0:
+            log.debug(
+                "[Queue:%s] Throttling: waiting %.2fs before next API call",
+                self.task_id,
+                required_wait,
+            )
+            await asyncio.sleep(required_wait)
+
+        # Update timestamps
+        self._last_api_call_time = time.monotonic()
+        if is_message_update:
+            self._last_message_update_time = self._last_api_call_time
 
     async def start(self):
         """Start the background queue processor."""
@@ -365,6 +413,8 @@ class SlackMessageQueue:
         formatted_text = self.adapter._format_text(self.text_buffer)
 
         if not self.current_text_message_ts:
+            # Throttle before posting new message
+            await self._throttle(is_message_update=False)
             # Post a new message with formatted text (with retry)
             response = await retry_with_backoff(
                 self.client.chat_postMessage,
@@ -375,6 +425,8 @@ class SlackMessageQueue:
             )
             self.current_text_message_ts = response.get("ts")
         else:
+            # Throttle before updating message (stricter rate limit)
+            await self._throttle(is_message_update=True)
             # Update existing message with formatted text (with retry)
             log.debug(
                 "[Queue:%s] Updating text message ts=%s",
@@ -397,8 +449,9 @@ class SlackMessageQueue:
         This is the critical operation that prevents race conditions.
         """
 
-        # Step 1: Finalize any pending text message (with retry)
+        # Step 1: Finalize any pending text message (with retry and throttle)
         if self.text_buffer and self.current_text_message_ts:
+            await self._throttle(is_message_update=True)
             await retry_with_backoff(
                 self.client.chat_update,
                 channel=self.channel_id,
@@ -413,12 +466,13 @@ class SlackMessageQueue:
 
         # Step 3: Upload file using 3-step process
         try:
-            # Step 3a: Get upload URL (with retry)
+            # Step 3a: Get upload URL (with retry and throttle)
             log.debug(
                 "[Queue:%s] Step 1: Getting upload URL for %s",
                 self.task_id,
                 op.filename,
             )
+            await self._throttle(is_message_update=False)
             upload_url_response = await retry_with_backoff(
                 self.client.files_getUploadURLExternal,
                 filename=op.filename,
@@ -444,9 +498,10 @@ class SlackMessageQueue:
             )
             upload_response.raise_for_status()
 
-            # Step 3c: Complete the upload (with retry)
+            # Step 3c: Complete the upload (with retry and throttle)
             log.debug("[Queue:%s] Step 3: Completing external upload", self.task_id)
             comment = op.initial_comment or f"Attached file: {op.filename}"
+            await self._throttle(is_message_update=False)
             await retry_with_backoff(
                 self.client.files_completeUploadExternal,
                 files=[{"id": file_id, "title": op.filename}],
@@ -467,7 +522,8 @@ class SlackMessageQueue:
                 e,
                 exc_info=True,
             )
-            # Post error message (with retry)
+            # Post error message (with retry and throttle)
+            await self._throttle(is_message_update=False)
             await retry_with_backoff(
                 self.client.chat_postMessage,
                 channel=self.channel_id,
@@ -479,6 +535,7 @@ class SlackMessageQueue:
     async def _handle_message_post(self, op: MessagePostOp):
         """Handle posting a new message."""
         log.debug("[Queue:%s] Posting new message: %s...", self.task_id, op.text[:50])
+        await self._throttle(is_message_update=False)
         await retry_with_backoff(
             self.client.chat_postMessage,
             channel=self.channel_id,
@@ -491,6 +548,8 @@ class SlackMessageQueue:
     async def _handle_message_update(self, op: MessageUpdateOp):
         """Handle updating an existing message."""
         log.debug("[Queue:%s] Updating message ts=%s", self.task_id, op.ts)
+        # Apply stricter throttling for message updates (main source of rate limits)
+        await self._throttle(is_message_update=True)
         await retry_with_backoff(
             self.client.chat_update,
             channel=self.channel_id,
@@ -503,6 +562,7 @@ class SlackMessageQueue:
     async def _handle_message_delete(self, op: MessageDeleteOp):
         """Handle deleting a message."""
         log.debug("[Queue:%s] Deleting message ts=%s", self.task_id, op.ts)
+        await self._throttle(is_message_update=False)
         await retry_with_backoff(
             self.client.chat_delete,
             channel=self.channel_id,
