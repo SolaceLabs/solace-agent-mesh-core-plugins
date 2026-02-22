@@ -9,14 +9,118 @@ are posted, preventing race conditions and out-of-order message appearance.
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional
+from functools import wraps
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, TypeVar
 
+from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
 if TYPE_CHECKING:
     from .adapter import SlackAdapter
 
 log = logging.getLogger(__name__)
+
+# Type variable for generic return type
+T = TypeVar("T")
+
+# Rate limiting constants
+DEFAULT_MAX_RETRIES = 5
+DEFAULT_INITIAL_BACKOFF = 1.0  # seconds
+DEFAULT_MAX_BACKOFF = 60.0  # seconds
+DEFAULT_BACKOFF_MULTIPLIER = 2.0
+
+
+async def retry_with_backoff(
+    func: Callable[..., T],
+    *args,
+    max_retries: int = DEFAULT_MAX_RETRIES,
+    initial_backoff: float = DEFAULT_INITIAL_BACKOFF,
+    max_backoff: float = DEFAULT_MAX_BACKOFF,
+    backoff_multiplier: float = DEFAULT_BACKOFF_MULTIPLIER,
+    operation_name: str = "Slack API call",
+    **kwargs,
+) -> T:
+    """
+    Execute an async function with exponential backoff retry for rate limiting.
+
+    This function handles Slack API rate limiting (429 errors) by:
+    1. Respecting the Retry-After header when provided
+    2. Using exponential backoff when no header is present
+    3. Limiting total retries to prevent infinite loops
+
+    Args:
+        func: The async function to execute
+        *args: Positional arguments to pass to the function
+        max_retries: Maximum number of retry attempts
+        initial_backoff: Initial backoff delay in seconds
+        max_backoff: Maximum backoff delay in seconds
+        backoff_multiplier: Multiplier for exponential backoff
+        operation_name: Name of the operation for logging
+        **kwargs: Keyword arguments to pass to the function
+
+    Returns:
+        The result of the function call
+
+    Raises:
+        SlackApiError: If all retries are exhausted or a non-retryable error occurs
+    """
+    backoff = initial_backoff
+    last_exception = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            return await func(*args, **kwargs)
+        except SlackApiError as e:
+            last_exception = e
+            error_code = e.response.get("error", "") if e.response else ""
+
+            # Check if this is a rate limit error
+            if error_code == "ratelimited" or (
+                hasattr(e.response, "status_code") and e.response.status_code == 429
+            ):
+                if attempt >= max_retries:
+                    log.error(
+                        "[RateLimit] %s failed after %d retries due to rate limiting",
+                        operation_name,
+                        max_retries,
+                    )
+                    raise
+
+                # Try to get Retry-After header from response
+                retry_after = None
+                if e.response and hasattr(e.response, "headers"):
+                    retry_after = e.response.headers.get("Retry-After")
+                    if retry_after:
+                        try:
+                            retry_after = float(retry_after)
+                        except (ValueError, TypeError):
+                            retry_after = None
+
+                # Use Retry-After if available, otherwise use exponential backoff
+                wait_time = retry_after if retry_after else backoff
+                wait_time = min(wait_time, max_backoff)
+
+                log.warning(
+                    "[RateLimit] %s rate limited (attempt %d/%d). "
+                    "Waiting %.2f seconds before retry...",
+                    operation_name,
+                    attempt + 1,
+                    max_retries + 1,
+                    wait_time,
+                )
+
+                await asyncio.sleep(wait_time)
+                backoff = min(backoff * backoff_multiplier, max_backoff)
+            else:
+                # Non-rate-limit error, don't retry
+                raise
+        except Exception as e:
+            # For non-Slack errors, don't retry
+            raise
+
+    # Should not reach here, but just in case
+    if last_exception:
+        raise last_exception
 
 
 # --- Queue Operation Types ---
@@ -261,24 +365,28 @@ class SlackMessageQueue:
         formatted_text = self.adapter._format_text(self.text_buffer)
 
         if not self.current_text_message_ts:
-            # Post a new message with formatted text
-            response = await self.client.chat_postMessage(
+            # Post a new message with formatted text (with retry)
+            response = await retry_with_backoff(
+                self.client.chat_postMessage,
                 channel=self.channel_id,
                 thread_ts=self.thread_ts,
                 text=formatted_text,
+                operation_name=f"[Queue:{self.task_id}] chat_postMessage (text update)",
             )
             self.current_text_message_ts = response.get("ts")
         else:
-            # Update existing message with formatted text
+            # Update existing message with formatted text (with retry)
             log.debug(
                 "[Queue:%s] Updating text message ts=%s",
                 self.task_id,
                 self.current_text_message_ts,
             )
-            await self.client.chat_update(
+            await retry_with_backoff(
+                self.client.chat_update,
                 channel=self.channel_id,
                 ts=self.current_text_message_ts,
                 text=formatted_text,
+                operation_name=f"[Queue:{self.task_id}] chat_update (text update)",
             )
             log.debug("[Queue:%s] Updated message", self.task_id)
 
@@ -289,12 +397,14 @@ class SlackMessageQueue:
         This is the critical operation that prevents race conditions.
         """
 
-        # Step 1: Finalize any pending text message
+        # Step 1: Finalize any pending text message (with retry)
         if self.text_buffer and self.current_text_message_ts:
-            await self.client.chat_update(
+            await retry_with_backoff(
+                self.client.chat_update,
                 channel=self.channel_id,
                 ts=self.current_text_message_ts,
                 text=self.text_buffer,
+                operation_name=f"[Queue:{self.task_id}] chat_update (finalize text)",
             )
 
         # Step 2: Reset text state (forces next text to a new message)
@@ -303,14 +413,17 @@ class SlackMessageQueue:
 
         # Step 3: Upload file using 3-step process
         try:
-            # Step 3a: Get upload URL
+            # Step 3a: Get upload URL (with retry)
             log.debug(
                 "[Queue:%s] Step 1: Getting upload URL for %s",
                 self.task_id,
                 op.filename,
             )
-            upload_url_response = await self.client.files_getUploadURLExternal(
-                filename=op.filename, length=len(op.content_bytes)
+            upload_url_response = await retry_with_backoff(
+                self.client.files_getUploadURLExternal,
+                filename=op.filename,
+                length=len(op.content_bytes),
+                operation_name=f"[Queue:{self.task_id}] files_getUploadURLExternal",
             )
             upload_url = upload_url_response.get("upload_url")
             file_id = upload_url_response.get("file_id")
@@ -331,14 +444,16 @@ class SlackMessageQueue:
             )
             upload_response.raise_for_status()
 
-            # Step 3c: Complete the upload
+            # Step 3c: Complete the upload (with retry)
             log.debug("[Queue:%s] Step 3: Completing external upload", self.task_id)
             comment = op.initial_comment or f"Attached file: {op.filename}"
-            await self.client.files_completeUploadExternal(
+            await retry_with_backoff(
+                self.client.files_completeUploadExternal,
                 files=[{"id": file_id, "title": op.filename}],
                 channel_id=self.channel_id,
                 thread_ts=self.thread_ts,
                 initial_comment=comment,
+                operation_name=f"[Queue:{self.task_id}] files_completeUploadExternal",
             )
 
             # Step 4: - Poll files.info until file is visible
@@ -352,34 +467,48 @@ class SlackMessageQueue:
                 e,
                 exc_info=True,
             )
-            # Post error message
-            await self.client.chat_postMessage(
+            # Post error message (with retry)
+            await retry_with_backoff(
+                self.client.chat_postMessage,
                 channel=self.channel_id,
                 thread_ts=self.thread_ts,
                 text=f"❌ Failed to upload file: {op.filename}",
+                operation_name=f"[Queue:{self.task_id}] chat_postMessage (error)",
             )
 
     async def _handle_message_post(self, op: MessagePostOp):
         """Handle posting a new message."""
         log.debug("[Queue:%s] Posting new message: %s...", self.task_id, op.text[:50])
-        await self.client.chat_postMessage(
+        await retry_with_backoff(
+            self.client.chat_postMessage,
             channel=self.channel_id,
             thread_ts=self.thread_ts,
             text=op.text,
             blocks=op.blocks,
+            operation_name=f"[Queue:{self.task_id}] chat_postMessage",
         )
 
     async def _handle_message_update(self, op: MessageUpdateOp):
         """Handle updating an existing message."""
         log.debug("[Queue:%s] Updating message ts=%s", self.task_id, op.ts)
-        await self.client.chat_update(
-            channel=self.channel_id, ts=op.ts, text=op.text, blocks=op.blocks
+        await retry_with_backoff(
+            self.client.chat_update,
+            channel=self.channel_id,
+            ts=op.ts,
+            text=op.text,
+            blocks=op.blocks,
+            operation_name=f"[Queue:{self.task_id}] chat_update",
         )
 
     async def _handle_message_delete(self, op: MessageDeleteOp):
         """Handle deleting a message."""
         log.debug("[Queue:%s] Deleting message ts=%s", self.task_id, op.ts)
-        await self.client.chat_delete(channel=self.channel_id, ts=op.ts)
+        await retry_with_backoff(
+            self.client.chat_delete,
+            channel=self.channel_id,
+            ts=op.ts,
+            operation_name=f"[Queue:{self.task_id}] chat_delete",
+        )
 
     # --- Polling Helper ---
 
@@ -410,8 +539,12 @@ class SlackMessageQueue:
                 )
 
             try:
-                # Query the file info
-                info_response = await self.client.files_info(file=file_id)
+                # Query the file info (with retry for rate limiting)
+                info_response = await retry_with_backoff(
+                    self.client.files_info,
+                    file=file_id,
+                    operation_name=f"[Queue:{self.task_id}] files_info (polling)",
+                )
                 file_info = info_response.get("file", {})
 
                 # Check if the 'shares' object exists and is populated
@@ -456,6 +589,12 @@ class SlackMessageQueue:
                 await asyncio.sleep(backoff_delay)
                 backoff_delay = min(backoff_delay * 1.5, max_backoff)
 
+            except SlackApiError as e:
+                # If it's a rate limit error, the retry_with_backoff already handled it
+                # This catch is for other Slack API errors
+                log.warning("[Queue:%s] Slack API error checking file info: %s", self.task_id, e)
+                await asyncio.sleep(backoff_delay)
+                backoff_delay = min(backoff_delay * 1.5, max_backoff)
             except Exception as e:
                 log.warning("[Queue:%s] Error checking file info: %s", self.task_id, e)
                 await asyncio.sleep(backoff_delay)
