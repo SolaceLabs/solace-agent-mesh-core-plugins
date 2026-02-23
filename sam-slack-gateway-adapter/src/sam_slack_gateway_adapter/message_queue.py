@@ -24,46 +24,221 @@ log = logging.getLogger(__name__)
 # Type variable for generic return type
 T = TypeVar("T")
 
-# Rate limiting constants
+# Rate limiting constants for retry logic
 DEFAULT_MAX_RETRIES = 5
-DEFAULT_INITIAL_BACKOFF = 1.0  # seconds
-DEFAULT_MAX_BACKOFF = 60.0  # seconds
-DEFAULT_BACKOFF_MULTIPLIER = 2.0
+# Slack always returns Retry-After header, so this is just a fallback
+DEFAULT_RETRY_DELAY = 3.0  # seconds - constant delay between retries
+DEFAULT_MAX_RETRY_DELAY = 30.0  # seconds - cap for Retry-After header values
 
-# Throttling constants - Slack's rate limits are typically:
-# - Tier 1 (chat.postMessage): ~1 request per second
-# - Tier 2 (chat.update): ~20 requests per minute (~3 seconds between calls)
-# - Tier 3 (files.*): ~20 requests per minute
-# We use conservative values to stay well under the limits
-MIN_API_CALL_INTERVAL = 0.5  # Minimum seconds between any Slack API calls
-MIN_MESSAGE_UPDATE_INTERVAL = 1.0  # Minimum seconds between message updates (chat.update)
+# Slack Rate Limit Tiers
+# https://api.slack.com/docs/rate-limits
+#
+# Rate limits are "per API method per workspace/team per app"
+#
+# Tier 1: 1+ per minute (access infrequently, small burst tolerance)
+# Tier 2: 20+ per minute (most methods, occasional bursts allowed)
+# Tier 3: 50+ per minute (paginating collections, sporadic bursts welcome)
+# Tier 4: 100+ per minute (large request quota, generous burst behavior)
+# Special Tier: Varies - unique conditions per method
+#
+# chat.postMessage is SPECIAL TIER: 1 message per second per CHANNEL,
+# plus a workspace-wide limit. Short bursts >1 allowed but not guaranteed.
+#
+# Slack recommends: Design for 1 request per second, allow temporary bursts.
+# When rate limited, Slack returns HTTP 429 with Retry-After header.
+
+from enum import Enum
+
+
+class SlackApiTier(Enum):
+    """Slack API rate limit tiers."""
+    TIER_1 = "tier_1"      # 1+ per minute (infrequent access)
+    TIER_2 = "tier_2"      # 20+ per minute (most write methods)
+    TIER_3 = "tier_3"      # 50+ per minute (read methods, pagination)
+    TIER_4 = "tier_4"      # 100+ per minute (high volume)
+    SPECIAL = "special"    # Unique rate limiting (e.g., chat.postMessage)
+
+
+# Minimum intervals between calls for each tier (in seconds)
+# Using conservative values based on Slack's recommendation of 1 req/sec
+# with allowance for temporary bursts
+TIER_INTERVALS = {
+    # Tier 1: Very infrequent - be extra conservative
+    SlackApiTier.TIER_1: 2.0,
+    # Tier 2: 20/min = 1 every 3 seconds, but allow some burst
+    SlackApiTier.TIER_2: 1.5,
+    # Tier 3: 50/min = 1 every 1.2 seconds
+    SlackApiTier.TIER_3: 1.0,
+    # Tier 4: 100/min = 1 every 0.6 seconds
+    SlackApiTier.TIER_4: 0.5,
+    # Special: 1 per second per channel (we track globally, so be conservative)
+    SlackApiTier.SPECIAL: 1.0,
+}
+
+# Map Slack API methods to their rate limit tiers
+# Reference: https://api.slack.com/docs/rate-limits
+METHOD_TIERS = {
+    # Special Tier - Unique rate limiting per channel
+    "chat.postMessage": SlackApiTier.SPECIAL,  # 1/sec per channel + workspace limit
+    "chat.postEphemeral": SlackApiTier.SPECIAL,
+
+    # Tier 2 - Most write methods (20+ per minute)
+    "chat.update": SlackApiTier.TIER_2,
+    "chat.delete": SlackApiTier.TIER_2,
+    "reactions.add": SlackApiTier.TIER_2,
+    "reactions.remove": SlackApiTier.TIER_2,
+    "files.completeUploadExternal": SlackApiTier.TIER_2,
+
+    # Tier 3 - Most read methods and file operations (50+ per minute)
+    "files.info": SlackApiTier.TIER_3,
+    "files.getUploadURLExternal": SlackApiTier.TIER_3,
+    "users.info": SlackApiTier.TIER_3,
+    "users.profile.get": SlackApiTier.TIER_3,
+    "conversations.info": SlackApiTier.TIER_3,
+    "conversations.list": SlackApiTier.TIER_2,  # Tier 2 per docs
+
+    # Tier 4 - High volume (default for unknown methods)
+}
+
+# Default tier for methods not in the map - use Tier 3 as safe default
+DEFAULT_TIER = SlackApiTier.TIER_3
+
+
+def get_tier_for_method(method_name: str) -> SlackApiTier:
+    """Get the rate limit tier for a Slack API method."""
+    return METHOD_TIERS.get(method_name, DEFAULT_TIER)
+
+
+class GlobalRateLimiter:
+    """
+    Global rate limiter for Slack API calls with per-tier tracking.
+
+    This class provides a singleton-like rate limiter that all
+    message queues share to ensure we don't exceed global rate limits even
+    when multiple tasks are running concurrently.
+
+    Each rate limit tier is tracked separately, as Slack enforces limits
+    per-method-tier.
+
+    Thread-safe using asyncio.Lock for coordination between concurrent tasks.
+    """
+
+    _instance: Optional["GlobalRateLimiter"] = None
+    _lock: asyncio.Lock = None  # Will be created on first use
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self):
+        if self._initialized:
+            return
+        self._initialized = True
+        # Track last call time for each tier separately
+        self._last_call_times: Dict[SlackApiTier, float] = {
+            tier: 0.0 for tier in SlackApiTier
+        }
+        # Lock must be created in async context, so we'll create it lazily
+        self._throttle_lock: Optional[asyncio.Lock] = None
+
+    async def _get_lock(self) -> asyncio.Lock:
+        """Get or create the throttle lock (must be called from async context)."""
+        if self._throttle_lock is None:
+            self._throttle_lock = asyncio.Lock()
+        return self._throttle_lock
+
+    async def throttle(
+        self,
+        method_name: Optional[str] = None,
+        tier: Optional[SlackApiTier] = None,
+        is_message_update: bool = False,  # Kept for backward compatibility
+    ) -> None:
+        """
+        Apply global throttling before making a Slack API call.
+
+        This ensures we don't exceed Slack's rate limits by enforcing
+        minimum intervals between API calls across ALL concurrent tasks.
+
+        Args:
+            method_name: The Slack API method being called (e.g., "chat.update")
+            tier: Explicitly specify the tier (overrides method_name lookup)
+            is_message_update: Deprecated - use method_name or tier instead.
+                              Kept for backward compatibility (maps to TIER_2)
+        """
+        # Determine the tier to use
+        if tier is not None:
+            effective_tier = tier
+        elif method_name is not None:
+            effective_tier = get_tier_for_method(method_name)
+        elif is_message_update:
+            # Backward compatibility: is_message_update maps to TIER_2
+            effective_tier = SlackApiTier.TIER_2
+        else:
+            # Default to TIER_3 for general API calls
+            effective_tier = SlackApiTier.TIER_3
+
+        min_interval = TIER_INTERVALS[effective_tier]
+
+        lock = await self._get_lock()
+        async with lock:
+            current_time = time.monotonic()
+            last_call_time = self._last_call_times[effective_tier]
+            time_since_last_call = current_time - last_call_time
+            required_wait = min_interval - time_since_last_call
+
+            if required_wait > 0:
+                log.debug(
+                    "[GlobalRateLimiter] Throttling %s (tier=%s): waiting %.2fs",
+                    method_name or "unknown",
+                    effective_tier.value,
+                    required_wait,
+                )
+                await asyncio.sleep(required_wait)
+
+            # Update timestamp for this tier
+            self._last_call_times[effective_tier] = time.monotonic()
+
+
+# Global rate limiter instance - shared across all message queues
+_global_rate_limiter: Optional[GlobalRateLimiter] = None
+
+
+def get_global_rate_limiter() -> GlobalRateLimiter:
+    """Get the global rate limiter instance."""
+    global _global_rate_limiter
+    if _global_rate_limiter is None:
+        _global_rate_limiter = GlobalRateLimiter()
+    return _global_rate_limiter
 
 
 async def retry_with_backoff(
     func: Callable[..., T],
     *args,
     max_retries: int = DEFAULT_MAX_RETRIES,
-    initial_backoff: float = DEFAULT_INITIAL_BACKOFF,
-    max_backoff: float = DEFAULT_MAX_BACKOFF,
-    backoff_multiplier: float = DEFAULT_BACKOFF_MULTIPLIER,
+    retry_delay: float = DEFAULT_RETRY_DELAY,
+    max_retry_delay: float = DEFAULT_MAX_RETRY_DELAY,
     operation_name: str = "Slack API call",
     **kwargs,
 ) -> T:
     """
-    Execute an async function with exponential backoff retry for rate limiting.
+    Execute an async function with constant delay retry for rate limiting.
 
     This function handles Slack API rate limiting (429 errors) by:
-    1. Respecting the Retry-After header when provided
-    2. Using exponential backoff when no header is present
+    1. Respecting the Retry-After header when provided (Slack always sends this)
+    2. Using a constant delay as fallback when no header is present
     3. Limiting total retries to prevent infinite loops
+
+    Using constant delay instead of exponential backoff to avoid the "burst-wait-burst"
+    pattern.
 
     Args:
         func: The async function to execute
         *args: Positional arguments to pass to the function
         max_retries: Maximum number of retry attempts
-        initial_backoff: Initial backoff delay in seconds
-        max_backoff: Maximum backoff delay in seconds
-        backoff_multiplier: Multiplier for exponential backoff
+        retry_delay: Constant delay between retries (fallback if no Retry-After header)
+        max_retry_delay: Maximum delay to wait (caps Retry-After header values)
         operation_name: Name of the operation for logging
         **kwargs: Keyword arguments to pass to the function
 
@@ -73,7 +248,6 @@ async def retry_with_backoff(
     Raises:
         SlackApiError: If all retries are exhausted or a non-retryable error occurs
     """
-    backoff = initial_backoff
     last_exception = None
 
     for attempt in range(max_retries + 1):
@@ -96,6 +270,7 @@ async def retry_with_backoff(
                     raise
 
                 # Try to get Retry-After header from response
+                # Slack always returns this header with 429 errors
                 retry_after = None
                 if e.response and hasattr(e.response, "headers"):
                     retry_after = e.response.headers.get("Retry-After")
@@ -105,25 +280,26 @@ async def retry_with_backoff(
                         except (ValueError, TypeError):
                             retry_after = None
 
-                # Use Retry-After if available, otherwise use exponential backoff
-                wait_time = retry_after if retry_after else backoff
-                wait_time = min(wait_time, max_backoff)
+                # Use Retry-After if available, otherwise use constant delay
+                # Cap the wait time to prevent excessively long waits
+                wait_time = retry_after if retry_after else retry_delay
+                wait_time = min(wait_time, max_retry_delay)
 
                 log.warning(
                     "[RateLimit] %s rate limited (attempt %d/%d). "
-                    "Waiting %.2f seconds before retry...",
+                    "Waiting %.2f seconds before retry%s...",
                     operation_name,
                     attempt + 1,
                     max_retries + 1,
                     wait_time,
+                    " (from Retry-After header)" if retry_after else " (constant delay)",
                 )
 
                 await asyncio.sleep(wait_time)
-                backoff = min(backoff * backoff_multiplier, max_backoff)
             else:
                 # Non-rate-limit error, don't retry
                 raise
-        except Exception as e:
+        except Exception:
             # For non-Slack errors, don't retry
             raise
 
@@ -235,46 +411,21 @@ class SlackMessageQueue:
         self.current_text_message_ts: Optional[str] = None
         self.text_buffer: str = ""
 
-        # Throttling state - track last API call times
-        self._last_api_call_time: float = 0.0
-        self._last_message_update_time: float = 0.0
+        self._rate_limiter = get_global_rate_limiter()
 
         log.debug("[Queue:%s] Initialized for channel %s", task_id, channel_id)
 
     async def _throttle(self, is_message_update: bool = False) -> None:
         """
-        Apply throttling before making a Slack API call.
+        Apply global throttling before making a Slack API call.
 
-        This ensures we don't exceed Slack's rate limits by enforcing
-        minimum intervals between API calls.
+        This delegates to the global rate limiter to ensure we don't exceed
+        Slack's rate limits across ALL concurrent tasks. 
 
         Args:
             is_message_update: If True, applies stricter throttling for chat.update calls
         """
-        current_time = time.monotonic()
-
-        # Calculate required wait time based on operation type
-        if is_message_update:
-            # chat.update has stricter rate limits (Tier 2)
-            time_since_last_update = current_time - self._last_message_update_time
-            required_wait = MIN_MESSAGE_UPDATE_INTERVAL - time_since_last_update
-        else:
-            # General API call throttling
-            time_since_last_call = current_time - self._last_api_call_time
-            required_wait = MIN_API_CALL_INTERVAL - time_since_last_call
-
-        if required_wait > 0:
-            log.debug(
-                "[Queue:%s] Throttling: waiting %.2fs before next API call",
-                self.task_id,
-                required_wait,
-            )
-            await asyncio.sleep(required_wait)
-
-        # Update timestamps
-        self._last_api_call_time = time.monotonic()
-        if is_message_update:
-            self._last_message_update_time = self._last_api_call_time
+        await self._rate_limiter.throttle(is_message_update=is_message_update)
 
     async def start(self):
         """Start the background queue processor."""
