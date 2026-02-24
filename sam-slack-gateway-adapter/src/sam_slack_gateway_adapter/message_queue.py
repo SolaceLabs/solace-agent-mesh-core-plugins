@@ -291,10 +291,11 @@ class SlackMessageQueue:
 
         # Step 1: Finalize any pending text message
         if self.text_buffer and self.current_text_message_ts:
+            formatted_text = self.adapter._format_text(self.text_buffer)
             await self.client.chat_update(
                 channel=self.channel_id,
                 ts=self.current_text_message_ts,
-                text=self.text_buffer,
+                text=formatted_text,
             )
 
         # Step 2: Reset text state (forces next text to a new message)
