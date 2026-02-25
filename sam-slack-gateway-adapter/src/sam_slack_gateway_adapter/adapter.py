@@ -69,7 +69,6 @@ class SlackAdapter(GatewayAdapter):
         self.slack_app: Optional[AsyncApp] = None
         self.slack_handler: Optional[AsyncSocketModeHandler] = None
         self.message_queues: Dict[str, SlackMessageQueue] = {}
-        self._cached_team_id: Optional[str] = None  # Cache team ID from auth.test
 
     async def init(self, context: GatewayContext) -> None:
         """Initialize the Slack app, handlers, and start the listener."""
@@ -340,31 +339,26 @@ class SlackAdapter(GatewayAdapter):
         )
 
         # Try multiple possible field names for team ID
+        # Note: team_id should be present in the event because _ensure_team_id_in_event
+        # extracts it from the body before this method is called.
         slack_team_id = (
             external_input.get("team")
             or external_input.get("team_id")
             or external_input.get("team_domain")
         )
 
-        # If team_id is not in the event, try to get it from auth.test API
-        # Some Slack events (e.g., message events with file uploads) don't include team info
-        if not slack_team_id and slack_user_id:
-            slack_team_id = await self._get_team_id_from_auth()
-
         if not slack_user_id or not slack_team_id:
             log.warning(
                 "Could not determine Slack user_id or team_id from event. "
                 "Event keys: %s, "
                 "user fields checked: user=%s, user_id=%s, "
-                "team fields checked: team=%s, team_id=%s, team_domain=%s, "
-                "auth.test fallback: %s",
+                "team fields checked: team=%s, team_id=%s, team_domain=%s",
                 list(external_input.keys()),
                 external_input.get("user"),
                 external_input.get("user_id"),
                 external_input.get("team"),
                 external_input.get("team_id"),
                 external_input.get("team_domain"),
-                "attempted" if slack_user_id else "skipped (no user_id)",
             )
             return None
 
@@ -889,34 +883,3 @@ class SlackAdapter(GatewayAdapter):
         response.raise_for_status()
         return response.content
 
-    async def _get_team_id_from_auth(self) -> Optional[str]:
-        """
-        Get the team ID from the Slack auth.test API.
-        
-        This is used as a fallback when the team_id is not present in the event payload.
-        Some Slack events (e.g., message events with file uploads in certain contexts)
-        don't include team information directly.
-        
-        The result is cached to avoid repeated API calls.
-        
-        Returns:
-            The team ID string, or None if it couldn't be retrieved.
-        """
-        # Return cached value if available
-        if self._cached_team_id:
-            return self._cached_team_id
-
-        try:
-            # auth.test returns info about the bot token, including team_id
-            auth_response = await self.slack_app.client.auth_test()
-            if auth_response.get("ok"):
-                team_id = auth_response.get("team_id")
-                if team_id:
-                    self._cached_team_id = team_id
-                    log.debug("Retrieved team_id from auth.test: %s", team_id)
-                    return team_id
-            log.warning("auth.test response missing team_id: %s", auth_response)
-        except Exception as e:
-            log.warning("Failed to get team_id from auth.test: %s", e)
-        
-        return None
