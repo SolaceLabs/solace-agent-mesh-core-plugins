@@ -422,6 +422,13 @@ class SlackMessageQueue:
         self._throttle_retry_count: int = 0  # Track retries for final updates
         self._max_throttle_retries: int = 10  # Maximum retries for final updates
 
+        # Time-based batching for text updates
+        # This ensures we wait a bit for more updates to coalesce before sending,
+        # which is critical because Slack API calls have latency (~100-300ms).
+        # Without this, we'd send many small updates instead of fewer larger ones.
+        self._last_send_time: float = 0.0
+        self._min_send_interval: float = 0.3  # Wait at least 300ms between sends
+
         # Global rate limiter for non-text operations
         self._rate_limiter = get_global_rate_limiter()
 
@@ -649,8 +656,9 @@ class SlackMessageQueue:
         # Append text to buffer
         self.text_buffer += op.text
         
-        # Check if we're still in throttle period
         current_time = time.monotonic()
+        
+        # Check if we're still in throttle period (429 backoff)
         if current_time < self._throttled_until:
             if is_final:
                 # Final update - must wait and send
@@ -660,6 +668,7 @@ class SlackMessageQueue:
                     self.task_id, wait_time
                 )
                 await asyncio.sleep(wait_time)
+                current_time = time.monotonic()
                 # Fall through to send
             else:
                 # Non-final update - just aggregate and return
@@ -668,6 +677,20 @@ class SlackMessageQueue:
                     self.task_id, len(self.text_buffer)
                 )
                 return
+        
+        # Time-based batching: wait a bit for more updates to coalesce
+        # This is critical because Slack API calls have latency (~100-300ms),
+        # so we want to batch multiple incoming updates into single API calls
+        time_since_last_send = current_time - self._last_send_time
+        if not is_final and time_since_last_send < self._min_send_interval:
+            # Not enough time has passed - wait for the remaining time
+            # This allows more updates to arrive and be coalesced
+            remaining_wait = self._min_send_interval - time_since_last_send
+            log.debug(
+                "[Queue:%s] Time-based batching: waiting %.2fs for more updates (buffer: %d chars)",
+                self.task_id, remaining_wait, len(self.text_buffer)
+            )
+            await asyncio.sleep(remaining_wait)
         
         # Drain any additional pending text updates before sending
         pending_text_ops = self._drain_pending_text_updates()
@@ -697,6 +720,7 @@ class SlackMessageQueue:
                 )
                 if response:
                     self.current_text_message_ts = response.get("ts")
+                    self._last_send_time = time.monotonic()
                 else:
                     # Throttled - _throttled_until was set by _try_slack_call
                     if is_final:
@@ -740,7 +764,9 @@ class SlackMessageQueue:
                     ts=self.current_text_message_ts,
                     text=formatted_text,
                 )
-                if not response:
+                if response:
+                    self._last_send_time = time.monotonic()
+                else:
                     # Throttled - _throttled_until was set by _try_slack_call
                     if is_final:
                         # Final update - must wait and retry with limit
