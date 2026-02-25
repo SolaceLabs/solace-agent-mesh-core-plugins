@@ -112,11 +112,15 @@ class SlackAdapter(GatewayAdapter):
 
         # Event handlers for messages and mentions
         @self.slack_app.event("message")
-        async def handle_message_wrapper(event, say):
+        async def handle_message_wrapper(event, say, body):
+            # Ensure team_id is in the event (extract from body if needed)
+            self._ensure_team_id_in_event(event, body)
             await handlers.handle_slack_message(self, event, say)
 
         @self.slack_app.event("app_mention")
-        async def handle_mention_wrapper(event, say):
+        async def handle_mention_wrapper(event, say, body):
+            # Ensure team_id is in the event (extract from body if needed)
+            self._ensure_team_id_in_event(event, body)
             await handlers.handle_slack_mention(self, event, say)
 
         # Slash command handlers that reuse the keyword command logic
@@ -849,6 +853,25 @@ class SlackAdapter(GatewayAdapter):
                     "Slack API error resolving mention for user ID %s: %s", user_id, e
                 )
         return modified_text
+
+    def _ensure_team_id_in_event(self, event: Dict, body: Dict) -> None:
+        """
+        Ensure team_id is present in the event dict.
+        
+        Some Slack events (particularly those with file uploads) only include
+        team_id in the outer body, not in the inner event object. This method
+        extracts team_id from the body and adds it to the event if missing.
+        
+        This is the same approach used by the old sam-slack gateway.
+        
+        Args:
+            event: The Slack event dict (may be modified in place)
+            body: The raw Slack webhook body containing team_id
+        """
+        if "team" not in event and "team_id" not in event:
+            if team_id := body.get("team_id"):
+                event["team"] = team_id
+                log.debug("Extracted team_id from body: %s", team_id)
 
     async def _download_file(self, file_info: Dict) -> bytes:
         """Downloads a file from Slack given its private URL."""
