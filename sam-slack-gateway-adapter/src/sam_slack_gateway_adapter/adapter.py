@@ -69,6 +69,7 @@ class SlackAdapter(GatewayAdapter):
         self.slack_app: Optional[AsyncApp] = None
         self.slack_handler: Optional[AsyncSocketModeHandler] = None
         self.message_queues: Dict[str, SlackMessageQueue] = {}
+        self._cached_team_id: Optional[str] = None  # Cache team ID from auth.test
 
     async def init(self, context: GatewayContext) -> None:
         """Initialize the Slack app, handlers, and start the listener."""
@@ -347,6 +348,11 @@ class SlackAdapter(GatewayAdapter):
             or external_input.get("team_domain")
         )
 
+        # If team_id is not in the event, try to get it from auth.test API
+        # Some Slack events (e.g., message events with file uploads) don't include team info
+        if not slack_team_id and slack_user_id:
+            slack_team_id = await self._get_team_id_from_auth()
+
         if not slack_user_id or not slack_team_id:
             log.warning(
                 "Could not determine Slack user_id or team_id from event. "
@@ -359,6 +365,7 @@ class SlackAdapter(GatewayAdapter):
                 external_input.get("team"),
                 external_input.get("team_id"),
                 external_input.get("team_domain"),
+                "attempted" if slack_user_id else "skipped (no user_id)",
             )
             return None
 
