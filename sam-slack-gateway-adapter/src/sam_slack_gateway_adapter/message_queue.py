@@ -424,6 +424,9 @@ class SlackMessageQueue:
 
         # Global rate limiter for non-text operations
         self._rate_limiter = get_global_rate_limiter()
+        
+        # For update coalescing - holds non-text ops found during drain
+        self._deferred_operation: Optional[QueueOperation] = None
 
         log.debug("[Queue:%s] Initialized for channel %s", task_id, channel_id)
 
@@ -532,7 +535,7 @@ class SlackMessageQueue:
         Implements update coalescing for TextUpdateOp: before sending a Slack
         update, drains all pending text updates from the queue and combines them
         into a single API call. This dramatically reduces API calls when receiving
-        high-frequency progress updates.
+        high-frequency progress updates (e.g., artifact creation with 50-byte chunks).
         """
         try:
             while True:
