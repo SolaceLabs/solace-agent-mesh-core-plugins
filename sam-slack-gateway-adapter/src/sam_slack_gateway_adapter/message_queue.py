@@ -497,11 +497,53 @@ class SlackMessageQueue:
 
     # --- Queue Processor ---
 
+    def _drain_pending_text_updates(self) -> List[TextUpdateOp]:
+        """
+        Non-blocking drain of all pending TextUpdateOp items from the queue.
+        
+        This enables update coalescing: instead of sending one Slack API call
+        per text update, we batch all pending text updates into a single call.
+        This is critical for handling high-frequency artifact progress updates
+        (e.g., 50 bytes per update) without hitting Slack rate limits.
+        
+        Returns:
+            List of TextUpdateOp items that were pending in the queue.
+        """
+        pending_text_ops = []
+        while True:
+            try:
+                # Non-blocking get - returns immediately if queue is empty
+                item = self.queue.get_nowait()
+                if isinstance(item, TextUpdateOp):
+                    pending_text_ops.append(item)
+                    self.queue.task_done()
+                else:
+                    # Put non-text items back at the front (we'll process them next)
+                    self._deferred_operation = item
+                    break
+            except asyncio.QueueEmpty:
+                break
+        return pending_text_ops
+
     async def _process_queue(self):
-        """Background task that processes queue operations sequentially."""
+        """
+        Background task that processes queue operations sequentially.
+        
+        Implements update coalescing for TextUpdateOp: before sending a Slack
+        update, drains all pending text updates from the queue and combines them
+        into a single API call. This dramatically reduces API calls when receiving
+        high-frequency progress updates
+        """
+        self._deferred_operation = None  # For non-text ops found during drain
+        
         try:
             while True:
-                operation = await self.queue.get()
+                # Check if we have a deferred operation from a previous drain
+                if self._deferred_operation is not None:
+                    operation = self._deferred_operation
+                    self._deferred_operation = None
+                else:
+                    operation = await self.queue.get()
 
                 if isinstance(operation, StopSignal):
                     log.debug("[Queue:%s] Received stop signal", self.task_id)
@@ -510,6 +552,20 @@ class SlackMessageQueue:
 
                 try:
                     if isinstance(operation, TextUpdateOp):
+                        # COALESCING: Drain all pending text updates and combine them
+                        pending_text_ops = self._drain_pending_text_updates()
+                        if pending_text_ops:
+                            # Combine all text updates into one
+                            combined_text = operation.text + "".join(
+                                op.text for op in pending_text_ops
+                            )
+                            log.debug(
+                                "[Queue:%s] Coalesced %d text updates into one (%d chars)",
+                                self.task_id,
+                                len(pending_text_ops) + 1,
+                                len(combined_text),
+                            )
+                            operation = TextUpdateOp(text=combined_text)
                         await self._handle_text_update(operation)
                     elif isinstance(operation, FileUploadOp):
                         await self._handle_file_upload(operation)
