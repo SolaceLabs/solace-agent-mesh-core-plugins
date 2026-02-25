@@ -422,6 +422,9 @@ class SlackMessageQueue:
         self._throttle_retry_count: int = 0  # Track retries for final updates
         self._max_throttle_retries: int = 10  # Maximum retries for final updates
 
+        # Global rate limiter for non-text operations
+        self._rate_limiter = get_global_rate_limiter()
+
         log.debug("[Queue:%s] Initialized for channel %s", task_id, channel_id)
 
     async def start(self):
@@ -804,6 +807,22 @@ class SlackMessageQueue:
                 )
                 return None
             raise
+
+    async def _throttle(self, is_message_update: bool = False) -> None:
+        """
+        Apply global throttling before making a Slack API call.
+        
+        This delegates to the global rate limiter to ensure we don't exceed
+        Slack's rate limits across ALL concurrent tasks. Used by non-text
+        operations (file uploads, message posts, etc.).
+        
+        Text updates use local throttling (_throttled_until) instead because
+        they are high-frequency and benefit from aggregation during throttle periods.
+        
+        Args:
+            is_message_update: If True, applies stricter throttling for chat.update calls
+        """
+        await self._rate_limiter.throttle(is_message_update=is_message_update)
 
     async def _handle_file_upload(self, op: FileUploadOp):
         """
