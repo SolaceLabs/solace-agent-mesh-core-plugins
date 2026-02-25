@@ -414,9 +414,13 @@ class SlackMessageQueue:
         # For update coalescing - holds non-text ops found during drain
         self._deferred_operation: Optional[QueueOperation] = None
         
-        # Reactive throttling state
+        # Reactive throttling state for text updates
+        # Text updates use local throttling as they are high-frequency and benefit from immediate retry detection
+        # Non-text operations use the global rate limiter via _throttle()
+        # This allows text updates to aggregate during throttle periods
         self._throttled_until: float = 0.0  # Time when we can try again
-        self._pending_text_buffer: str = ""  # Aggregated text waiting to be sent
+        self._throttle_retry_count: int = 0  # Track retries for final updates
+        self._max_throttle_retries: int = 10  # Maximum retries for final updates
 
         log.debug("[Queue:%s] Initialized for channel %s", task_id, channel_id)
 
@@ -623,8 +627,12 @@ class SlackMessageQueue:
         1. Try to send immediately
         2. If throttled (429):
            - For non-final: buffer and return (will retry when next update arrives or delay expires)
-           - For final: wait and keep retrying until success
+           - For final: wait and keep retrying until success (with max retry limit)
         3. If not throttled: send immediately
+        
+        Note: Text updates use local throttling (_throttled_until) rather than the global
+        rate limiter because they are high-frequency and benefit from aggregation during
+        throttle periods. Non-text operations continue to use the global rate limiter.
         
         Args:
             op: The text update operation
@@ -671,6 +679,9 @@ class SlackMessageQueue:
         # Format the FULL buffer
         formatted_text = self.adapter._format_text(self.text_buffer)
         
+        # Reset retry counter for this send attempt
+        self._throttle_retry_count = 0
+        
         # Try to send
         try:
             if not self.current_text_message_ts:
@@ -686,12 +697,20 @@ class SlackMessageQueue:
                 else:
                     # Throttled - _throttled_until was set by _try_slack_call
                     if is_final:
-                        # Final update - must wait and retry
+                        # Final update - must wait and retry with limit
+                        self._throttle_retry_count += 1
+                        if self._throttle_retry_count > self._max_throttle_retries:
+                            log.error(
+                                "[Queue:%s] Max throttle retries (%d) exceeded for final update",
+                                self.task_id, self._max_throttle_retries
+                            )
+                            raise RuntimeError(f"Max throttle retries exceeded for final text update")
+                        
                         wait_time = self._throttled_until - time.monotonic()
                         if wait_time > 0:
                             log.debug(
-                                "[Queue:%s] Final update throttled - waiting %.2fs",
-                                self.task_id, wait_time
+                                "[Queue:%s] Final update throttled (retry %d/%d) - waiting %.2fs",
+                                self.task_id, self._throttle_retry_count, self._max_throttle_retries, wait_time
                             )
                             await asyncio.sleep(wait_time)
                         response = await retry_with_backoff(
@@ -721,12 +740,20 @@ class SlackMessageQueue:
                 if not response:
                     # Throttled - _throttled_until was set by _try_slack_call
                     if is_final:
-                        # Final update - must wait and retry
+                        # Final update - must wait and retry with limit
+                        self._throttle_retry_count += 1
+                        if self._throttle_retry_count > self._max_throttle_retries:
+                            log.error(
+                                "[Queue:%s] Max throttle retries (%d) exceeded for final update",
+                                self.task_id, self._max_throttle_retries
+                            )
+                            raise RuntimeError(f"Max throttle retries exceeded for final text update")
+                        
                         wait_time = self._throttled_until - time.monotonic()
                         if wait_time > 0:
                             log.debug(
-                                "[Queue:%s] Final update throttled - waiting %.2fs",
-                                self.task_id, wait_time
+                                "[Queue:%s] Final update throttled (retry %d/%d) - waiting %.2fs",
+                                self.task_id, self._throttle_retry_count, self._max_throttle_retries, wait_time
                             )
                             await asyncio.sleep(wait_time)
                         await retry_with_backoff(
@@ -746,8 +773,15 @@ class SlackMessageQueue:
                         return
         except Exception as e:
             log.error("[Queue:%s] Error sending text update: %s", self.task_id, e)
+            # For non-final updates, preserve the buffer so it can be retried
+            # The buffer already contains the text, so it will be sent with the next update
             if is_final:
-                raise  # Re-raise for final updates
+                raise  # Re-raise for final updates - caller needs to know
+            # For non-final, log and continue - buffer is preserved for next attempt
+            log.warning(
+                "[Queue:%s] Non-final text update failed, buffer preserved (%d chars)",
+                self.task_id, len(self.text_buffer)
+            )
     
     async def _try_slack_call(self, method, **kwargs) -> Optional[Dict]:
         """
