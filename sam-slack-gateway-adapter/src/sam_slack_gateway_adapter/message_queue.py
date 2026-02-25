@@ -931,18 +931,52 @@ class SlackMessageQueue:
         )
 
     async def _handle_message_update(self, op: MessageUpdateOp):
-        """Handle updating an existing message."""
+        """
+        Handle updating an existing message.
+        
+        Uses REACTIVE throttling (same as text updates):
+        - Try to send immediately
+        - If throttled (429), wait and retry
+        """
         log.debug("[Queue:%s] Updating message ts=%s", self.task_id, op.ts)
-        # Apply stricter throttling for message updates (main source of rate limits)
-        await self._throttle(is_message_update=True)
-        await retry_with_backoff(
+        
+        current_time = time.monotonic()
+        
+        # Check if we're still in throttle period (429 backoff)
+        if current_time < self._throttled_until:
+            wait_time = self._throttled_until - current_time
+            log.debug(
+                "[Queue:%s] Message update throttled - waiting %.2fs",
+                self.task_id, wait_time
+            )
+            await asyncio.sleep(wait_time)
+        
+        # Try to send
+        response = await self._try_slack_call(
             self.client.chat_update,
             channel=self.channel_id,
             ts=op.ts,
             text=op.text,
             blocks=op.blocks,
-            operation_name=f"[Queue:{self.task_id}] chat_update",
         )
+        
+        if not response:
+            # Throttled - wait and retry
+            wait_time = self._throttled_until - time.monotonic()
+            if wait_time > 0:
+                log.debug(
+                    "[Queue:%s] Message update throttled - waiting %.2fs to retry",
+                    self.task_id, wait_time
+                )
+                await asyncio.sleep(wait_time)
+            await retry_with_backoff(
+                self.client.chat_update,
+                channel=self.channel_id,
+                ts=op.ts,
+                text=op.text,
+                blocks=op.blocks,
+                operation_name=f"[Queue:{self.task_id}] chat_update (retry)",
+            )
 
     async def _handle_message_delete(self, op: MessageDeleteOp):
         """Handle deleting a message."""
