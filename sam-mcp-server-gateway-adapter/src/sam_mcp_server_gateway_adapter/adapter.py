@@ -165,6 +165,10 @@ class McpAdapter(McpAdapterAuthHandler, GatewayAdapter):
         # Register tools dynamically from agent registry
         await self._register_tools_from_agents()
 
+        # Wait for agents to register if configured (for clients that don't support tools/list_changed)
+        if config.init_wait_for_agents:
+            await self._wait_for_agent_discovery()
+
         # Start the MCP server in the background
         asyncio.create_task(self._run_mcp_server())
 
@@ -196,6 +200,73 @@ class McpAdapter(McpAdapterAuthHandler, GatewayAdapter):
 
         except Exception as e:
             log.exception("Error registering tools from agents: %s, ignoring", e)
+
+    async def _wait_for_agent_discovery(self) -> None:
+        """
+        Wait for agents to register before completing initialization.
+
+        This is useful for MCP clients (like Claude Code) that don't support
+        the tools/list_changed notification and only see tools that exist
+        at connection time.
+
+        The method polls the agent_to_tools map until either:
+        - The minimum number of agents have registered (init_min_agents)
+        - The timeout is reached (init_wait_timeout_seconds)
+        """
+        config: McpAdapterConfig = self.context.adapter_config
+        timeout = config.init_wait_timeout_seconds
+        min_agents = config.init_min_agents
+        poll_interval = 0.25  # 250ms polling interval
+
+        log.info(
+            "Waiting for at least %d agent(s) to register (timeout: %.1fs)...",
+            min_agents,
+            timeout,
+        )
+
+        elapsed = 0.0
+        while elapsed < timeout:
+            # Count unique agents that have registered tools
+            agent_count = len(self.agent_to_tools)
+
+            if agent_count >= min_agents:
+                log.info(
+                    "Agent discovery complete: %d agent(s) registered with %d tools in %.1fs",
+                    agent_count,
+                    len(self.tool_to_agent_map),
+                    elapsed,
+                )
+                return
+
+            # Log progress periodically (every ~2 seconds)
+            if int(elapsed) % 2 == 0 and elapsed > 0 and int(elapsed * 4) % 8 == 0:
+                log.debug(
+                    "Waiting for agents: %d/%d registered (%.1fs/%.1fs)",
+                    agent_count,
+                    min_agents,
+                    elapsed,
+                    timeout,
+                )
+
+            await asyncio.sleep(poll_interval)
+            elapsed += poll_interval
+
+        # Timeout reached
+        agent_count = len(self.agent_to_tools)
+        if agent_count > 0:
+            log.warning(
+                "Agent discovery timeout after %.1fs: only %d/%d agent(s) registered with %d tools",
+                timeout,
+                agent_count,
+                min_agents,
+                len(self.tool_to_agent_map),
+            )
+        else:
+            log.warning(
+                "Agent discovery timeout after %.1fs: no agents registered. "
+                "Tools will be empty until agents send heartbeats.",
+                timeout,
+            )
 
     def _register_artifact_resource_template(self) -> None:
         """
