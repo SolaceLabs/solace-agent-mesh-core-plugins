@@ -313,6 +313,16 @@ async def retry_with_backoff(
         raise last_exception
 
 
+# --- Custom Exceptions ---
+
+class MessageOverflowError(Exception):
+    """
+    Raised when a Slack message exceeds the maximum length and has been
+    overflowed to a new message. The caller should retry with the reset state.
+    """
+    pass
+
+
 # --- Queue Operation Types ---
 
 
@@ -797,6 +807,16 @@ class SlackMessageQueue:
                             self.task_id, len(self.text_buffer)
                         )
                         return
+        except MessageOverflowError:
+            # _try_slack_call detected msg_too_long and already called _overflow_to_new_message
+            # which reset text_buffer and current_text_message_ts. Retry immediately with
+            # the reset state - the buffer now contains only the overflow text.
+            log.info(
+                "[Queue:%s] Message overflowed to new message, retrying with reset state",
+                self.task_id
+            )
+            # Recursive call with the reset state
+            await self._handle_text_update(op, is_final=is_final)
         except Exception as e:
             log.error("[Queue:%s] Error sending text update: %s", self.task_id, e)
             # For non-final updates, preserve the buffer so it can be retried
@@ -883,7 +903,7 @@ class SlackMessageQueue:
         
         If throttled (429), sets _throttled_until and returns None.
         If the message is too long (msg_too_long), triggers overflow to a new message
-        and retries the call with the reset buffer.
+        and raises MessageOverflowError so the caller can retry with the reset state.
         Other errors are raised.
         """
         try:
@@ -902,16 +922,17 @@ class SlackMessageQueue:
                 return None
             if error_code == "msg_too_long":
                 # The message text exceeded Slack's limit.  Overflow to a new
-                # message and retry with the (now-empty) buffer so the caller
-                # can post a fresh message.
+                # message and raise so the caller can retry with the reset state.
                 log.warning(
                     "[Queue:%s] msg_too_long from Slack - triggering overflow to new message",
                     self.task_id,
                 )
                 await self._overflow_to_new_message()
-                # Return None so the caller re-evaluates with the reset state.
-                # The caller's next iteration will post a new message.
-                return None
+                # Raise MessageOverflowError so the caller knows to retry immediately
+                # with the reset state (empty buffer, no message ts).
+                raise MessageOverflowError(
+                    f"Message overflowed to new message for task {self.task_id}"
+                )
             raise
 
     async def _throttle(self, is_message_update: bool = False) -> None:
