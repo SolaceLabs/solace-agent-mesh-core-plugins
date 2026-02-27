@@ -73,7 +73,7 @@ tools:
     -   **PostgreSQL**: `postgresql+psycopg2://user:password@host:port/dbname`
     -   **MySQL**: `mysql+pymysql://user:password@host:port/dbname`
     -   **MariaDB**: `mysql+pymysql://user:password@host:port/dbname`
-    -   **MSSQL (Microsoft ODBC - Recommended)**: `mssql+pyodbc://user:password@host:port/dbname?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes`
+    -   **MSSQL (Microsoft ODBC - Recommended)**: `mssql+pyodbc://user:password@host:port/dbname?driver=ODBC+Driver+18+for+SQL+Server`
         -   Official Microsoft driver with full feature support (Azure AD auth, Always Encrypted, etc.).
         -   Requires ODBC Driver 17 or 18 installed on the host system.
         -   Driver 18+ enables encryption by default. Control this with the `Encrypt` parameter:
