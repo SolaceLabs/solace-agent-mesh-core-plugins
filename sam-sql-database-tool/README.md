@@ -73,13 +73,18 @@ tools:
     -   **PostgreSQL**: `postgresql+psycopg2://user:password@host:port/dbname`
     -   **MySQL**: `mysql+pymysql://user:password@host:port/dbname`
     -   **MariaDB**: `mysql+pymysql://user:password@host:port/dbname`
-    -   **MSSQL (FreeTDS - Recommended)**: `mssql+pyodbc://user:password@host:port/dbname?driver=FreeTDS&TrustServerCertificate=yes`
-        -   Open-source driver with simpler installation: `sudo apt-get install freetds-dev freetds-bin tdsodbc && sudo odbcinst -i -d -f /usr/share/tdsodbc/odbcinst.ini`
-        -   Works well for standard SQL operations.
-    -   **MSSQL (Microsoft ODBC)**: `mssql+pyodbc://user:password@host:port/dbname?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes`
+    -   **MSSQL (Microsoft ODBC - Recommended)**: `mssql+pyodbc://user:password@host:port/dbname?driver=ODBC+Driver+18+for+SQL+Server`
         -   Official Microsoft driver with full feature support (Azure AD auth, Always Encrypted, etc.).
         -   Requires ODBC Driver 17 or 18 installed on the host system.
-        -   Use `TrustServerCertificate=yes` for self-signed certificates or `Encrypt=no` to disable encryption.
+        -   Driver 18+ enables encryption by default. Control this with the `Encrypt` parameter:
+            -   `Encrypt=yes` / `Encrypt=mandatory` — encrypt all traffic (default in Driver 18+).
+            -   `Encrypt=no` / `Encrypt=optional` — disable encryption.
+            -   `Encrypt=strict` — strict TLS; ignores `TrustServerCertificate` and requires a fully valid certificate chain (Driver 18+ only).
+        -   Use `TrustServerCertificate=yes` to bypass certificate validation for self-signed certificates (not applicable when `Encrypt=strict`).
+        -   See the [Microsoft docs on ODBC connection string keywords](https://learn.microsoft.com/en-us/sql/relational-databases/native-client/applications/using-connection-string-keywords-with-sql-server-native-client) for the full list of supported parameters.
+    -   **MSSQL (FreeTDS)**: `mssql+pyodbc://user:password@host:port/dbname?driver=FreeTDS`
+        -   Open-source driver with simpler installation: `sudo apt-get install freetds-dev freetds-bin tdsodbc && sudo odbcinst -i -d -f /usr/share/tdsodbc/odbcinst.ini`
+        -   Works well for standard SQL operations.
     -   **Oracle**: `oracle+oracledb://user:password@host:port/?service_name=SERVICE_NAME`
         -   Uses the `oracledb` driver in thin mode (no Oracle Instant Client required).
         -   Replace `SERVICE_NAME` with your Oracle service name (e.g., `XEPDB1`, `ORCL`).
