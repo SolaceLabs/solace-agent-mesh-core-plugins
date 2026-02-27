@@ -7,11 +7,12 @@ The Solace Agent Mesh (SAM) Event Mesh Gateway is a powerful plugin that acts as
 **Key Features:**
 
 *   **Event-Driven Agent Invocation**: Subscribes to topics on a "data plane" event mesh and triggers agent tasks based on received messages.
-*   **Flexible Message Transformation**: Uses the Solace AI Connector's expression engine to transform incoming message payloads into prompts for AI agents.
+*   **Flexible Message Transformation**: Uses the Solace AI Connector expression engine to transform incoming message payloads into prompts for AI agents.
 *   **Dynamic Response Routing**: Publishes agent responses back to the event mesh on dynamically determined topics.
 *   **Context Forwarding**: Preserves and forwards correlation data from an incoming event to the corresponding outgoing response, enabling request-reply patterns.
 *   **Differentiated Success/Error Handling**: Routes successful agent responses and error conditions to different topics with different payload structures.
 *   **Self-Contained Payloads**: Intelligently embeds agent-produced artifacts (text and binary files) directly into the output message payload.
+*   **Workflow Integration**: Supports structured invocation mode for invoking SAM workflows with schema-validated input and output through artifacts.
 
 ## Installation
 To install the SAM Event Mesh Gateway plugin, run the following command in your SAM project directory:
@@ -37,9 +38,14 @@ Each item in the `event_handlers` list defines a listener for one or more topics
 
 *   `name` (string, required): A unique name for the handler.
 *   `subscriptions` (list, required): A list of topic subscriptions for the data plane.
-*   `input_expression` (string, required): A SAC template expression that transforms the incoming Solace message into the main text prompt for the A2A task.
+*   `input_expression` (string, required): A SAC template expression that transforms the incoming Solace message into the main text prompt for the A2A task (or the input data for structured invocation).
 *   `target_agent_name` (string, optional): The static name of the agent to send the task to.
 *   `target_agent_name_expression` (string, optional): A SAC expression to dynamically determine the target agent.
+*   `target_workflow_name` (string, optional): The static name of the target workflow. Mutually exclusive with `target_agent_name`. When specified, the gateway automatically uses structured invocation mode.
+*   `target_workflow_name_expression` (string, optional): A SAC expression to dynamically determine the target workflow name. Automatically enables structured invocation mode.
+*   `structured_invocation` (object, optional): Configuration for structured invocation mode when targeting an agent (not required for workflows). For more information, see Workflow Integration below.
+    *   `input_schema` (object, optional): JSON Schema for input validation.
+    *   `output_schema` (object, optional): JSON Schema for expected output validation.
 *   `on_success` (string, optional): The name of the `output_handler` to use when the agent task completes successfully.
 *   `on_error` (string, optional): The name of the `output_handler` to use when the agent task fails.
 *   `forward_context` (object, optional): A dictionary for extracting and forwarding correlation data. Keys are custom names, and values are SAC expressions evaluated against the incoming message.
@@ -121,6 +127,8 @@ This object is the primary source for the `payload_expression`.
     }
   ],
   "data": [ { "data": {"key": "value"}, ... } ],
+  "structured_result": { /* StructuredInvocationResult data part (structured invocation only) */ },
+  "structured_output": { /* Parsed output artifact content (structured invocation only) */ },
   "a2a_task_response": { /* The original, full A2A Task or Error object */ }
 }
 ```
@@ -128,6 +136,8 @@ This object is the primary source for the `payload_expression`.
 *   `task_response:text`: Access the combined text.
 *   `task_response:files`: Access the list of file objects.
 *   `task_response:data`: Access the list of data objects.
+*   `task_response:structured_result`: Access the structured invocation result metadata (status, output artifact reference).
+*   `task_response:structured_output`: Access the parsed content of the output artifact (for structured invocations).
 *   `task_response:a2a_task_response`: Access the raw A2A object for advanced use cases.
 
 ### Forwarded Context (`user_data.forward_context:`)
@@ -201,6 +211,88 @@ This example processes a JSON event that contains a list of embedded documents. 
   # --- Main Prompt ---
   input_expression: "template:Process insurance case {{text://input.payload:caseId}}. The relevant documents have been attached."
   target_agent_name: "ClaimsProcessingAgent"
+```
+
+## Workflow Integration
+
+The gateway supports structured invocation mode for invoking SAM workflows. Unlike text-based agent invocation, structured invocation passes data through artifacts with optional JSON Schema validation.
+
+### When Structured Invocation Is Enabled
+
+Structured invocation mode activates automatically when either of the following conditions is true:
+
+*   `target_workflow_name` or `target_workflow_name_expression` is specified.
+*   The `structured_invocation` block contains `input_schema` or `output_schema`.
+
+When using `target_workflow_name`, the gateway targets a workflow directly. When using `target_agent_name` with the `structured_invocation` block, the gateway targets an agent but uses the structured data protocol.
+
+### How Structured Invocation Works
+
+1.  The gateway evaluates `input_expression` to extract the input data.
+2.  The input data is serialized (JSON, YAML, CSV, or text based on `payload_format`) and saved as an artifact.
+3.  A `StructuredInvocationRequest` data part is created with the input/output schemas and artifact reference.
+4.  The task is submitted using `RUN_BASED` session behavior (required for workflows).
+5.  The workflow processes the request and returns a `StructuredInvocationResult` with an output artifact.
+6.  The gateway loads the output artifact content and makes it available via `task_response:structured_output`.
+
+### Invoking a Workflow
+
+The following example shows how to invoke a data processing workflow from an incoming event.
+
+```yaml
+# In your event_handlers list:
+- name: "data_processor_handler"
+  subscriptions:
+    - topic: "data/process/>"
+  payload_format: "json"
+  input_expression: "input.payload:data"  # Extract the data object to send
+  target_workflow_name: "DataProcessingWorkflow"
+  on_success: "data_success_handler"
+  on_error: "data_error_handler"
+  forward_context:
+    request_id: "input.user_properties:requestId"
+```
+
+### Using Structured Invocation with an Agent
+
+You can use structured invocation with a regular agent by specifying schemas in the `structured_invocation` block.
+
+```yaml
+# In your event_handlers list:
+- name: "validated_agent_handler"
+  subscriptions:
+    - topic: "api/validated/>"
+  payload_format: "json"
+  input_expression: "input.payload"
+  target_agent_name: "ValidationAgent"
+  structured_invocation:
+    input_schema:
+      type: "object"
+      properties:
+        items:
+          type: "array"
+          items:
+            type: "object"
+      required: ["items"]
+    output_schema:
+      type: "object"
+      properties:
+        results:
+          type: "array"
+        status:
+          type: "string"
+  on_success: "validation_success_handler"
+```
+
+### Accessing Structured Output
+
+In your output handler, use `task_response:structured_output` to access the parsed output data.
+
+```yaml
+# In your output_handlers list:
+- name: "data_success_handler"
+  topic_expression: "template:data/results/{{text://user_data.forward_context:request_id}}"
+  payload_expression: "task_response:structured_output"  # Returns the parsed output artifact
 ```
 
 ## Full Configuration Example
