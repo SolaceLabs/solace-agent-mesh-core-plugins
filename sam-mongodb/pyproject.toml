@@ -10,7 +10,7 @@ type = "agent"
 
 [project]
 name = "sam_mongodb"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Solace Agent Mesh plugin for natural language querying of MongoDB databases."
 readme = "README.md"
 authors = [

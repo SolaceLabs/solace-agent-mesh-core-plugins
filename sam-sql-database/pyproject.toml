@@ -10,7 +10,7 @@ type = "agent"
 
 [project]
 name = "sam_sql_database"
-version = "0.1.1"
+version = "0.1.2"
 description = "A2A ADK Host plugin for natural language querying of SQL databases."
 readme = "README.md"
 authors = [
