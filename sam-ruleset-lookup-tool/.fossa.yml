@@ -1,8 +1,6 @@
-# Configuration used for fossa scan
 version: 3
 
 project:
-  locator: SolaceLabs_sam-ruleset-lookup-tool
   id: SolaceLabs_sam-ruleset-lookup-tool
   name: sam-ruleset-lookup-tool
   labels:

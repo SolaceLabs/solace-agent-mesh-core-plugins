@@ -1,8 +1,6 @@
-# Configuration used for fossa scan
 version: 3
 
 project:
-  locator: SolaceLabs_sam-nuclia-tool
   id: SolaceLabs_sam-nuclia-tool
   name: sam-nuclia-tool
   labels:
