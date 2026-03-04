@@ -65,6 +65,7 @@ jobs:
       config_file: '${{ needs.extract-metadata.outputs.package_path }}/workflow-config.json'
       additional_scan_params: |
         fossa.config=${{ needs.extract-metadata.outputs.package_path }}/.fossa.yml
+        fossa.revision=${{ needs.extract-metadata.outputs.version }}
     secrets:
       FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
 
