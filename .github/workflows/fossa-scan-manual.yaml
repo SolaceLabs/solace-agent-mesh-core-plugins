@@ -1,0 +1,159 @@
+name: FOSSA Scan (Manual)
+
+# Manual workflow to run FOSSA scans on-demand
+# Useful for testing FOSSA configuration or scanning specific branches/commits
+on:
+  workflow_dispatch:
+    inputs:
+      scan_type:
+        description: 'Type of scan to run'
+        required: true
+        type: choice
+        options:
+          - repository
+          - plugin
+        default: 'repository'
+      plugin_directory:
+        description: 'Plugin directory (required if scan_type=plugin, e.g., sam-slack)'
+        required: false
+        type: string
+      git_ref:
+        description: 'Git ref to scan (branch, tag, or commit SHA)'
+        required: false
+        type: string
+        default: 'main'
+      fossa_revision:
+        description: 'FOSSA revision override (optional, defaults to commit SHA or version)'
+        required: false
+        type: string
+      mode:
+        description: 'Scan mode'
+        required: true
+        type: choice
+        options:
+          - scan-only
+          - scan-and-guard
+        default: 'scan-only'
+
+permissions:
+  contents: read
+  checks: write
+  statuses: write
+  pull-requests: write
+
+jobs:
+  # Repository-level scan
+  fossa-scan-repository:
+    name: FOSSA Scan - Repository
+    if: inputs.scan_type == 'repository'
+    uses: SolaceDev/solace-public-workflows/.github/workflows/sca-scan-and-guard.yaml@main
+    with:
+      git_ref: ${{ inputs.git_ref }}
+      use_vault: false
+      config_file: '.github/workflow-config.json'
+      additional_scan_params: |
+        fossa.revision=${{ inputs.fossa_revision || github.sha }}
+    secrets:
+      FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+
+  # Plugin-level scan
+  validate-plugin:
+    name: Validate Plugin Input
+    if: inputs.scan_type == 'plugin'
+    runs-on: ubuntu-latest
+    outputs:
+      plugin_directory: ${{ steps.validate.outputs.plugin_directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.git_ref }}
+
+      - name: Validate plugin directory
+        id: validate
+        run: |
+          PLUGIN="${{ inputs.plugin_directory }}"
+
+          if [ -z "$PLUGIN" ]; then
+            echo "Error: plugin_directory is required when scan_type=plugin"
+            exit 1
+          fi
+
+          if [ ! -d "$PLUGIN" ]; then
+            echo "Error: Plugin directory '$PLUGIN' not found"
+            echo "Available plugins:"
+            ls -d sam-* 2>/dev/null || echo "No plugins found"
+            exit 1
+          fi
+
+          if [ ! -f "$PLUGIN/.fossa.yml" ]; then
+            echo "Warning: No .fossa.yml found in $PLUGIN"
+          fi
+
+          if [ ! -f "$PLUGIN/workflow-config.json" ]; then
+            echo "Warning: No workflow-config.json found in $PLUGIN"
+          fi
+
+          echo "Plugin directory: $PLUGIN"
+          echo "plugin_directory=$PLUGIN" >> $GITHUB_OUTPUT
+
+  fossa-scan-plugin:
+    name: FOSSA Scan - ${{ inputs.plugin_directory }}
+    needs: validate-plugin
+    if: inputs.scan_type == 'plugin'
+    uses: SolaceDev/solace-public-workflows/.github/workflows/sca-scan-and-guard.yaml@main
+    with:
+      git_ref: ${{ inputs.git_ref }}
+      use_vault: false
+      config_file: '${{ needs.validate-plugin.outputs.plugin_directory }}/workflow-config.json'
+      additional_scan_params: |
+        fossa.config=${{ needs.validate-plugin.outputs.plugin_directory }}/.fossa.yml
+        fossa.revision=${{ inputs.fossa_revision || github.sha }}
+    secrets:
+      FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+
+  # Summary job
+  scan-summary:
+    name: Scan Summary
+    needs: [fossa-scan-repository, validate-plugin, fossa-scan-plugin]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create summary
+        run: |
+          echo "## 🔍 FOSSA Manual Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Scan Type:** ${{ inputs.scan_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Git Ref:** ${{ inputs.git_ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Mode:** ${{ inputs.mode }}" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ inputs.scan_type }}" = "plugin" ]; then
+            echo "**Plugin:** ${{ inputs.plugin_directory }}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -n "${{ inputs.fossa_revision }}" ]; then
+            echo "**FOSSA Revision:** ${{ inputs.fossa_revision }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**FOSSA Revision:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Results" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ inputs.scan_type }}" = "repository" ]; then
+            RESULT="${{ needs.fossa-scan-repository.result }}"
+          else
+            RESULT="${{ needs.fossa-scan-plugin.result }}"
+          fi
+
+          if [ "$RESULT" = "success" ]; then
+            echo "✅ Scan completed successfully" >> $GITHUB_STEP_SUMMARY
+          elif [ "$RESULT" = "failure" ]; then
+            echo "❌ Scan failed - check logs for details" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Scan status: $RESULT" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Check the FOSSA dashboard for detailed results:" >> $GITHUB_STEP_SUMMARY
+          echo "https://app.fossa.com/" >> $GITHUB_STEP_SUMMARY
