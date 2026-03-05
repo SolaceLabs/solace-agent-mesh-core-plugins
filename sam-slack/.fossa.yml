@@ -1,8 +1,6 @@
-# Configuration used for fossa scan
 version: 3
 
 project:
-  locator: SolaceLabs_sam-slack
   id: SolaceLabs_sam-slack
   name: sam-slack
   labels:

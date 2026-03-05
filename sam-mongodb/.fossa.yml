@@ -1,8 +1,6 @@
-# Configuration used for fossa scan
 version: 3
 
 project:
-  locator: SolaceLabs_sam-mongodb
   id: SolaceLabs_sam-mongodb
   name: sam-mongodb
   labels:

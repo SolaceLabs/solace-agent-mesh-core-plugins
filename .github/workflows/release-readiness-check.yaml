@@ -197,182 +197,17 @@ jobs:
           echo "Plugin: ${{ matrix.plugin }}"
           echo "Status: ${{ steps.sonarqube.outcome }}"
 
-  # Third job: Check FOSSA for the entire repository
+  # Third job: FOSSA scan and guard using standardized shareable workflow
   fossa-check:
-    name: FOSSA Check
+    name: FOSSA Security Scan
     needs: extract-plugins
-    runs-on: ubuntu-latest
-    outputs:
-      licensing_outcome: ${{ steps.fossa_licensing.outcome }}
-      vulnerabilities_outcome: ${{ steps.fossa_vulnerabilities.outcome }}
-    steps:
-      - name: Create Licensing Check Run
-        id: create_licensing_check
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
-        with:
-          script: |
-            const headSha = '${{ needs.extract-plugins.outputs.head_sha }}';
-
-            console.log('Creating FOSSA Licensing check run');
-            console.log(`SHA: ${headSha}`);
-
-            const { data: checkRun } = await github.rest.checks.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              name: 'FOSSA: Licensing',
-              head_sha: headSha,
-              status: 'in_progress',
-              started_at: new Date().toISOString(),
-              output: {
-                title: 'FOSSA Licensing Check',
-                summary: 'Checking for licensing policy conflicts...'
-              }
-            });
-
-            console.log(`Licensing check run created with ID: ${checkRun.id}`);
-            core.setOutput('check_run_id', checkRun.id);
-            return checkRun.id;
-
-      - name: Create Vulnerabilities Check Run
-        id: create_vulnerabilities_check
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
-        with:
-          script: |
-            const headSha = '${{ needs.extract-plugins.outputs.head_sha }}';
-
-            console.log('Creating FOSSA Vulnerabilities check run');
-            console.log(`SHA: ${headSha}`);
-
-            const { data: checkRun } = await github.rest.checks.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              name: 'FOSSA: Vulnerabilities',
-              head_sha: headSha,
-              status: 'in_progress',
-              started_at: new Date().toISOString(),
-              output: {
-                title: 'FOSSA Vulnerability Check',
-                summary: 'Checking for critical and high vulnerabilities...'
-              }
-            });
-
-            console.log(`Vulnerabilities check run created with ID: ${checkRun.id}`);
-            core.setOutput('check_run_id', checkRun.id);
-            return checkRun.id;
-
-      - name: FOSSA Licensing Check
-        id: fossa_licensing
-        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
-        continue-on-error: true
-        with:
-          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
-          fossa_project_id: "${{ github.repository_owner }}_${{ github.event.repository.name }}"
-          fossa_branch: main
-          fossa_revision: ${{ github.sha }}
-          fossa_category: licensing
-          fossa_mode: BLOCK
-          block_on: policy_conflict
-
-      - name: Update Licensing Check Run
-        if: always()
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
-        with:
-          script: |
-            const checkRunId = '${{ steps.create_licensing_check.outputs.check_run_id }}';
-            const outcome = '${{ steps.fossa_licensing.outcome }}';
-
-            console.log(`Updating licensing check run ID: ${checkRunId}`);
-            console.log(`Outcome: ${outcome}`);
-
-            const conclusion = outcome === 'success' ? 'success' : 'failure';
-            const summary = outcome === 'success'
-              ? '✅ No licensing policy conflicts found'
-              : '❌ Found licensing policy conflicts';
-
-            const outputText = `## FOSSA Licensing Check\n\n` +
-              `**Project:** \`${{ github.repository_owner }}_${{ github.event.repository.name }}\`\n` +
-              `**Branch:** main\n` +
-              `**Status:** ${outcome === 'success' ? '✅ Passed' : '❌ Failed'}\n\n` +
-              (outcome === 'success'
-                ? 'No licensing policy conflicts were found. All dependencies comply with licensing policies.'
-                : 'Licensing policy conflicts were detected. Please review and resolve before release.');
-
-            await github.rest.checks.update({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              check_run_id: checkRunId,
-              status: 'completed',
-              conclusion: conclusion,
-              completed_at: new Date().toISOString(),
-              output: {
-                title: 'FOSSA Licensing Check',
-                summary: summary,
-                text: outputText
-              }
-            });
-
-            console.log(`Licensing check run completed with conclusion: ${conclusion}`);
-
-      - name: FOSSA Vulnerability Check
-        id: fossa_vulnerabilities
-        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
-        continue-on-error: true
-        with:
-          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
-          fossa_project_id: "${{ github.repository_owner }}_${{ github.event.repository.name }}"
-          fossa_branch: main
-          fossa_revision: ${{ github.sha }}
-          fossa_category: vulnerability
-          fossa_mode: BLOCK
-          block_on: critical,high
-
-      - name: Update Vulnerabilities Check Run
-        if: always()
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
-        with:
-          script: |
-            const checkRunId = '${{ steps.create_vulnerabilities_check.outputs.check_run_id }}';
-            const outcome = '${{ steps.fossa_vulnerabilities.outcome }}';
-
-            console.log(`Updating vulnerabilities check run ID: ${checkRunId}`);
-            console.log(`Outcome: ${outcome}`);
-
-            const conclusion = outcome === 'success' ? 'success' : 'failure';
-            const summary = outcome === 'success'
-              ? '✅ No critical or high vulnerabilities found'
-              : '❌ Found critical or high vulnerabilities';
-
-            const outputText = `## FOSSA Vulnerability Check\n\n` +
-              `**Project:** \`${{ github.repository_owner }}_${{ github.event.repository.name }}\`\n` +
-              `**Severity Blocking:** critical, high\n` +
-              `**Status:** ${outcome === 'success' ? '✅ Passed' : '❌ Failed'}\n\n` +
-              (outcome === 'success'
-                ? 'No critical or high severity vulnerabilities were found in dependencies.'
-                : 'Critical or high severity vulnerabilities were detected. Please review and resolve before release.');
-
-            await github.rest.checks.update({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              check_run_id: checkRunId,
-              status: 'completed',
-              conclusion: conclusion,
-              completed_at: new Date().toISOString(),
-              output: {
-                title: 'FOSSA Vulnerability Check',
-                summary: summary,
-                text: outputText
-              }
-            });
-
-            console.log(`Vulnerabilities check run completed with conclusion: ${conclusion}`);
-
-      - name: Record result
-        if: always()
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
-        with:
-          script: |
-            console.log(`Licensing Status: ${{ steps.fossa_licensing.outcome }}`);
-            console.log(`Vulnerability Status: ${{ steps.fossa_vulnerabilities.outcome }}`);
+    uses: SolaceDev/solace-public-workflows/.github/workflows/sca-scan-and-guard.yaml@main
+    with:
+      git_ref: ${{ inputs.ref || 'release-please--branches--main' }}
+      use_vault: false
+      config_file: '.github/workflow-config.json'
+    secrets:
+      FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
 
   # Fourth job: Aggregate results and comment on PR
   report-results:
@@ -442,21 +277,21 @@ jobs:
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### FOSSA Checks (Repository-Level)" >> $GITHUB_STEP_SUMMARY
+          echo "### FOSSA Security Scan (Repository-Level)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
 
           if [ "$FOSSA_RESULT" = "success" ]; then
-            echo "| Licensing | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-            echo "| Vulnerabilities | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+            echo "| Security Scan | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
           elif [ "$FOSSA_RESULT" = "skipped" ]; then
-            echo "| Licensing | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
-            echo "| Vulnerabilities | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+            echo "| Security Scan | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "| Licensing | ⚠️ Check job results |" >> $GITHUB_STEP_SUMMARY
-            echo "| Vulnerabilities | ⚠️ Check job results |" >> $GITHUB_STEP_SUMMARY
+            echo "| Security Scan | ⚠️ Check job results |" >> $GITHUB_STEP_SUMMARY
           fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "_FOSSA scan includes licensing policy and vulnerability checks_" >> $GITHUB_STEP_SUMMARY
 
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Plugins Being Released" >> $GITHUB_STEP_SUMMARY
@@ -522,15 +357,14 @@ jobs:
               '| Check | Scope | Status |',
               '|-------|-------|--------|',
               `| SonarQube Hotspots | Per-Plugin | ${getStatusEmoji(sonarResult)} ${getSonarStatusText(sonarResult)} |`,
-              `| FOSSA Licensing | Repository | ${getStatusEmoji(fossaResult)} ${getFossaStatusText(fossaResult)} |`,
-              `| FOSSA Vulnerabilities | Repository | ${getStatusEmoji(fossaResult)} ${getFossaStatusText(fossaResult)} |`,
+              `| FOSSA Security Scan | Repository | ${getStatusEmoji(fossaResult)} ${getFossaStatusText(fossaResult)} |`,
               pluginsTable,
               '### Plugins Being Released',
               pluginsList,
               '',
               '---',
               '*This check runs automatically on release-please PRs to ensure compliance before release.*',
-              '*Click on individual job results above for detailed per-plugin SonarQube status.*'
+              '*FOSSA scan includes licensing policy and vulnerability checks using standardized workflow.*'
             ].join('\n');
 
             // Find and delete existing comment
@@ -572,14 +406,10 @@ jobs:
             const pluginsToRelease = '${{ needs.extract-plugins.outputs.plugins }}';
             const sonarResult = '${{ needs.sonarqube-check.result }}';
             const fossaResult = '${{ needs.fossa-check.result }}';
-            const fossaLicensingOutcome = '${{ needs.fossa-check.outputs.licensing_outcome }}';
-            const fossaVulnerabilitiesOutcome = '${{ needs.fossa-check.outputs.vulnerabilities_outcome }}';
 
             console.log(`Completing check run ID: ${checkRunId}`);
             console.log(`SonarQube result: ${sonarResult}`);
             console.log(`FOSSA result: ${fossaResult}`);
-            console.log(`FOSSA Licensing outcome: ${fossaLicensingOutcome}`);
-            console.log(`FOSSA Vulnerabilities outcome: ${fossaVulnerabilitiesOutcome}`);
 
             // Determine overall conclusion
             let conclusion = 'success';
@@ -601,9 +431,9 @@ jobs:
               return 'Some plugins have issues';
             };
 
-            const getFossaOutcomeText = (outcome) => {
-              if (outcome === 'success') return 'Passed';
-              if (outcome === 'skipped') return 'Skipped';
+            const getFossaResultText = (result) => {
+              if (result === 'success') return 'Passed';
+              if (result === 'skipped') return 'Skipped';
               return 'Failed';
             };
 
@@ -613,8 +443,7 @@ jobs:
             outputText += '| Check | Scope | Status |\n';
             outputText += '|-------|-------|--------|\n';
             outputText += `| SonarQube Hotspots | Per-Plugin | ${getStatusEmoji(sonarResult)} ${getSonarStatusText(sonarResult)} |\n`;
-            outputText += `| FOSSA Licensing | Repository | ${getStatusEmoji(fossaLicensingOutcome)} ${getFossaOutcomeText(fossaLicensingOutcome)} |\n`;
-            outputText += `| FOSSA Vulnerabilities | Repository | ${getStatusEmoji(fossaVulnerabilitiesOutcome)} ${getFossaOutcomeText(fossaVulnerabilitiesOutcome)} |\n\n`;
+            outputText += `| FOSSA Security Scan | Repository | ${getStatusEmoji(fossaResult)} ${getFossaResultText(fossaResult)} |\n\n`;
 
             // Add plugin information
             if (pluginsToRelease) {

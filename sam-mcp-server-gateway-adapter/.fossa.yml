@@ -1,8 +1,8 @@
 version: 3
 
 project:
-  id: SolaceLabs_sam-geo-information
-  name: sam-geo-information
+  id: SolaceLabs_sam-mcp-server-gateway-adapter
+  name: sam-mcp-server-gateway-adapter
   labels:
     - solaceai
     - solace-agent-mesh-core-plugins

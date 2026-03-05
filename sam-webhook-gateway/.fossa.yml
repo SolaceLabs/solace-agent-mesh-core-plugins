@@ -1,8 +1,6 @@
-# Configuration used for fossa scan
 version: 3
 
 project:
-  locator: SolaceLabs_sam-webhook-gateway
   id: SolaceLabs_sam-webhook-gateway
   name: sam-webhook-gateway
   labels:
