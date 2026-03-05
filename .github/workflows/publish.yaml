@@ -54,25 +54,10 @@ jobs:
           fi
           echo "Found package at ${{ steps.extract.outputs.path }}"
 
-  # FOSSA scan BEFORE publishing - blocks if violations found
-  fossa-scan:
-    name: FOSSA Security Scan
-    needs: [extract-metadata]
-    uses: SolaceDev/solace-public-workflows/.github/workflows/sca-scan-and-guard.yaml@main
-    with:
-      git_ref: ${{ needs.extract-metadata.outputs.full_tag }}
-      use_vault: false
-      config_file: '${{ needs.extract-metadata.outputs.package_path }}/workflow-config.json'
-      additional_scan_params: |
-        fossa.config=${{ needs.extract-metadata.outputs.package_path }}/.fossa.yml
-        fossa.revision=${{ needs.extract-metadata.outputs.version }}
-    secrets:
-      FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
-
-  # Publish to PyPI only if FOSSA passes
+  # Publish to PyPI
   publish:
     name: Publish to PyPI
-    needs: [extract-metadata, fossa-scan]
+    needs: [extract-metadata]
     runs-on: ubuntu-latest
     environment: pypi # Environment with PyPI trusted publisher configured
     steps:
@@ -139,11 +124,26 @@ jobs:
           echo "**Version:** ${{ needs.extract-metadata.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "**Tag:** ${{ github.event.release.tag_name }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Security Checks" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ FOSSA License Policy Check passed (scanned before publishing)" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ FOSSA Vulnerability Scan completed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Built artifacts:" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           ls -la ${{ needs.extract-metadata.outputs.package_path }}/dist/ >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Note:** FOSSA scan will run after publishing to record version for tracking." >> $GITHUB_STEP_SUMMARY
+
+  # FOSSA scan AFTER publishing - records version for tracking (non-blocking)
+  # Security validation already occurred in Release-Please PR
+  fossa-scan:
+    name: FOSSA Version Recording
+    needs: [extract-metadata, publish]
+    if: always() && needs.publish.result == 'success'
+    uses: SolaceDev/solace-public-workflows/.github/workflows/sca-scan-and-guard.yaml@main
+    with:
+      git_ref: ${{ needs.extract-metadata.outputs.full_tag }}
+      use_vault: false
+      config_file: '${{ needs.extract-metadata.outputs.package_path }}/workflow-config.json'
+      additional_scan_params: |
+        fossa.config=${{ needs.extract-metadata.outputs.package_path }}/.fossa.yml
+        fossa.revision=${{ needs.extract-metadata.outputs.version }}
+    secrets:
+      FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
