@@ -40,6 +40,10 @@ Each item in the `event_handlers` list defines a listener for one or more topics
 *   `name` (string, required): A unique name for the handler.
 *   `subscriptions` (list, required): A list of topic subscriptions for the data plane.
 *   `input_expression` (string, required): A SAC template expression that transforms the incoming Solace message into the main text prompt for the A2A task (or the input data for structured invocation).
+*   `payload_format` (string, optional, default: `"json"`): The expected format of the incoming payload. Supported values: `"json"`, `"yaml"`, `"csv"`, `"text"`, `"binary"`. This affects how the payload is decoded and, for structured invocation, how the input data is serialized into the artifact.
+*   `payload_encoding` (string, optional, default: `"utf-8"`): The expected character encoding of the incoming payload (e.g., `"utf-8"`, `"none"`).
+*   `user_identity_expression` (string, optional): A SAC expression to extract a user identity from the incoming Solace message (e.g., `"input.user_properties:user_id"` or `"static:my_user"`). The resolved identity is used for authorization checks.
+*   `default_user_identity` (string, optional): Default user identity to use if none is extracted from the incoming message or if no `user_identity_expression` is provided.
 *   `target_agent_name` (string, optional): The static name of the agent to send the task to.
 *   `target_agent_name_expression` (string, optional): A SAC expression to dynamically determine the target agent.
 *   `target_workflow_name` (string, optional): The static name of the target workflow. Mutually exclusive with `target_agent_name`. When specified, the gateway automatically uses structured invocation mode.
@@ -513,6 +517,10 @@ In your output handler, use `task_response:structured_output` to access the pars
         subscriptions:
           - topic: "acme/orders/json/>"
         input_expression: "template:Summarize this order and check for issues: {{json://input.payload}}"
+        payload_format: "json"
+        payload_encoding: "utf-8"
+        user_identity_expression: "input.user_properties:user_id"
+        default_user_identity: "anonymous_event_mesh_user"
         target_agent_name: "OrderProcessingAgent"
         on_success: "order_success_handler"
         on_error: "order_error_handler"
