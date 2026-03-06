@@ -216,6 +216,36 @@ class TestTranslateExternalInput:
         assert context.get("is_structured_invocation") is True
 
     @pytest.mark.asyncio
+    async def test_translate_workflow_without_input_expression(
+        self,
+        event_mesh_gateway_component: EventMeshGatewayComponent,
+    ):
+        """Test that workflow targets work without input_expression by defaulting to full payload."""
+        solace_msg = SolaceMessage(
+            payload=b'{"order_id": 42, "items": ["a", "b"]}',
+            topic="test/events/workflow/test",
+            user_properties={"user_id": "workflow_test_user"},
+        )
+
+        user_identity = {"id": "workflow_test_user"}
+
+        handler_config = {
+            "name": "test_workflow_handler",
+            # No input_expression — should default to input:payload for workflow targets
+            "target_workflow_name": "TestOrderProcessor",
+            "payload_format": "json",
+            "payload_encoding": "utf-8",
+        }
+
+        target_name, a2a_parts, context = await event_mesh_gateway_component._translate_external_input(
+            solace_msg, user_identity, handler_config
+        )
+
+        assert target_name == "TestOrderProcessor"
+        assert len(a2a_parts) > 0
+        assert context.get("is_structured_invocation") is True
+
+    @pytest.mark.asyncio
     async def test_translate_with_forward_context(
         self,
         event_mesh_gateway_component: EventMeshGatewayComponent,
