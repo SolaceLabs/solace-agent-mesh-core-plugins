@@ -989,10 +989,19 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
 
         input_expression = handler_config.get("input_expression")
         if not input_expression:
-            log.error(
-                "%s 'input_expression' is missing in handler_config.", log_id_prefix
-            )
-            return None, [], {"error": "Missing input_expression"}
+            if is_structured:
+                # Workflow targets don't require input_expression — default to entire payload
+                input_expression = "input:payload"
+                log.debug(
+                    "%s No input_expression configured for structured invocation; defaulting to 'input:payload'.",
+                    log_id_prefix,
+                )
+            else:
+                log.error(
+                    "%s 'input_expression' is missing in handler_config.",
+                    log_id_prefix,
+                )
+                return None, [], {"error": "Missing input_expression"}
 
         if is_structured:
             # Structured invocation mode
