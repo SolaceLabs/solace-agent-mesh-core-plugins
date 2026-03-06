@@ -100,6 +100,7 @@ def mock_gateway_component():
     component._resolve_target_name = EventMeshGatewayComponent._resolve_target_name.__get__(
         component, EventMeshGatewayComponent
     )
+    component._FORMAT_MAP = EventMeshGatewayComponent._FORMAT_MAP
     component._get_format_info = EventMeshGatewayComponent._get_format_info.__get__(
         component, EventMeshGatewayComponent
     )
