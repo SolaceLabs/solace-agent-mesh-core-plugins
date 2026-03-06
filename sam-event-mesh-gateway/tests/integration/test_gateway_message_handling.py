@@ -4,6 +4,7 @@ Integration tests for Event Mesh Gateway message handling.
 These tests use real component instances to achieve actual code coverage.
 """
 
+import json
 import pytest
 import asyncio
 from typing import Dict, Any
@@ -214,6 +215,56 @@ class TestTranslateExternalInput:
         assert target_name == "TestWorkflow"
         assert len(a2a_parts) > 0
         assert context.get("is_structured_invocation") is True
+
+    @pytest.mark.asyncio
+    async def test_translate_structured_invocation_no_double_encoding(
+        self,
+        event_mesh_gateway_component: EventMeshGatewayComponent,
+        test_artifact_service_instance: TestInMemoryArtifactService,
+    ):
+        """Test that string input data is parsed before serialization to avoid double-encoding."""
+        # Simulate payload_format="text" where decode_payload returns a string (not a dict)
+        json_string = '{"orderId": "S001", "quantity": 5}'
+        solace_msg = SolaceMessage(
+            payload=json_string,  # Already decoded as string (text format)
+            topic="test/events/structured/encoding",
+            user_properties={"user_id": "encoding_test_user"},
+        )
+
+        user_identity = {"id": "encoding_test_user"}
+
+        handler_config = {
+            "name": "test_encoding_handler",
+            "input_expression": "input.payload",
+            "target_workflow_name": "TestWorkflow",
+            "payload_format": "json",
+            "payload_encoding": "utf-8",
+        }
+
+        target_name, a2a_parts, context = await event_mesh_gateway_component._translate_external_input(
+            solace_msg, user_identity, handler_config
+        )
+
+        assert target_name == "TestWorkflow"
+        assert len(a2a_parts) > 0
+
+        # Verify the artifact was saved with properly parsed JSON, not double-encoded
+        raw_store = await test_artifact_service_instance.get_raw_store()
+        for app_data in raw_store.values():
+            for user_data in app_data.values():
+                for session_data in user_data.values():
+                    for file_versions in session_data.values():
+                        for version, (content_bytes, mime_type, _) in file_versions.items():
+                            if mime_type == "application/json":
+                                parsed = json.loads(content_bytes)
+                                assert isinstance(parsed, dict), (
+                                    f"Expected dict but got {type(parsed).__name__}: "
+                                    "artifact content was double-encoded"
+                                )
+                                assert parsed["orderId"] == "S001"
+                                assert parsed["quantity"] == 5
+                                return
+        pytest.fail("No JSON artifact found in artifact store")
 
     @pytest.mark.asyncio
     async def test_translate_with_forward_context(

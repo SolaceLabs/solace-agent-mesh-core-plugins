@@ -1028,6 +1028,15 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             try:
                 input_data = msg_for_expression.get_data(input_expression)
                 if input_data is not None:
+                    # If input_data is a string but the format is JSON/YAML,
+                    # try to parse it to avoid double-encoding (e.g. when
+                    # payload_format is "text" but the content is valid JSON)
+                    if isinstance(input_data, str) and payload_format in ("json", "yaml"):
+                        try:
+                            input_data = json.loads(input_data)
+                        except (json.JSONDecodeError, ValueError):
+                            pass  # Not valid JSON; keep as string
+
                     filename = f"input_{node_id}_{a2a_session_id}.{file_extension}"
                     content_bytes = self._serialize_for_format(input_data, payload_format)
 
