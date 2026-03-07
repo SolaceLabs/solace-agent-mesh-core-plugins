@@ -70,7 +70,7 @@ apps:
           db_user: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___MONGO_USER}"
           db_password: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___MONGO_PASSWORD}"
           db_name: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___MONGO_DB}"
-          database_collection: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___MONGO_COLLECTION}" # Optional: if ommitted, the agent will detect all collections in the database and the LLM will need to specify the collection in the tool call
+          database_collection: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___MONGO_COLLECTION}" # Optional: if omitted, the agent will detect all collections in the database and the LLM will need to specify the collection in the tool call
           database_purpose: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB_PURPOSE}"
           data_description: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DB_DESCRIPTION}"
           auto_detect_schema: ${AUTO_DETECT_SCHEMA, true}
@@ -89,7 +89,7 @@ apps:
           component_module: "sam_mongodb.search_query"
           function_name: "mongo_query"
           tool_config:
-            collection: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___MONGO_COLLECTION}" # Optional: if ommitted, the agent will expect the LLM to specify the collection in the tool call
+            collection: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___MONGO_COLLECTION}" # Optional: if omitted, the agent will expect the LLM to specify the collection in the tool call
 
       session_service: 
         type: "sql"
