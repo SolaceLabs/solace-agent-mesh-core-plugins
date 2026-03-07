@@ -38,8 +38,8 @@ async def mongo_query(
 
     Args:
         pipeline_str (str): The aggregation pipeline as a JSON string.
-        collection (Optional[str]): The collection name to query. If not provided from tool_config,
-                                   generate one based on the available collections.
+        collection (Optional[str]): The collection name to query. If not provided and not set in tool_config,
+                                   the tool returns an error.
         response_format (Literal["yaml", "json", "csv", "markdown"]): The format in which to return the results.
         result_description (Optional[str]): A description of the results to be saved as metadata.
     """
@@ -49,8 +49,8 @@ async def mongo_query(
 
     log_identifier = f"[{tool_context._invocation_context.agent.name}:mongo_query]"
 
-    # Priority: LLM-provided collection if tool_config collection is empty/not set
-    tool_config_collection = tool_config.get("collection")
+    # Priority: tool_config collection over LLM-provided collection
+    tool_config_collection = (tool_config or {}).get("collection")
     target_collection = collection if not tool_config_collection else tool_config_collection
     
     if not target_collection:
