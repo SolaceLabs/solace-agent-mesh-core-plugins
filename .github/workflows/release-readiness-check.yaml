@@ -197,35 +197,69 @@ jobs:
           echo "Plugin: ${{ matrix.plugin }}"
           echo "Status: ${{ steps.sonarqube.outcome }}"
 
-  # Third job: Check FOSSA for the entire repository
+  # Third job: Check FOSSA for each plugin being released
   fossa-check:
-    name: FOSSA Check
+    name: FOSSA - ${{ matrix.plugin }}
     needs: extract-plugins
+    if: needs.extract-plugins.outputs.plugins_json != '[]'
     runs-on: ubuntu-latest
-    outputs:
-      licensing_outcome: ${{ steps.fossa_licensing.outcome }}
-      vulnerabilities_outcome: ${{ steps.fossa_vulnerabilities.outcome }}
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: ${{ fromJSON(needs.extract-plugins.outputs.plugins_json) }}
     steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Extract plugin version
+        id: plugin_version
+        shell: bash
+        env:
+          PLUGIN_PATH: ${{ matrix.plugin }}
+        run: |
+          VERSION=$(python3 - <<'PY'
+          import os
+          import tomllib
+
+          plugin_path = os.environ["PLUGIN_PATH"]
+          with open(f"{plugin_path}/pyproject.toml", "rb") as f:
+              pyproject = tomllib.load(f)
+
+          print(pyproject["project"]["version"])
+          PY
+          )
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Plugin: ${{ matrix.plugin }}"
+          echo "Version: $VERSION"
+
       - name: Create Licensing Check Run
         id: create_licensing_check
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
             const headSha = '${{ needs.extract-plugins.outputs.head_sha }}';
+            const plugin = '${{ matrix.plugin }}';
+            const pluginVersion = '${{ steps.plugin_version.outputs.version }}';
+            const checkName = `FOSSA Licensing: ${plugin}`;
 
-            console.log('Creating FOSSA Licensing check run');
+            console.log(`Creating check run: ${checkName}`);
             console.log(`SHA: ${headSha}`);
+            console.log(`Plugin version: ${pluginVersion}`);
 
             const { data: checkRun } = await github.rest.checks.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              name: 'FOSSA: Licensing',
+              name: checkName,
               head_sha: headSha,
               status: 'in_progress',
               started_at: new Date().toISOString(),
               output: {
-                title: 'FOSSA Licensing Check',
-                summary: 'Checking for licensing policy conflicts...'
+                title: `FOSSA Licensing Check - ${plugin}`,
+                summary: `Checking licensing policy conflicts for ${plugin} (${pluginVersion})...`
               }
             });
 
@@ -239,20 +273,24 @@ jobs:
         with:
           script: |
             const headSha = '${{ needs.extract-plugins.outputs.head_sha }}';
+            const plugin = '${{ matrix.plugin }}';
+            const pluginVersion = '${{ steps.plugin_version.outputs.version }}';
+            const checkName = `FOSSA Vulnerabilities: ${plugin}`;
 
-            console.log('Creating FOSSA Vulnerabilities check run');
+            console.log(`Creating check run: ${checkName}`);
             console.log(`SHA: ${headSha}`);
+            console.log(`Plugin version: ${pluginVersion}`);
 
             const { data: checkRun } = await github.rest.checks.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              name: 'FOSSA: Vulnerabilities',
+              name: checkName,
               head_sha: headSha,
               status: 'in_progress',
               started_at: new Date().toISOString(),
               output: {
-                title: 'FOSSA Vulnerability Check',
-                summary: 'Checking for critical and high vulnerabilities...'
+                title: `FOSSA Vulnerability Check - ${plugin}`,
+                summary: `Checking critical/high vulnerabilities for ${plugin} (${pluginVersion})...`
               }
             });
 
@@ -260,15 +298,27 @@ jobs:
             core.setOutput('check_run_id', checkRun.id);
             return checkRun.id;
 
+      - name: FOSSA Scan for ${{ matrix.plugin }}
+        id: fossa_scan
+        uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@main
+        continue-on-error: true
+        with:
+          scanners: "fossa"
+          additional_scan_params: |
+            fossa.branch=${{ steps.plugin_version.outputs.version }}
+            fossa.revision=${{ needs.extract-plugins.outputs.head_sha }}
+            fossa.config=${{ matrix.plugin }}/.fossa.yml
+          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
+
       - name: FOSSA Licensing Check
         id: fossa_licensing
         uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
         continue-on-error: true
         with:
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
-          fossa_project_id: "${{ github.repository_owner }}_${{ github.event.repository.name }}"
-          fossa_branch: main
-          fossa_revision: ${{ github.sha }}
+          fossa_project_id: "${{ github.repository_owner }}_${{ matrix.plugin }}"
+          fossa_branch: ${{ steps.plugin_version.outputs.version }}
+          fossa_revision: ${{ needs.extract-plugins.outputs.head_sha }}
           fossa_category: licensing
           fossa_mode: BLOCK
           block_on: policy_conflict
@@ -279,19 +329,25 @@ jobs:
         with:
           script: |
             const checkRunId = '${{ steps.create_licensing_check.outputs.check_run_id }}';
+            const plugin = '${{ matrix.plugin }}';
+            const pluginVersion = '${{ steps.plugin_version.outputs.version }}';
+            const revision = '${{ needs.extract-plugins.outputs.head_sha }}';
             const outcome = '${{ steps.fossa_licensing.outcome }}';
 
             console.log(`Updating licensing check run ID: ${checkRunId}`);
+            console.log(`Plugin: ${plugin}`);
             console.log(`Outcome: ${outcome}`);
 
             const conclusion = outcome === 'success' ? 'success' : 'failure';
             const summary = outcome === 'success'
-              ? '✅ No licensing policy conflicts found'
-              : '❌ Found licensing policy conflicts';
+              ? `✅ No licensing policy conflicts found for ${plugin}`
+              : `❌ Found licensing policy conflicts for ${plugin}`;
 
             const outputText = `## FOSSA Licensing Check\n\n` +
-              `**Project:** \`${{ github.repository_owner }}_${{ github.event.repository.name }}\`\n` +
-              `**Branch:** main\n` +
+              `**Plugin:** \`${plugin}\`\n` +
+              `**Project:** \`${{ github.repository_owner }}_${plugin}\`\n` +
+              `**Version (fossa.branch):** \`${pluginVersion}\`\n` +
+              `**Revision (fossa.revision):** \`${revision}\`\n` +
               `**Status:** ${outcome === 'success' ? '✅ Passed' : '❌ Failed'}\n\n` +
               (outcome === 'success'
                 ? 'No licensing policy conflicts were found. All dependencies comply with licensing policies.'
@@ -305,7 +361,7 @@ jobs:
               conclusion: conclusion,
               completed_at: new Date().toISOString(),
               output: {
-                title: 'FOSSA Licensing Check',
+                title: `FOSSA Licensing Check - ${plugin}`,
                 summary: summary,
                 text: outputText
               }
@@ -319,9 +375,9 @@ jobs:
         continue-on-error: true
         with:
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
-          fossa_project_id: "${{ github.repository_owner }}_${{ github.event.repository.name }}"
-          fossa_branch: main
-          fossa_revision: ${{ github.sha }}
+          fossa_project_id: "${{ github.repository_owner }}_${{ matrix.plugin }}"
+          fossa_branch: ${{ steps.plugin_version.outputs.version }}
+          fossa_revision: ${{ needs.extract-plugins.outputs.head_sha }}
           fossa_category: vulnerability
           fossa_mode: BLOCK
           block_on: critical,high
@@ -332,18 +388,25 @@ jobs:
         with:
           script: |
             const checkRunId = '${{ steps.create_vulnerabilities_check.outputs.check_run_id }}';
+            const plugin = '${{ matrix.plugin }}';
+            const pluginVersion = '${{ steps.plugin_version.outputs.version }}';
+            const revision = '${{ needs.extract-plugins.outputs.head_sha }}';
             const outcome = '${{ steps.fossa_vulnerabilities.outcome }}';
 
             console.log(`Updating vulnerabilities check run ID: ${checkRunId}`);
+            console.log(`Plugin: ${plugin}`);
             console.log(`Outcome: ${outcome}`);
 
             const conclusion = outcome === 'success' ? 'success' : 'failure';
             const summary = outcome === 'success'
-              ? '✅ No critical or high vulnerabilities found'
-              : '❌ Found critical or high vulnerabilities';
+              ? `✅ No critical or high vulnerabilities found for ${plugin}`
+              : `❌ Found critical or high vulnerabilities for ${plugin}`;
 
             const outputText = `## FOSSA Vulnerability Check\n\n` +
-              `**Project:** \`${{ github.repository_owner }}_${{ github.event.repository.name }}\`\n` +
+              `**Plugin:** \`${plugin}\`\n` +
+              `**Project:** \`${{ github.repository_owner }}_${plugin}\`\n` +
+              `**Version (fossa.branch):** \`${pluginVersion}\`\n` +
+              `**Revision (fossa.revision):** \`${revision}\`\n` +
               `**Severity Blocking:** critical, high\n` +
               `**Status:** ${outcome === 'success' ? '✅ Passed' : '❌ Failed'}\n\n` +
               (outcome === 'success'
@@ -358,7 +421,7 @@ jobs:
               conclusion: conclusion,
               completed_at: new Date().toISOString(),
               output: {
-                title: 'FOSSA Vulnerability Check',
+                title: `FOSSA Vulnerability Check - ${plugin}`,
                 summary: summary,
                 text: outputText
               }
@@ -368,11 +431,34 @@ jobs:
 
       - name: Record result
         if: always()
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
-        with:
-          script: |
-            console.log(`Licensing Status: ${{ steps.fossa_licensing.outcome }}`);
-            console.log(`Vulnerability Status: ${{ steps.fossa_vulnerabilities.outcome }}`);
+        run: |
+          echo "Plugin: ${{ matrix.plugin }}"
+          echo "Scan Status: ${{ steps.fossa_scan.outcome }}"
+          echo "Licensing Status: ${{ steps.fossa_licensing.outcome }}"
+          echo "Vulnerability Status: ${{ steps.fossa_vulnerabilities.outcome }}"
+
+      - name: Set matrix job result
+        if: always()
+        shell: bash
+        run: |
+          STATUS=0
+
+          if [ "${{ steps.fossa_scan.outcome }}" != "success" ]; then
+            echo "FOSSA scan failed for ${{ matrix.plugin }}"
+            STATUS=1
+          fi
+
+          if [ "${{ steps.fossa_licensing.outcome }}" != "success" ]; then
+            echo "FOSSA licensing check failed for ${{ matrix.plugin }}"
+            STATUS=1
+          fi
+
+          if [ "${{ steps.fossa_vulnerabilities.outcome }}" != "success" ]; then
+            echo "FOSSA vulnerability check failed for ${{ matrix.plugin }}"
+            STATUS=1
+          fi
+
+          exit "$STATUS"
 
   # Fourth job: Aggregate results and comment on PR
   report-results:
@@ -442,20 +528,26 @@ jobs:
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### FOSSA Checks (Repository-Level)" >> $GITHUB_STEP_SUMMARY
+          echo "### FOSSA Checks (Per-Plugin)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
 
           if [ "$FOSSA_RESULT" = "success" ]; then
-            echo "| Licensing | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-            echo "| Vulnerabilities | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **All plugins passed** - No licensing or critical/high vulnerability issues" >> $GITHUB_STEP_SUMMARY
           elif [ "$FOSSA_RESULT" = "skipped" ]; then
-            echo "| Licensing | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
-            echo "| Vulnerabilities | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+            echo "⏭️ **Skipped** - No plugins to check" >> $GITHUB_STEP_SUMMARY
           else
-            echo "| Licensing | ⚠️ Check job results |" >> $GITHUB_STEP_SUMMARY
-            echo "| Vulnerabilities | ⚠️ Check job results |" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **Some plugins have issues** - Check individual FOSSA check runs above" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -n "$PLUGINS" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Plugin | FOSSA Project |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|---------------|" >> $GITHUB_STEP_SUMMARY
+            IFS=',' read -ra PLUGIN_ARRAY <<< "$PLUGINS"
+            for plugin in "${PLUGIN_ARRAY[@]}"; do
+              plugin=$(echo "$plugin" | xargs)
+              echo "| \`$plugin\` | ${{ github.repository_owner }}_${plugin} |" >> $GITHUB_STEP_SUMMARY
+            done
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -505,11 +597,11 @@ jobs:
               
               pluginsTable = [
                 '',
-                '### SonarQube Projects Checked',
+                '### Projects Checked',
                 '',
-                '| Plugin | SonarQube Project |',
-                '|--------|-------------------|',
-                ...plugins.map(p => `| \`${p}\` | ${{ github.repository_owner }}_${p} |`),
+                '| Plugin | SonarQube Project | FOSSA Project |',
+                '|--------|-------------------|---------------|',
+                ...plugins.map(p => `| \`${p}\` | ${{ github.repository_owner }}_${p} | ${{ github.repository_owner }}_${p} |`),
                 ''
               ].join('\n');
             }
@@ -522,15 +614,15 @@ jobs:
               '| Check | Scope | Status |',
               '|-------|-------|--------|',
               `| SonarQube Hotspots | Per-Plugin | ${getStatusEmoji(sonarResult)} ${getSonarStatusText(sonarResult)} |`,
-              `| FOSSA Licensing | Repository | ${getStatusEmoji(fossaResult)} ${getFossaStatusText(fossaResult)} |`,
-              `| FOSSA Vulnerabilities | Repository | ${getStatusEmoji(fossaResult)} ${getFossaStatusText(fossaResult)} |`,
+              `| FOSSA Licensing | Per-Plugin | ${getStatusEmoji(fossaResult)} ${getFossaStatusText(fossaResult)} |`,
+              `| FOSSA Vulnerabilities | Per-Plugin | ${getStatusEmoji(fossaResult)} ${getFossaStatusText(fossaResult)} |`,
               pluginsTable,
               '### Plugins Being Released',
               pluginsList,
               '',
               '---',
               '*This check runs automatically on release-please PRs to ensure compliance before release.*',
-              '*Click on individual job results above for detailed per-plugin SonarQube status.*'
+              '*Click on individual job results above for detailed per-plugin SonarQube and FOSSA status.*'
             ].join('\n');
 
             // Find and delete existing comment
@@ -572,14 +664,10 @@ jobs:
             const pluginsToRelease = '${{ needs.extract-plugins.outputs.plugins }}';
             const sonarResult = '${{ needs.sonarqube-check.result }}';
             const fossaResult = '${{ needs.fossa-check.result }}';
-            const fossaLicensingOutcome = '${{ needs.fossa-check.outputs.licensing_outcome }}';
-            const fossaVulnerabilitiesOutcome = '${{ needs.fossa-check.outputs.vulnerabilities_outcome }}';
 
             console.log(`Completing check run ID: ${checkRunId}`);
             console.log(`SonarQube result: ${sonarResult}`);
             console.log(`FOSSA result: ${fossaResult}`);
-            console.log(`FOSSA Licensing outcome: ${fossaLicensingOutcome}`);
-            console.log(`FOSSA Vulnerabilities outcome: ${fossaVulnerabilitiesOutcome}`);
 
             // Determine overall conclusion
             let conclusion = 'success';
@@ -601,10 +689,10 @@ jobs:
               return 'Some plugins have issues';
             };
 
-            const getFossaOutcomeText = (outcome) => {
-              if (outcome === 'success') return 'Passed';
-              if (outcome === 'skipped') return 'Skipped';
-              return 'Failed';
+            const getFossaStatusText = (status) => {
+              if (status === 'success') return 'All plugins passed';
+              if (status === 'skipped') return 'Skipped (no plugins)';
+              return 'Some plugins have issues';
             };
 
             // Build detailed output
@@ -613,8 +701,8 @@ jobs:
             outputText += '| Check | Scope | Status |\n';
             outputText += '|-------|-------|--------|\n';
             outputText += `| SonarQube Hotspots | Per-Plugin | ${getStatusEmoji(sonarResult)} ${getSonarStatusText(sonarResult)} |\n`;
-            outputText += `| FOSSA Licensing | Repository | ${getStatusEmoji(fossaLicensingOutcome)} ${getFossaOutcomeText(fossaLicensingOutcome)} |\n`;
-            outputText += `| FOSSA Vulnerabilities | Repository | ${getStatusEmoji(fossaVulnerabilitiesOutcome)} ${getFossaOutcomeText(fossaVulnerabilitiesOutcome)} |\n\n`;
+            outputText += `| FOSSA Licensing | Per-Plugin | ${getStatusEmoji(fossaResult)} ${getFossaStatusText(fossaResult)} |\n`;
+            outputText += `| FOSSA Vulnerabilities | Per-Plugin | ${getStatusEmoji(fossaResult)} ${getFossaStatusText(fossaResult)} |\n\n`;
 
             // Add plugin information
             if (pluginsToRelease) {
@@ -623,11 +711,11 @@ jobs:
               for (const plugin of plugins) {
                 outputText += `- \`${plugin}\`\n`;
               }
-              outputText += '\n### SonarQube Projects Checked\n\n';
-              outputText += '| Plugin | Project |\n';
-              outputText += '|--------|----------|\n';
+              outputText += '\n### Projects Checked\n\n';
+              outputText += '| Plugin | SonarQube Project | FOSSA Project |\n';
+              outputText += '|--------|-------------------|---------------|\n';
               for (const plugin of plugins) {
-                outputText += `| \`${plugin}\` | ${context.repo.owner}_${plugin} |\n`;
+                outputText += `| \`${plugin}\` | ${context.repo.owner}_${plugin} | ${context.repo.owner}_${plugin} |\n`;
               }
             } else {
               outputText += '### Plugins Being Released\n\n';
