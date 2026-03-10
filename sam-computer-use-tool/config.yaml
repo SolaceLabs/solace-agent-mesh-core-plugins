@@ -1,0 +1,138 @@
+# Plugin Metadata:
+# Name: sam-computer-use-tool
+# Version: 0.1.0
+# Description: Browser automation tool using Playwright for Solace Agent Mesh
+
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: sam-computer-use-tool.log
+
+shared_config:
+  - broker_connection: &broker_connection
+      dev_mode: ${SOLACE_DEV_MODE, false}
+      broker_url: ${SOLACE_BROKER_URL, ws://localhost:8080}
+      broker_username: ${SOLACE_BROKER_USERNAME, default}
+      broker_password: ${SOLACE_BROKER_PASSWORD, default}
+      broker_vpn: ${SOLACE_BROKER_VPN, default}
+      temporary_queue: ${USE_TEMPORARY_QUEUES, true}
+
+  - models:
+    general: &general_model
+      model: ${LLM_SERVICE_GENERAL_MODEL_NAME}
+      api_base: ${LLM_SERVICE_ENDPOINT}
+      api_key: ${LLM_SERVICE_API_KEY}
+
+    image_description: &image_description_model
+      model: ${LLM_SERVICE_VISION_MODEL_NAME, gpt-4o}
+      api_base: ${LLM_SERVICE_ENDPOINT}
+      api_key: ${LLM_SERVICE_API_KEY}
+
+  - services:
+    session_service: &default_session_service
+      type: "memory"
+      default_behavior: "PERSISTENT"
+
+    artifact_service: &default_artifact_service
+      type: "filesystem"
+      base_path: "/tmp/samv2"
+      artifact_scope: namespace
+
+apps:
+  - name: sam-computer-use-tool-app
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      namespace: "${NAMESPACE}"
+      agent_name: "ComputerUseAgent"
+      display_name: "Computer Use Agent"
+      supports_streaming: true
+
+      model: *general_model
+
+      instruction: |
+        You are a browser automation assistant. You MUST follow this workflow:
+
+        1. ALWAYS call computer_use with action="open_browser" FIRST before any other browser action
+        2. Use navigate, click, type, scroll, hover, etc. to interact with web pages
+        3. Use describe_image to analyze screenshots and understand what is on screen
+        4. When done, call computer_use with action="close_browser" to clean up
+
+        Coordinates are normalized (0.0-1.0):
+        - (0.0, 0.0) = top-left corner
+        - (1.0, 1.0) = bottom-right corner
+        - (0.5, 0.5) = center of viewport
+
+        After each action, you receive a screenshot artifact filename. Use describe_image to understand
+        what is visible on the page before deciding your next action.
+
+        Available actions:
+        - open_browser: Start the browser (optionally with url parameter)
+        - close_browser: Close the browser
+        - navigate: Go to a URL
+        - click: Click at x,y coordinates
+        - type: Click at x,y and type text
+        - scroll: Scroll the page (up/down/left/right)
+        - hover: Move mouse to x,y
+        - wait: Wait for duration_ms milliseconds
+        - go_back: Browser back button
+        - go_forward: Browser forward button
+        - search: Search Google for a query
+        - key_combination: Press keyboard shortcuts
+        - drag_and_drop: Drag from x,y to end_x,end_y
+        - screenshot: Capture current screen without action
+
+      tools:
+        - group_name: artifact_management
+          tool_type: builtin-group
+
+        - tool_type: builtin
+          tool_name: "describe_image"
+          tool_config:
+            <<: *image_description_model
+
+        - tool_type: python
+          component_module: "sam_computer_use_tool.tools"
+          class_name: "ComputerUseTool"
+          tool_config:
+            tool_name: "computer_use"
+            tool_description: "Control a web browser. Coordinates are normalized 0.0-1.0. MUST call with action='open_browser' first."
+            viewport:
+              width: ${BROWSER_VIEWPORT_WIDTH, 1920}
+              height: ${BROWSER_VIEWPORT_HEIGHT, 1080}
+            browser:
+              headless: ${BROWSER_HEADLESS, true}
+              browser_type: ${BROWSER_TYPE, webkit}
+              timeout_ms: 30000
+            normalize_coordinates: true
+            screenshot_format: png
+            artifact_filename_prefix: "screenshot"
+            use_llm_naming: true
+
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+
+      artifact_handling_mode: "embed"
+      enable_embed_resolution: true
+      enable_artifact_content_instruction: true
+
+      agent_card:
+        description: "An agent that can browse the web and interact with web pages using Playwright."
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text", "file"]
+        skills:
+          - id: "web_browsing"
+            name: "Web Browsing"
+            description: "Navigate and interact with web pages programmatically"
+
+      agent_card_publishing:
+        interval_seconds: 30
+
+      agent_discovery:
+        enabled: false
+
+      inter_agent_communication:
+        allow_list: []
+        request_timeout_seconds: 30
