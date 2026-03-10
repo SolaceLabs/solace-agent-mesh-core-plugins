@@ -41,6 +41,11 @@ on:
           - sam-sql-database
           - sam-sql-database-tool
           - sam-webhook-gateway
+      ref:
+        description: "Git ref to checkout (branch or SHA)"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -60,6 +65,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          ref: ${{ inputs.ref || github.ref }}
           fetch-depth: 0
           sparse-checkout: ${{ inputs.plugin_directory }}
 

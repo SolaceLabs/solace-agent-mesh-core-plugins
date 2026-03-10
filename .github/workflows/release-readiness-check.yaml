@@ -300,8 +300,8 @@ jobs:
           additional_scan_params: |
             fossa.path=${{ matrix.plugin }}/
             fossa.project=${{ github.repository_owner }}_${{ matrix.plugin }}
-            fossa.branch=${{ steps.plugin_version.outputs.version }}
-            fossa.revision=${{ needs.extract-plugins.outputs.head_sha }}
+            fossa.branch=main
+            fossa.revision=${{ steps.plugin_version.outputs.version }}
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
 
       - name: FOSSA Licensing Check
@@ -311,8 +311,8 @@ jobs:
         with:
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
           fossa_project_id: "${{ github.repository_owner }}_${{ matrix.plugin }}"
-          fossa_branch: ${{ steps.plugin_version.outputs.version }}
-          fossa_revision: ${{ needs.extract-plugins.outputs.head_sha }}
+          fossa_branch: main
+          fossa_revision: ${{ steps.plugin_version.outputs.version }}
           fossa_category: licensing
           fossa_mode: BLOCK
           block_on: policy_conflict
@@ -325,12 +325,13 @@ jobs:
             const checkRunId = '${{ steps.create_licensing_check.outputs.check_run_id }}';
             const plugin = '${{ matrix.plugin }}';
             const pluginVersion = '${{ steps.plugin_version.outputs.version }}';
-            const revision = '${{ needs.extract-plugins.outputs.head_sha }}';
+            const branch = 'main';
+            const revision = pluginVersion;
             const outcome = '${{ steps.fossa_licensing.outcome }}';
             const fossaProject = `${{ github.repository_owner }}_${plugin}`;
             const fossaLocator = `custom+48578/${fossaProject}`;
             const encodedLocator = fossaLocator.replace(/\+/g, '%2B').replace(/\//g, '%2F');
-            const encodedBranch = pluginVersion.replace(/\//g, '%2F');
+            const encodedBranch = branch.replace(/\//g, '%2F');
             const encodedRevision = revision.replace(/\//g, '%2F');
             const fossaLicensingUrl = `https://app.fossa.com/projects/${encodedLocator}/refs/branch/${encodedBranch}/${encodedRevision}/issues/licensing?page=1&count=20&sort=issue_count_desc&grouping=revision&status=active`;
 
@@ -351,7 +352,7 @@ jobs:
             const outputText = `## FOSSA Licensing Check\n\n` +
               `**Plugin:** \`${plugin}\`\n` +
               `**Project:** \`${fossaProject}\`\n` +
-              `**Version (fossa.branch):** \`${pluginVersion}\`\n` +
+              `**Branch (fossa.branch):** \`${branch}\`\n` +
               `**Revision (fossa.revision):** \`${revision}\`\n` +
               `**Dashboard:** [View FOSSA Licensing Report](${fossaLicensingUrl})\n` +
               `**Status:** ${outcome === 'success' ? '✅ Passed' : '❌ Failed'}\n\n` +
@@ -382,8 +383,8 @@ jobs:
         with:
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
           fossa_project_id: "${{ github.repository_owner }}_${{ matrix.plugin }}"
-          fossa_branch: ${{ steps.plugin_version.outputs.version }}
-          fossa_revision: ${{ needs.extract-plugins.outputs.head_sha }}
+          fossa_branch: main
+          fossa_revision: ${{ steps.plugin_version.outputs.version }}
           fossa_category: vulnerability
           fossa_mode: BLOCK
           block_on: critical,high
@@ -396,12 +397,13 @@ jobs:
             const checkRunId = '${{ steps.create_vulnerabilities_check.outputs.check_run_id }}';
             const plugin = '${{ matrix.plugin }}';
             const pluginVersion = '${{ steps.plugin_version.outputs.version }}';
-            const revision = '${{ needs.extract-plugins.outputs.head_sha }}';
+            const branch = 'main';
+            const revision = pluginVersion;
             const outcome = '${{ steps.fossa_vulnerabilities.outcome }}';
             const fossaProject = `${{ github.repository_owner }}_${plugin}`;
             const fossaLocator = `custom+48578/${fossaProject}`;
             const encodedLocator = fossaLocator.replace(/\+/g, '%2B').replace(/\//g, '%2F');
-            const encodedBranch = pluginVersion.replace(/\//g, '%2F');
+            const encodedBranch = branch.replace(/\//g, '%2F');
             const encodedRevision = revision.replace(/\//g, '%2F');
             const fossaVulnerabilityUrl = `https://app.fossa.com/projects/${encodedLocator}/refs/branch/${encodedBranch}/${encodedRevision}/issues/vulnerability?page=1&count=20&sort=issue_count_desc&grouping=revision&status=active`;
 
@@ -422,7 +424,7 @@ jobs:
             const outputText = `## FOSSA Vulnerability Check\n\n` +
               `**Plugin:** \`${plugin}\`\n` +
               `**Project:** \`${fossaProject}\`\n` +
-              `**Version (fossa.branch):** \`${pluginVersion}\`\n` +
+              `**Branch (fossa.branch):** \`${branch}\`\n` +
               `**Revision (fossa.revision):** \`${revision}\`\n` +
               `**Dashboard:** [View FOSSA Vulnerability Report](${fossaVulnerabilityUrl})\n` +
               `**Severity Blocking:** critical, high\n` +
