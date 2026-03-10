@@ -389,51 +389,6 @@ jobs:
               body: body
             });
 
-  # FOSSA scan for the entire repository (on main branch)
-  fossa-scan:
-    name: FOSSA Scan
-    runs-on: ubuntu-latest
-    if: github.ref_name == github.event.repository.default_branch
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          fetch-depth: 0
-
-      - name: FOSSA Analyze and Test
-        uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@main
-        continue-on-error: true
-        with:
-          scanners: "fossa"
-          additional_scan_params: |
-            fossa.branch=${{ github.ref_name }}
-            fossa.revision=${{ github.sha }}
-          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
-
-      - name: FOSSA Guard - Block on Licensing Violations
-        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
-        continue-on-error: true
-        with:
-          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
-          fossa_project_id: "${{ github.repository_owner }}_${{ github.event.repository.name }}"
-          fossa_branch: ${{ github.ref_name }}
-          fossa_revision: ${{ github.sha }}
-          fossa_category: licensing
-          fossa_mode: BLOCK
-          block_on: policy_conflict
-
-      - name: FOSSA Guard - Block on Vulnerability Violations
-        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
-        continue-on-error: true
-        with:
-          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
-          fossa_project_id: "${{ github.repository_owner }}_${{ github.event.repository.name }}"
-          fossa_branch: ${{ github.ref_name }}
-          fossa_revision: ${{ github.sha }}
-          fossa_category: vulnerability
-          fossa_mode: BLOCK
-          block_on: critical,high
-
   # CI Status check - aggregates all job results
   ci-status:
     name: CI Status

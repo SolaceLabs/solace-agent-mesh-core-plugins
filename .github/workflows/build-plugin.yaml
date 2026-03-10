@@ -144,7 +144,7 @@ jobs:
             -Dsonar.sources=src
             -Dsonar.python.version=3.10,3.11,3.12,3.13
             -Dsonar.sourceEncoding=UTF-8
-            -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.python.coverage.reportPaths=**/coverage.xml
             -Dsonar.exclusions=**/__pycache__/**,**/dist/**,**/.hatch/**,**/build/**,**/*.egg-info/**,**/tests/**
             -Dsonar.cpd.exclusions=**/tests/**
             -Dsonar.pullrequest.github.summary_comment=false
@@ -168,7 +168,7 @@ jobs:
           script: |
             const outcome = process.env.SONAR_OUTCOME;
             const plugin = '${{ inputs.plugin_directory }}';
-            const sonarHostUrl = process.env.SONAR_HOST_URL || 'https://sonarq.solace.com';
+            const sonarHostUrl = process.env.SONAR_HOST_URL;
             const prNumber = context.payload.pull_request.number;
             const headSha = context.payload.pull_request.head.sha;
 

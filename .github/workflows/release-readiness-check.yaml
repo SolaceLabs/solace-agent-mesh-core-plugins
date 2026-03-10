@@ -157,6 +157,10 @@ jobs:
             const checkRunId = '${{ steps.create_check.outputs.check_run_id }}';
             const plugin = '${{ matrix.plugin }}';
             const outcome = '${{ steps.sonarqube.outcome }}';
+            const projectKey = `${{ github.repository_owner }}_${plugin}`;
+            const sonarHostUrlRaw = '${{ secrets.SONARQUBE_HOST_URL }}';
+            const sonarHostUrl = sonarHostUrlRaw.endsWith('/') ? sonarHostUrlRaw : `${sonarHostUrlRaw}/`;
+            const sonarDashboardUrl = `${sonarHostUrl}dashboard?id=${encodeURIComponent(projectKey)}`;
 
             console.log(`Updating check run ID: ${checkRunId}`);
             console.log(`Plugin: ${plugin}`);
@@ -169,7 +173,8 @@ jobs:
 
             const outputText = `## SonarQube Hotspot Check\n\n` +
               `**Plugin:** \`${plugin}\`\n` +
-              `**Project:** \`${{ github.repository_owner }}_${plugin}\`\n` +
+              `**Project:** \`${projectKey}\`\n` +
+              `**Dashboard:** [View SonarQube Project](${sonarDashboardUrl})\n` +
               `**Status:** ${outcome === 'success' ? '✅ Passed' : '❌ Failed'}\n\n` +
               (outcome === 'success'
                 ? 'No unresolved HIGH vulnerability hotspots were found.'
@@ -211,30 +216,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ needs.extract-plugins.outputs.head_sha || inputs.ref || github.ref }}
           fetch-depth: 0
-
-      - name: Extract plugin version
-        id: plugin_version
-        shell: bash
-        env:
-          PLUGIN_PATH: ${{ matrix.plugin }}
-        run: |
-          VERSION=$(python3 - <<'PY'
-          import os
-          import tomllib
-
-          plugin_path = os.environ["PLUGIN_PATH"]
-          with open(f"{plugin_path}/pyproject.toml", "rb") as f:
-              pyproject = tomllib.load(f)
-
-          print(pyproject["project"]["version"])
-          PY
-          )
-
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Plugin: ${{ matrix.plugin }}"
-          echo "Version: $VERSION"
 
       - name: Create Licensing Check Run
         id: create_licensing_check
@@ -243,7 +226,6 @@ jobs:
           script: |
             const headSha = '${{ needs.extract-plugins.outputs.head_sha }}';
             const plugin = '${{ matrix.plugin }}';
-            const pluginVersion = '${{ steps.plugin_version.outputs.version }}';
             const checkName = `FOSSA Licensing: ${plugin}`;
 
             console.log(`Creating check run: ${checkName}`);
@@ -259,7 +241,7 @@ jobs:
               started_at: new Date().toISOString(),
               output: {
                 title: `FOSSA Licensing Check - ${plugin}`,
-                summary: `Checking licensing policy conflicts for ${plugin} (${pluginVersion})...`
+                summary: `Checking licensing policy conflicts for ${plugin}...`
               }
             });
 
@@ -267,6 +249,8 @@ jobs:
             core.setOutput('check_run_id', checkRun.id);
             return checkRun.id;
 
+      - name: Install Hatch
+        uses: pypa/hatch@install
       - name: Create Vulnerabilities Check Run
         id: create_vulnerabilities_check
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
@@ -274,7 +258,6 @@ jobs:
           script: |
             const headSha = '${{ needs.extract-plugins.outputs.head_sha }}';
             const plugin = '${{ matrix.plugin }}';
-            const pluginVersion = '${{ steps.plugin_version.outputs.version }}';
             const checkName = `FOSSA Vulnerabilities: ${plugin}`;
 
             console.log(`Creating check run: ${checkName}`);
@@ -290,13 +273,23 @@ jobs:
               started_at: new Date().toISOString(),
               output: {
                 title: `FOSSA Vulnerability Check - ${plugin}`,
-                summary: `Checking critical/high vulnerabilities for ${plugin} (${pluginVersion})...`
+                summary: `Checking critical/high vulnerabilities for ${plugin}...`
               }
             });
 
             console.log(`Vulnerabilities check run created with ID: ${checkRun.id}`);
             core.setOutput('check_run_id', checkRun.id);
             return checkRun.id;
+
+      - name: Extract plugin version
+        id: plugin_version
+        shell: bash
+        working-directory: ${{ matrix.plugin }}
+        env:
+          PLUGIN_PATH: ${{ matrix.plugin }}
+        run: |
+          VERSION=$(hatch version)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: FOSSA Scan for ${{ matrix.plugin }}
         id: fossa_scan
@@ -307,7 +300,6 @@ jobs:
           additional_scan_params: |
             fossa.branch=${{ steps.plugin_version.outputs.version }}
             fossa.revision=${{ needs.extract-plugins.outputs.head_sha }}
-            fossa.config=${{ matrix.plugin }}/.fossa.yml
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
 
       - name: FOSSA Licensing Check
@@ -333,6 +325,17 @@ jobs:
             const pluginVersion = '${{ steps.plugin_version.outputs.version }}';
             const revision = '${{ needs.extract-plugins.outputs.head_sha }}';
             const outcome = '${{ steps.fossa_licensing.outcome }}';
+            const fossaProject = `${{ github.repository_owner }}_${plugin}`;
+            const fossaLocator = `custom+48578/${fossaProject}`;
+            const encodedLocator = fossaLocator.replace(/\+/g, '%2B').replace(/\//g, '%2F');
+            const encodedBranch = pluginVersion.replace(/\//g, '%2F');
+            const encodedRevision = revision.replace(/\//g, '%2F');
+            const fossaLicensingUrl = `https://app.fossa.com/projects/${encodedLocator}/refs/branch/${encodedBranch}/${encodedRevision}/issues/licensing?page=1&count=20&sort=issue_count_desc&grouping=revision&status=active`;
+
+            if (!checkRunId) {
+              console.log(`No licensing check_run_id for ${plugin}; skipping check update`);
+              return;
+            }
 
             console.log(`Updating licensing check run ID: ${checkRunId}`);
             console.log(`Plugin: ${plugin}`);
@@ -345,9 +348,10 @@ jobs:
 
             const outputText = `## FOSSA Licensing Check\n\n` +
               `**Plugin:** \`${plugin}\`\n` +
-              `**Project:** \`${{ github.repository_owner }}_${plugin}\`\n` +
+              `**Project:** \`${fossaProject}\`\n` +
               `**Version (fossa.branch):** \`${pluginVersion}\`\n` +
               `**Revision (fossa.revision):** \`${revision}\`\n` +
+              `**Dashboard:** [View FOSSA Licensing Report](${fossaLicensingUrl})\n` +
               `**Status:** ${outcome === 'success' ? '✅ Passed' : '❌ Failed'}\n\n` +
               (outcome === 'success'
                 ? 'No licensing policy conflicts were found. All dependencies comply with licensing policies.'
@@ -392,6 +396,17 @@ jobs:
             const pluginVersion = '${{ steps.plugin_version.outputs.version }}';
             const revision = '${{ needs.extract-plugins.outputs.head_sha }}';
             const outcome = '${{ steps.fossa_vulnerabilities.outcome }}';
+            const fossaProject = `${{ github.repository_owner }}_${plugin}`;
+            const fossaLocator = `custom+48578/${fossaProject}`;
+            const encodedLocator = fossaLocator.replace(/\+/g, '%2B').replace(/\//g, '%2F');
+            const encodedBranch = pluginVersion.replace(/\//g, '%2F');
+            const encodedRevision = revision.replace(/\//g, '%2F');
+            const fossaVulnerabilityUrl = `https://app.fossa.com/projects/${encodedLocator}/refs/branch/${encodedBranch}/${encodedRevision}/issues/vulnerability?page=1&count=20&sort=issue_count_desc&grouping=revision&status=active`;
+
+            if (!checkRunId) {
+              console.log(`No vulnerability check_run_id for ${plugin}; skipping check update`);
+              return;
+            }
 
             console.log(`Updating vulnerabilities check run ID: ${checkRunId}`);
             console.log(`Plugin: ${plugin}`);
@@ -404,9 +419,10 @@ jobs:
 
             const outputText = `## FOSSA Vulnerability Check\n\n` +
               `**Plugin:** \`${plugin}\`\n` +
-              `**Project:** \`${{ github.repository_owner }}_${plugin}\`\n` +
+              `**Project:** \`${fossaProject}\`\n` +
               `**Version (fossa.branch):** \`${pluginVersion}\`\n` +
               `**Revision (fossa.revision):** \`${revision}\`\n` +
+              `**Dashboard:** [View FOSSA Vulnerability Report](${fossaVulnerabilityUrl})\n` +
               `**Severity Blocking:** critical, high\n` +
               `**Status:** ${outcome === 'success' ? '✅ Passed' : '❌ Failed'}\n\n` +
               (outcome === 'success'
@@ -436,29 +452,6 @@ jobs:
           echo "Scan Status: ${{ steps.fossa_scan.outcome }}"
           echo "Licensing Status: ${{ steps.fossa_licensing.outcome }}"
           echo "Vulnerability Status: ${{ steps.fossa_vulnerabilities.outcome }}"
-
-      - name: Set matrix job result
-        if: always()
-        shell: bash
-        run: |
-          STATUS=0
-
-          if [ "${{ steps.fossa_scan.outcome }}" != "success" ]; then
-            echo "FOSSA scan failed for ${{ matrix.plugin }}"
-            STATUS=1
-          fi
-
-          if [ "${{ steps.fossa_licensing.outcome }}" != "success" ]; then
-            echo "FOSSA licensing check failed for ${{ matrix.plugin }}"
-            STATUS=1
-          fi
-
-          if [ "${{ steps.fossa_vulnerabilities.outcome }}" != "success" ]; then
-            echo "FOSSA vulnerability check failed for ${{ matrix.plugin }}"
-            STATUS=1
-          fi
-
-          exit "$STATUS"
 
   # Fourth job: Aggregate results and comment on PR
   report-results:
@@ -492,15 +485,82 @@ jobs:
             core.setOutput('check_run_id', checkRun.id);
             return checkRun.id;
 
+      - name: Aggregate plugin check statuses
+        id: aggregate
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const headSha = '${{ needs.extract-plugins.outputs.head_sha }}';
+            const pluginsRaw = '${{ needs.extract-plugins.outputs.plugins }}';
+            const plugins = pluginsRaw
+              ? pluginsRaw.split(',').map(p => p.trim()).filter(Boolean)
+              : [];
+
+            if (plugins.length === 0) {
+              core.setOutput('sonar_result', 'skipped');
+              core.setOutput('fossa_result', 'skipped');
+              console.log('No plugins detected; marking SonarQube/FOSSA as skipped');
+              return;
+            }
+
+            const checkRuns = await github.paginate(
+              github.rest.checks.listForRef,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: headSha,
+                per_page: 100
+              },
+              (response) => response.data.check_runs || []
+            );
+            const byName = new Map(checkRuns.map(run => [run.name, run]));
+
+            const evaluate = (expectedNames, label) => {
+              let result = 'success';
+              for (const name of expectedNames) {
+                const run = byName.get(name);
+                if (!run) {
+                  console.log(`[${label}] Missing check run: ${name}`);
+                  result = 'failure';
+                  continue;
+                }
+
+                console.log(`[${label}] ${name} => ${run.status}/${run.conclusion}`);
+                if (run.conclusion !== 'success') {
+                  result = 'failure';
+                }
+              }
+              return result;
+            };
+
+            const sonarChecks = plugins.map(plugin => `SonarQube: ${plugin}`);
+            const fossaChecks = plugins.flatMap(plugin => [
+              `FOSSA Licensing: ${plugin}`,
+              `FOSSA Vulnerabilities: ${plugin}`
+            ]);
+
+            const sonarResult = evaluate(sonarChecks, 'sonar');
+            const fossaResult = evaluate(fossaChecks, 'fossa');
+
+            core.setOutput('sonar_result', sonarResult);
+            core.setOutput('fossa_result', fossaResult);
+            console.log(`Aggregated SonarQube result: ${sonarResult}`);
+            console.log(`Aggregated FOSSA result: ${fossaResult}`);
+
       - name: Create Check Summary
         run: |
           echo "## 🔐 Release Readiness Check Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           PLUGINS="${{ needs.extract-plugins.outputs.plugins }}"
-          # Job result will be 'failure' if any step failed (no continue-on-error)
-          SONAR_RESULT="${{ needs.sonarqube-check.result }}"
-          FOSSA_RESULT="${{ needs.fossa-check.result }}"
+          SONAR_HOST="${{ secrets.SONARQUBE_HOST_URL }}"
+          if [ "${SONAR_HOST%/}" = "$SONAR_HOST" ]; then
+            SONAR_HOST="${SONAR_HOST}/"
+          fi
+
+          # Aggregated from per-plugin check run conclusions
+          SONAR_RESULT="${{ steps.aggregate.outputs.sonar_result }}"
+          FOSSA_RESULT="${{ steps.aggregate.outputs.fossa_result }}"
 
           echo "SonarQube job result: $SONAR_RESULT"
           echo "FOSSA job result: $FOSSA_RESULT"
@@ -518,12 +578,16 @@ jobs:
 
           if [ -n "$PLUGINS" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Plugin | Project |" >> $GITHUB_STEP_SUMMARY
-            echo "|--------|---------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Plugin | SonarQube Project | FOSSA Project |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------------------|---------------|" >> $GITHUB_STEP_SUMMARY
             IFS=',' read -ra PLUGIN_ARRAY <<< "$PLUGINS"
             for plugin in "${PLUGIN_ARRAY[@]}"; do
               plugin=$(echo "$plugin" | xargs)
-              echo "| \`$plugin\` | ${{ github.repository_owner }}_${plugin} |" >> $GITHUB_STEP_SUMMARY
+              SONAR_PROJECT="${{ github.repository_owner }}_${plugin}"
+              FOSSA_PROJECT="${{ github.repository_owner }}_${plugin}"
+              SONAR_URL="${SONAR_HOST}dashboard?id=${SONAR_PROJECT}"
+              FOSSA_URL="https://app.fossa.com/projects/custom%2B48578%2F${FOSSA_PROJECT}"
+              echo "| \`$plugin\` | [${SONAR_PROJECT}](${SONAR_URL}) | [${FOSSA_PROJECT}](${FOSSA_URL}) |" >> $GITHUB_STEP_SUMMARY
             done
           fi
 
@@ -568,8 +632,19 @@ jobs:
           script: |
             const prNumber = ${{ inputs.pr_number }};
             const pluginsToRelease = '${{ needs.extract-plugins.outputs.plugins }}';
-            const sonarResult = '${{ needs.sonarqube-check.result }}';
-            const fossaResult = '${{ needs.fossa-check.result }}';
+            const sonarResult = '${{ steps.aggregate.outputs.sonar_result }}';
+            const fossaResult = '${{ steps.aggregate.outputs.fossa_result }}';
+            const sonarHostUrlRaw = '${{ secrets.SONARQUBE_HOST_URL }}';
+            const sonarHostUrl = sonarHostUrlRaw.endsWith('/') ? sonarHostUrlRaw : `${sonarHostUrlRaw}/`;
+
+            const getSonarProjectUrl = (projectId) =>
+              `${sonarHostUrl}dashboard?id=${encodeURIComponent(projectId)}`;
+
+            const getFossaProjectUrl = (projectId) => {
+              const locator = `custom+48578/${projectId}`;
+              const encodedLocator = locator.replace(/\+/g, '%2B').replace(/\//g, '%2F');
+              return `https://app.fossa.com/projects/${encodedLocator}`;
+            };
 
             const getStatusEmoji = (status) => {
               if (status === 'success') return '✅';
@@ -601,7 +676,10 @@ jobs:
                 '',
                 '| Plugin | SonarQube Project | FOSSA Project |',
                 '|--------|-------------------|---------------|',
-                ...plugins.map(p => `| \`${p}\` | ${{ github.repository_owner }}_${p} | ${{ github.repository_owner }}_${p} |`),
+                ...plugins.map(p => {
+                  const projectId = `${{ github.repository_owner }}_${p}`;
+                  return `| \`${p}\` | [${projectId}](${getSonarProjectUrl(projectId)}) | [${projectId}](${getFossaProjectUrl(projectId)}) |`;
+                }),
                 ''
               ].join('\n');
             }
@@ -622,7 +700,7 @@ jobs:
               '',
               '---',
               '*This check runs automatically on release-please PRs to ensure compliance before release.*',
-              '*Click on individual job results above for detailed per-plugin SonarQube and FOSSA status.*'
+              '*Use project links above to review detailed SonarQube and FOSSA results per plugin.*'
             ].join('\n');
 
             // Find and delete existing comment
@@ -662,8 +740,19 @@ jobs:
           script: |
             const checkRunId = '${{ steps.create_check.outputs.check_run_id }}';
             const pluginsToRelease = '${{ needs.extract-plugins.outputs.plugins }}';
-            const sonarResult = '${{ needs.sonarqube-check.result }}';
-            const fossaResult = '${{ needs.fossa-check.result }}';
+            const sonarResult = '${{ steps.aggregate.outputs.sonar_result }}';
+            const fossaResult = '${{ steps.aggregate.outputs.fossa_result }}';
+            const sonarHostUrlRaw = '${{ secrets.SONARQUBE_HOST_URL }}';
+            const sonarHostUrl = sonarHostUrlRaw.endsWith('/') ? sonarHostUrlRaw : `${sonarHostUrlRaw}/`;
+
+            const getSonarProjectUrl = (projectId) =>
+              `${sonarHostUrl}dashboard?id=${encodeURIComponent(projectId)}`;
+
+            const getFossaProjectUrl = (projectId) => {
+              const locator = `custom+48578/${projectId}`;
+              const encodedLocator = locator.replace(/\+/g, '%2B').replace(/\//g, '%2F');
+              return `https://app.fossa.com/projects/${encodedLocator}`;
+            };
 
             console.log(`Completing check run ID: ${checkRunId}`);
             console.log(`SonarQube result: ${sonarResult}`);
@@ -715,7 +804,8 @@ jobs:
               outputText += '| Plugin | SonarQube Project | FOSSA Project |\n';
               outputText += '|--------|-------------------|---------------|\n';
               for (const plugin of plugins) {
-                outputText += `| \`${plugin}\` | ${context.repo.owner}_${plugin} | ${context.repo.owner}_${plugin} |\n`;
+                const projectId = `${context.repo.owner}_${plugin}`;
+                outputText += `| \`${plugin}\` | [${projectId}](${getSonarProjectUrl(projectId)}) | [${projectId}](${getFossaProjectUrl(projectId)}) |\n`;
               }
             } else {
               outputText += '### Plugins Being Released\n\n';
