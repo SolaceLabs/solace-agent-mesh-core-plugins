@@ -219,6 +219,18 @@ jobs:
           ref: ${{ needs.extract-plugins.outputs.head_sha || inputs.ref || github.ref }}
           fetch-depth: 0
 
+      - name: Install Hatch
+        uses: pypa/hatch@install
+      - name: Extract plugin version
+        id: plugin_version
+        shell: bash
+        working-directory: ${{ matrix.plugin }}
+        env:
+          PLUGIN_PATH: ${{ matrix.plugin }}
+        run: |
+          VERSION=$(hatch version)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Create Licensing Check Run
         id: create_licensing_check
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
@@ -226,7 +238,8 @@ jobs:
           script: |
             const headSha = '${{ needs.extract-plugins.outputs.head_sha }}';
             const plugin = '${{ matrix.plugin }}';
-            const checkName = `FOSSA Licensing: ${plugin}`;
+            const pluginVersion = '${{ steps.plugin_version.outputs.version }}';
+            const checkName = `FOSSA Licensing: ${plugin} (${pluginVersion})`;
 
             console.log(`Creating check run: ${checkName}`);
             console.log(`SHA: ${headSha}`);
@@ -248,9 +261,6 @@ jobs:
             console.log(`Licensing check run created with ID: ${checkRun.id}`);
             core.setOutput('check_run_id', checkRun.id);
             return checkRun.id;
-
-      - name: Install Hatch
-        uses: pypa/hatch@install
       - name: Create Vulnerabilities Check Run
         id: create_vulnerabilities_check
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
@@ -259,7 +269,7 @@ jobs:
             const headSha = '${{ needs.extract-plugins.outputs.head_sha }}';
             const plugin = '${{ matrix.plugin }}';
             const checkName = `FOSSA Vulnerabilities: ${plugin}`;
-
+            const pluginVersion = '${{ steps.plugin_version.outputs.version }}';
             console.log(`Creating check run: ${checkName}`);
             console.log(`SHA: ${headSha}`);
             console.log(`Plugin version: ${pluginVersion}`);
@@ -281,16 +291,6 @@ jobs:
             core.setOutput('check_run_id', checkRun.id);
             return checkRun.id;
 
-      - name: Extract plugin version
-        id: plugin_version
-        shell: bash
-        working-directory: ${{ matrix.plugin }}
-        env:
-          PLUGIN_PATH: ${{ matrix.plugin }}
-        run: |
-          VERSION=$(hatch version)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
       - name: FOSSA Scan for ${{ matrix.plugin }}
         id: fossa_scan
         uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@main
@@ -298,6 +298,8 @@ jobs:
         with:
           scanners: "fossa"
           additional_scan_params: |
+            fossa.path=${{ matrix.plugin }}/
+            fossa.project=${{ github.repository_owner }}_${{ matrix.plugin }}
             fossa.branch=${{ steps.plugin_version.outputs.version }}
             fossa.revision=${{ needs.extract-plugins.outputs.head_sha }}
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
