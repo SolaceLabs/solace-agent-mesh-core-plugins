@@ -389,56 +389,221 @@ jobs:
               body: body
             });
 
-  # FOSSA scan for the entire repository (on main branch)
-  fossa-scan:
-    name: FOSSA Scan
+  # Aggregate FOSSA diff guard across all changed plugins into one check/comment
+  fossa-report:
+    name: FOSSA Report
+    needs: [label-pr, builds]
+    if: always() && github.event_name == 'pull_request' && !contains(github.head_ref, 'release-please') && needs.label-pr.outputs.all_plugins != '[]' && (needs.builds.result == 'success' || needs.builds.result == 'skipped')
     runs-on: ubuntu-latest
-    if: github.ref_name == github.event.repository.default_branch
+    permissions:
+      pull-requests: write
+    env:
+      FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+      PLUGINS_JSON: ${{ needs.label-pr.outputs.all_plugins }}
+      REPO_OWNER: ${{ github.repository_owner }}
+      HEAD_REF: ${{ github.head_ref }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          fetch-depth: 0
+      - name: Run FOSSA diff scans for all changed plugins
+        shell: bash
+        run: |
+          mkdir -p fossa-report
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          import urllib.parse
+          from pathlib import Path
 
-      - name: FOSSA Analyze and Test
-        uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@main
-        continue-on-error: true
-        with:
-          scanners: "fossa"
-          additional_scan_params: |
-            fossa.branch=${{ github.ref_name }}
-            fossa.revision=${{ github.sha }}
-          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
+          plugins = [p["plugin_directory"] for p in json.loads(os.environ["PLUGINS_JSON"])]
+          owner = os.environ["REPO_OWNER"]
+          head_ref = os.environ["HEAD_REF"]
+          base_sha = os.environ["BASE_SHA"]
+          fossa_api_key = os.environ["FOSSA_API_KEY"]
+          workspace = os.getcwd()
 
-      - name: FOSSA Guard - Block on Licensing Violations
-        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
-        continue-on-error: true
-        with:
-          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
-          fossa_project_id: "${{ github.repository_owner }}_${{ github.event.repository.name }}"
-          fossa_branch: ${{ github.ref_name }}
-          fossa_revision: ${{ github.sha }}
-          fossa_category: licensing
-          fossa_mode: BLOCK
-          block_on: policy_conflict
+          def run_guard(project_id: str, category: str, block_on: str):
+              cmd = [
+                  "docker", "run", "--rm",
+                  "-e", f"FOSSA_API_KEY={fossa_api_key}",
+                  "-e", f"FOSSA_PROJECT_ID={project_id}",
+                  "-e", f"FOSSA_CATEGORY={category}",
+                  "-e", "FOSSA_MODE=REPORT",
+                  "-e", f"BLOCK_ON={block_on}",
+                  "-e", "FOSSA_BRANCH=PR",
+                  "-e", f"FOSSA_REVISION={head_ref}",
+                  "-e", "ENABLE_DIFF_MODE=true",
+                  "-e", f"DIFF_BASE_REVISION_SHA={base_sha}",
+                  "-v", f"{workspace}:/workspace",
+                  "-w", "/workspace",
+                  "ghcr.io/solacedev/maas-build-actions:latest",
+                  "/bin/sh",
+                  "-c",
+                  "source /maas-build-actions/venv/bin/activate && python3 /maas-build-actions/scripts/fossa-guard/fossa_guard.py",
+              ]
+              completed = subprocess.run(cmd, check=False)
+              report_file = Path("fossa_guard_report.json")
+              report_data = {}
+              if report_file.exists():
+                  try:
+                      report_data = json.loads(report_file.read_text(encoding="utf-8"))
+                  except Exception:
+                      report_data = {}
+              return completed.returncode, report_data
 
-      - name: FOSSA Guard - Block on Vulnerability Violations
-        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
-        continue-on-error: true
+          def summary_counts(report: dict):
+              summary = report.get("summary", {}) if isinstance(report, dict) else {}
+              total = int(summary.get("total_issues", 0) or 0)
+              blocking = int(summary.get("blocking_issues", 0) or 0)
+              return total, blocking
+
+          results = []
+          for plugin in plugins:
+              project_id = f"{owner}_{plugin}"
+              locator = urllib.parse.quote(f"custom+48578/{project_id}", safe="")
+              encoded_revision = urllib.parse.quote(head_ref, safe="")
+
+              lic_rc, lic_report = run_guard(project_id, "licensing", "policy_conflict")
+              lic_total, lic_blocking = summary_counts(lic_report)
+              Path(f"fossa-report/{plugin}-licensing.json").write_text(
+                  json.dumps(lic_report, indent=2), encoding="utf-8"
+              )
+
+              vul_rc, vul_report = run_guard(project_id, "vulnerability", "critical,high")
+              vul_total, vul_blocking = summary_counts(vul_report)
+              Path(f"fossa-report/{plugin}-vulnerability.json").write_text(
+                  json.dumps(vul_report, indent=2), encoding="utf-8"
+              )
+
+              licensing_url = (
+                  f"https://app.fossa.com/projects/{locator}/refs/branch/PR/{encoded_revision}/issues/licensing"
+                  "?page=1&count=20&sort=issue_count_desc&grouping=revision&status=active"
+              )
+              vulnerability_url = (
+                  f"https://app.fossa.com/projects/{locator}/refs/branch/PR/{encoded_revision}/issues/vulnerability"
+                  "?page=1&count=20&sort=issue_count_desc&grouping=revision&status=active"
+              )
+
+              has_issues = (
+                  lic_blocking > 0
+                  or vul_blocking > 0
+                  or lic_rc != 0
+                  or vul_rc != 0
+              )
+
+              results.append({
+                  "plugin": plugin,
+                  "project_id": project_id,
+                  "licensing_total_issues": lic_total,
+                  "licensing_blocking_issues": lic_blocking,
+                  "licensing_exit_code": lic_rc,
+                  "vulnerability_total_issues": vul_total,
+                  "vulnerability_blocking_issues": vul_blocking,
+                  "vulnerability_exit_code": vul_rc,
+                  "licensing_url": licensing_url,
+                  "vulnerability_url": vulnerability_url,
+                  "has_issues": has_issues,
+              })
+
+          results.sort(key=lambda r: (not r["has_issues"], r["plugin"]))
+
+          Path("fossa-report/results.json").write_text(
+              json.dumps({"results": results}, indent=2), encoding="utf-8"
+          )
+          PY
+
+      - name: Publish aggregated FOSSA report
+        id: report
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
-          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
-          fossa_project_id: "${{ github.repository_owner }}_${{ github.event.repository.name }}"
-          fossa_branch: ${{ github.ref_name }}
-          fossa_revision: ${{ github.sha }}
-          fossa_category: vulnerability
-          fossa_mode: BLOCK
-          block_on: critical,high
+          script: |
+            const fs = require('fs');
+            const reportPath = 'fossa-report/results.json';
+            const reportData = fs.existsSync(reportPath)
+              ? JSON.parse(fs.readFileSync(reportPath, 'utf8'))
+              : { results: [] };
+            const results = reportData.results || [];
+            const prNumber = context.payload.pull_request.number;
+
+            const withIssues = results.filter(r => r.has_issues).map(r => r.plugin);
+            const withoutIssues = results.filter(r => !r.has_issues).map(r => r.plugin);
+
+            const totalLicensing = results.reduce((sum, r) => sum + (r.licensing_total_issues || 0), 0);
+            const totalLicensingBlocking = results.reduce((sum, r) => sum + (r.licensing_blocking_issues || 0), 0);
+            const totalVulnerability = results.reduce((sum, r) => sum + (r.vulnerability_total_issues || 0), 0);
+            const totalVulnerabilityBlocking = results.reduce((sum, r) => sum + (r.vulnerability_blocking_issues || 0), 0);
+
+            const header = withIssues.length === 0
+              ? '## ✅ FOSSA Report - All Passed'
+              : '## ❌ FOSSA Report - Issues Found';
+
+            const tableRows = results.map((r) => {
+              const licensingExtra = r.licensing_exit_code === 0 ? '' : ', scan error';
+              const vulnerabilityExtra = r.vulnerability_exit_code === 0 ? '' : ', scan error';
+              return `| \`${r.plugin}\` | [${r.project_id}](${r.licensing_url}) (B:${r.licensing_blocking_issues} / T:${r.licensing_total_issues}${licensingExtra}) | [${r.project_id}](${r.vulnerability_url}) (B:${r.vulnerability_blocking_issues} / T:${r.vulnerability_total_issues}${vulnerabilityExtra}) |`;
+            });
+
+            const body = [
+              header,
+              '',
+              '### Overall Counts',
+              '',
+              `- Licensing: **B:${totalLicensingBlocking} / T:${totalLicensing}**`,
+              `- Vulnerabilities: **B:${totalVulnerabilityBlocking} / T:${totalVulnerability}**`,
+              '',
+              '### Projects With Issues',
+              withIssues.length > 0 ? withIssues.map(p => `- \`${p}\``).join('\n') : '- None',
+              '',
+              '### Projects Without Issues',
+              withoutIssues.length > 0 ? withoutIssues.map(p => `- \`${p}\``).join('\n') : '- None',
+              '',
+              '| Plugin | FOSSA Licensing | FOSSA Vulnerabilities |',
+              '|--------|-----------------|-----------------------|',
+              ...tableRows,
+              '',
+              '---',
+              '*Diff mode checks compare changed plugin revisions against the PR base revision and show newly introduced issues.*',
+            ].join('\n');
+
+            await core.summary.addRaw(body).write();
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            const existingComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('FOSSA Report')
+            );
+
+            if (existingComment) {
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id
+              });
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body
+            });
+
+            const hasIssues = withIssues.length > 0;
+            core.setOutput('has_issues', hasIssues ? 'true' : 'false');
+            if (hasIssues) {
+              core.setFailed(`FOSSA report found issues in ${withIssues.length} plugin(s).`);
+            }
 
   # CI Status check - aggregates all job results
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
-    needs: [label-pr, builds, sonarqube-quality-gate]
+    needs: [label-pr, builds, sonarqube-quality-gate, fossa-report]
     if: always()
     steps:
       - name: Check CI status
@@ -454,6 +619,16 @@ jobs:
                 echo "SonarQube quality gate passed or was skipped"
               else
                 echo "SonarQube quality gate failed"
+                exit 1
+              fi
+
+              # Check aggregated FOSSA guard for non-release-please PRs
+              if [[ "${{ github.head_ref }}" == *"release-please"* ]]; then
+                echo "Release-please PR detected - skipping FOSSA report gate"
+              elif [[ "${{ needs.fossa-report.result }}" == "success" || "${{ needs.fossa-report.result }}" == "skipped" ]]; then
+                echo "FOSSA report passed or was skipped"
+              else
+                echo "FOSSA report failed"
                 exit 1
               fi
             fi

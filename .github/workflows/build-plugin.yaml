@@ -41,6 +41,11 @@ on:
           - sam-sql-database
           - sam-sql-database-tool
           - sam-webhook-gateway
+      ref:
+        description: "Git ref to checkout (branch or SHA)"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -60,6 +65,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          ref: ${{ inputs.ref || github.ref }}
           fetch-depth: 0
           sparse-checkout: ${{ inputs.plugin_directory }}
 
@@ -144,7 +150,7 @@ jobs:
             -Dsonar.sources=src
             -Dsonar.python.version=3.10,3.11,3.12,3.13
             -Dsonar.sourceEncoding=UTF-8
-            -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.python.coverage.reportPaths=**/coverage.xml
             -Dsonar.exclusions=**/__pycache__/**,**/dist/**,**/.hatch/**,**/build/**,**/*.egg-info/**,**/tests/**
             -Dsonar.cpd.exclusions=**/tests/**
             -Dsonar.pullrequest.github.summary_comment=false
@@ -168,7 +174,7 @@ jobs:
           script: |
             const outcome = process.env.SONAR_OUTCOME;
             const plugin = '${{ inputs.plugin_directory }}';
-            const sonarHostUrl = process.env.SONAR_HOST_URL || 'https://sonarq.solace.com';
+            const sonarHostUrl = process.env.SONAR_HOST_URL;
             const prNumber = context.payload.pull_request.number;
             const headSha = context.payload.pull_request.head.sha;
 
@@ -214,15 +220,37 @@ jobs:
           path: ${{ inputs.plugin_directory }}/dist/
           retention-days: 7
 
+      - name: Resolve FOSSA scan target
+        id: fossa_target
+        shell: bash
+        working-directory: ${{ inputs.plugin_directory }}
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.head_ref }}" == *"release-please"* ]]; then
+            BRANCH="main"
+            REVISION="$(hatch version 2>/dev/null || true)"
+            if [[ -z "$REVISION" ]]; then
+              REVISION="${{ github.sha }}"
+            fi
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BRANCH="PR"
+            REVISION="${{ github.head_ref }}"
+          else
+            BRANCH="${{ github.event.repository.default_branch }}"
+            REVISION="${{ github.sha }}"
+          fi
+
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+          echo "Resolved FOSSA scan target: branch=$BRANCH revision=$REVISION"
+
       # FOSSA Scan - uploads plugin data to FOSSA as unique project
-      # Guard checks run at repo level in ci.yaml on main branch
       - name: FOSSA Scan
-        continue-on-error: true
         uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@main
         with:
           scanners: "fossa"
           additional_scan_params: |
-            fossa.branch=${{ github.event.pull_request.number && 'PR' || github.event.repository.default_branch }}
-            fossa.revision=${{ github.event.pull_request.number && github.head_ref || github.sha }}
-            fossa.config=${{ inputs.plugin_directory }}/.fossa.yml
+            fossa.path=${{ inputs.plugin_directory }}/
+            fossa.project=${{ github.repository_owner }}_${{ inputs.plugin_directory }}
+            fossa.branch=${{ steps.fossa_target.outputs.branch }}
+            fossa.revision=${{ steps.fossa_target.outputs.revision }}
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
