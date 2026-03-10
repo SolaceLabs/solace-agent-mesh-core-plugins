@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.sam_code_executor_tool.metadata]
+type = "tool"
+
+[project]
+name = "sam_code_executor_tool"
+version = "0.1.0"
+description = "A reusable code executor tool for Solace Agent Mesh providing sandboxed Python execution."
+readme = "README.md"
+authors = [
+  { name = "Hugo Pare", email = "hugo.pare@solace.com" },
+]
+requires-python = ">=3.10"
+dependencies = [
+  "docker>=7.0.0",
+  "pydantic>=2.0.0",
+  "PyYAML>=6.0.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["sam_code_executor_tool"]
+src-path = "src"
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/sam_code_executor_tool" = "sam_code_executor_tool/"
+"config.yaml" = "sam_code_executor_tool/config.yaml"
+"README.md" = "sam_code_executor_tool/README.md"
+"pyproject.toml" = "sam_code_executor_tool/pyproject.toml"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "--tb=short --strict-markers --disable-warnings -p pytest_asyncio"
+
+[tool.hatch.envs.hatch-test]
+dependencies = [
+  "a2a-sdk[http-server]>=0.3.1",
+  "pytest-asyncio",
+  "pytest>=8.0.0",
+  "pytest-mock>=3.0.0",
+  "pytest-cov>=4.0.0",
+  "pytest-xdist>=3.5.0",
+  "solace-agent-mesh>=1.4.9,<2.0.0",
+]
