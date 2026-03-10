@@ -101,13 +101,8 @@ jobs:
           fi
 
           # Run tests with coverage if pytest-cov is available, otherwise without
-          if hatch -v run hatch-test.py3.13:pip show pytest-cov > /dev/null 2>&1; then
-            echo "Running tests with coverage..."
-            hatch -v run hatch-test.py3.13:pytest tests/ --cov --cov-report=xml:coverage.xml --cov-report=term --junitxml=junit.xml
-          else
-            echo "Running tests without coverage (pytest-cov not available)..."
-            hatch -v run hatch-test.py3.13:pytest tests/ --junitxml=junit.xml
-          fi
+          hatch -v run hatch-test.py3.13:pytest tests/ --cov --cov-report=xml:coverage.xml --cov-report=term --junitxml=junit.xml
+
 
           # Check if result files exist
           if [ -f coverage.xml ]; then
