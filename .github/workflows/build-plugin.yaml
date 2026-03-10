@@ -221,9 +221,8 @@ jobs:
           retention-days: 7
 
       # FOSSA Scan - uploads plugin data to FOSSA as unique project
-      # Guard checks run at repo level in ci.yaml on main branch
       - name: FOSSA Scan
-        continue-on-error: true
+        if: ${{ !contains(github.head_ref, 'release-please') }}
         uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@main
         with:
           scanners: "fossa"
