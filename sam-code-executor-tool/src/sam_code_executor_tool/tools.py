@@ -21,6 +21,7 @@ from .services.execution_models import (
 )
 from .services.executor_base import BaseCodeExecutor
 from .services.docker_executor import DockerCodeExecutor
+from .services.kubernetes_executor import KubernetesCodeExecutor
 
 log = logging.getLogger(__name__)
 
@@ -107,6 +108,8 @@ class CodeExecutorTool(DynamicTool):
             # Create the appropriate executor based on type
             if executor_type == ExecutorType.DOCKER:
                 self._executor = DockerCodeExecutor(self.tool_config.docker)
+            elif executor_type == ExecutorType.KUBERNETES:
+                self._executor = KubernetesCodeExecutor(self.tool_config.kubernetes)
             else:
                 raise ValueError(f"Unsupported executor type: {executor_type}")
 

@@ -108,7 +108,7 @@ apps:
         #           echo "Setup complete"
         #         timeout_seconds: 300
 
-        # Python startup script example
+        # Python startup script example (Docker)
         # Uncomment and configure to enable
         # - tool_type: python
         #   component_module: "sam_code_executor_tool.tools"
@@ -146,6 +146,68 @@ apps:
         #
         #           print("Environment ready")
         #         timeout_seconds: 300
+
+        # Kubernetes executor example
+        # Uncomment and configure to enable
+        # - tool_type: python
+        #   component_module: "sam_code_executor_tool.tools"
+        #   component_base_path: .
+        #   class_name: "CodeExecutorTool"
+        #   tool_config:
+        #     tool_name: "execute_python_k8s"
+        #     tool_description: "Execute Python code in a secure Kubernetes sandbox"
+        #     executor_type: "kubernetes"
+        #     default_timeout_seconds: 60
+        #     kubernetes:
+        #       namespace: "code-execution"
+        #       kubeconfig_path: "${KUBECONFIG}"  # Or omit for in-cluster auth
+        #       image: "python:3.11-slim"
+        #       # Resource limits
+        #       cpu_requested: "200m"
+        #       cpu_limit: "500m"
+        #       memory_requested: "256Mi"
+        #       memory_limit: "512Mi"
+        #       # Security
+        #       use_gvisor: false  # Set true for GKE with gVisor node pool
+        #       run_as_user: 1001
+        #       run_as_non_root: true
+        #       read_only_root_filesystem: true
+        #       # Auto-cleanup
+        #       ttl_seconds_after_finished: 300
+        #       # Environment
+        #       environment:
+        #         PYTHONDONTWRITEBYTECODE: "1"
+        #       # Startup script (runs as InitContainer)
+        #       startup_command:
+        #         enabled: false
+
+        # Kubernetes executor with startup script (InitContainer)
+        # Uncomment and configure to enable
+        # - tool_type: python
+        #   component_module: "sam_code_executor_tool.tools"
+        #   component_base_path: .
+        #   class_name: "CodeExecutorTool"
+        #   tool_config:
+        #     tool_name: "execute_python_k8s_packages"
+        #     tool_description: "Execute Python in Kubernetes with pre-installed packages"
+        #     executor_type: "kubernetes"
+        #     default_timeout_seconds: 120
+        #     kubernetes:
+        #       namespace: "code-execution"
+        #       image: "python:3.11-slim"
+        #       cpu_limit: "1000m"
+        #       memory_limit: "1Gi"
+        #       use_gvisor: true
+        #       ttl_seconds_after_finished: 600
+        #       environment:
+        #         PYTHONDONTWRITEBYTECODE: "1"
+        #       startup_command:
+        #         enabled: true
+        #         script_type: "shell"
+        #         script: |
+        #           pip install numpy pandas matplotlib
+        #           echo "Packages installed"
+        #         timeout_seconds: 120
 
       session_service:
         type: "sql"

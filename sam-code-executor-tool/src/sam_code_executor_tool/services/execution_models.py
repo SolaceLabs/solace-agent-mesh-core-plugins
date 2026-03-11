@@ -9,7 +9,7 @@ class ExecutorType(str, Enum):
     """Supported executor types."""
 
     DOCKER = "docker"
-    # Future: LOCAL = "local", KUBERNETES = "kubernetes"
+    KUBERNETES = "kubernetes"
 
 
 class InputFile(BaseModel):
@@ -110,6 +110,74 @@ class DockerExecutorConfig(BaseModel):
     )
 
 
+class KubernetesExecutorConfig(BaseModel):
+    """Configuration specific to Kubernetes executor."""
+
+    # Cluster connection
+    kubeconfig_path: Optional[str] = Field(
+        default=None, description="Path to kubeconfig file (uses default if not set)"
+    )
+    kubeconfig_context: Optional[str] = Field(
+        default=None, description="Kubernetes context to use"
+    )
+    namespace: str = Field(
+        default="default", description="Kubernetes namespace for Jobs"
+    )
+
+    # Container settings
+    image: str = Field(
+        default="python:3.11-slim", description="Docker image to use for execution"
+    )
+    working_directory: str = Field(
+        default="/app", description="Working directory inside the container"
+    )
+
+    # Resource limits
+    cpu_requested: str = Field(
+        default="200m", description="CPU request (e.g., '200m' = 0.2 CPU)"
+    )
+    cpu_limit: str = Field(
+        default="500m", description="CPU limit (e.g., '500m' = 0.5 CPU)"
+    )
+    memory_requested: str = Field(
+        default="256Mi", description="Memory request (e.g., '256Mi')"
+    )
+    memory_limit: str = Field(
+        default="512Mi", description="Memory limit (e.g., '512Mi')"
+    )
+
+    # Security
+    use_gvisor: bool = Field(
+        default=False, description="Use gVisor runtime for sandboxing (requires GKE)"
+    )
+    run_as_user: int = Field(
+        default=1001, description="User ID to run the container as"
+    )
+    run_as_non_root: bool = Field(
+        default=True, description="Enforce non-root execution"
+    )
+    read_only_root_filesystem: bool = Field(
+        default=True, description="Make root filesystem read-only"
+    )
+
+    # Cleanup
+    ttl_seconds_after_finished: int = Field(
+        default=600, description="Seconds to keep completed Jobs before cleanup"
+    )
+
+    # Environment
+    environment: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Environment variables to set in the container",
+    )
+
+    # Startup script (runs as InitContainer)
+    startup_command: StartupCommandConfig = Field(
+        default_factory=StartupCommandConfig,
+        description="Optional startup script configuration (runs as InitContainer)",
+    )
+
+
 class CodeExecutorConfig(BaseModel):
     """Main configuration for the CodeExecutorTool."""
 
@@ -133,6 +201,10 @@ class CodeExecutorConfig(BaseModel):
     docker: DockerExecutorConfig = Field(
         default_factory=DockerExecutorConfig,
         description="Docker-specific configuration",
+    )
+    kubernetes: KubernetesExecutorConfig = Field(
+        default_factory=KubernetesExecutorConfig,
+        description="Kubernetes-specific configuration",
     )
 
     def get(self, key: str, default: Any = None) -> Any:
