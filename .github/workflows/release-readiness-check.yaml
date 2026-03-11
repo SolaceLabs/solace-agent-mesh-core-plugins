@@ -38,13 +38,9 @@ permissions:
   statuses: write
 
 jobs:
-  extract-plugins:
-    name: Extract Plugins
+  release-readiness:
+    name: Release Readiness
     runs-on: ubuntu-latest
-    outputs:
-      plugins: ${{ steps.extract.outputs.plugins }}
-      plugins_json: ${{ steps.extract.outputs.plugins_json }}
-      head_sha: ${{ steps.get_sha.outputs.head_sha }}
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -52,271 +48,261 @@ jobs:
           ref: ${{ inputs.ref || github.ref }}
           fetch-depth: 0
 
-      - name: Get HEAD SHA
-        id: get_sha
-        run: |
-          echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Extract plugins being released
-        id: extract
-        run: |
-          git fetch origin main
-          changed_files=$(git diff --name-only origin/main...HEAD)
-          plugins=$(echo "$changed_files" | grep -E '^sam-[^/]+/' | cut -d'/' -f1 | sort -u | tr '\n' ',' | sed 's/,$//' || true)
-          echo "plugins=$plugins" >> "$GITHUB_OUTPUT"
-
-          if [ -z "$plugins" ]; then
-            echo "plugins_json=[]" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          json="["
-          first=true
-          IFS=',' read -ra arr <<< "$plugins"
-          for plugin in "${arr[@]}"; do
-            plugin="$(echo "$plugin" | xargs)"
-            [ -z "$plugin" ] && continue
-            if [ "$first" = true ]; then first=false; else json="$json,"; fi
-            json="$json\"$plugin\""
-          done
-          json="$json]"
-          echo "plugins_json=$json" >> "$GITHUB_OUTPUT"
-
-  plugin-checks:
-    name: Plugin Checks - ${{ matrix.plugin }}
-    needs: extract-plugins
-    if: needs.extract-plugins.outputs.plugins_json != '[]'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        plugin: ${{ fromJSON(needs.extract-plugins.outputs.plugins_json) }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: ${{ needs.extract-plugins.outputs.head_sha }}
-          fetch-depth: 0
-
       - name: Install Hatch
         uses: pypa/hatch@install
 
-      - name: Extract plugin version
-        id: plugin_version
-        shell: bash
-        working-directory: ${{ matrix.plugin }}
-        run: |
-          version="$(hatch version 2>/dev/null || true)"
-          [ -z "$version" ] && version="$(git rev-parse --short HEAD)"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Get checkout SHA
+        id: checkout_sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: SonarQube hotspots check
-        id: sonarqube
-        uses: docker://ghcr.io/solacedev/maas-build-actions:latest
-        continue-on-error: true
-        env:
-          SONARQUBE_PROJECT_KEY: "${{ github.repository_owner }}_${{ matrix.plugin }}"
-          SONARQUBE_PROJECT_MAIN_BRANCH: main
-          SONARQUBE_QUERY_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
-          SONARQUBE_HOTSPOTS_API_URL: ${{ secrets.SONARQUBE_HOST_URL }}api/hotspots/search
-        with:
-          entrypoint: /bin/sh
-          args: >
-            -c ". $VIRTUAL_ENV/bin/activate &&
-            cd $ACTIONS_PATH/sonarqube-hotspot-checker &&
-            python sonarqube_checker.py"
-
-      - name: FOSSA licensing check
-        id: fossa_licensing
-        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
-        continue-on-error: true
-        with:
-          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
-          fossa_project_id: "${{ github.repository_owner }}_${{ matrix.plugin }}"
-          fossa_branch: main
-          fossa_revision: ${{ steps.plugin_version.outputs.version }}
-          fossa_category: licensing
-          fossa_mode: BLOCK
-          block_on: policy_conflict
-
-      - name: Snapshot licensing report
-        if: always()
-        run: |
-          if [ -f fossa_guard_report.json ]; then
-            cp fossa_guard_report.json fossa_guard_licensing_report.json
-          else
-            echo '{"summary":{"total_issues":0,"blocking_issues":0}}' > fossa_guard_licensing_report.json
-          fi
-
-      - name: FOSSA vulnerability check
-        id: fossa_vulnerabilities
-        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
-        continue-on-error: true
-        with:
-          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
-          fossa_project_id: "${{ github.repository_owner }}_${{ matrix.plugin }}"
-          fossa_branch: main
-          fossa_revision: ${{ steps.plugin_version.outputs.version }}
-          fossa_category: vulnerability
-          fossa_mode: BLOCK
-          block_on: critical,high
-
-      - name: Snapshot vulnerability report
-        if: always()
-        run: |
-          if [ -f fossa_guard_report.json ]; then
-            cp fossa_guard_report.json fossa_guard_vulnerability_report.json
-          else
-            echo '{"summary":{"total_issues":0,"blocking_issues":0}}' > fossa_guard_vulnerability_report.json
-          fi
-
-      - name: Build plugin result payload
-        if: always()
-        env:
-          PLUGIN: ${{ matrix.plugin }}
-          VERSION: ${{ steps.plugin_version.outputs.version }}
-          SONAR_OUTCOME: ${{ steps.sonarqube.outcome }}
-          LICENSING_OUTCOME: ${{ steps.fossa_licensing.outcome }}
-          VULNERABILITY_OUTCOME: ${{ steps.fossa_vulnerabilities.outcome }}
-        run: |
-          python3 - <<'PY2'
-          import json
-          import os
-          from pathlib import Path
-
-          def counts(path):
-              p = Path(path)
-              if not p.exists():
-                  return 0, 0
-              try:
-                  data = json.loads(p.read_text(encoding="utf-8"))
-              except Exception:
-                  return 0, 0
-              summary = data.get("summary", {})
-              return int(summary.get("total_issues", 0) or 0), int(summary.get("blocking_issues", 0) or 0)
-
-          lic_total, lic_block = counts("fossa_guard_licensing_report.json")
-          vul_total, vul_block = counts("fossa_guard_vulnerability_report.json")
-          payload = {
-              "plugin": os.environ["PLUGIN"],
-              "version": os.environ.get("VERSION") or "unknown",
-              "sonar_outcome": os.environ.get("SONAR_OUTCOME") or "missing",
-              "fossa_licensing_outcome": os.environ.get("LICENSING_OUTCOME") or "missing",
-              "fossa_vulnerability_outcome": os.environ.get("VULNERABILITY_OUTCOME") or "missing",
-              "licensing_total_issues": lic_total,
-              "licensing_blocking_issues": lic_block,
-              "vulnerability_total_issues": vul_total,
-              "vulnerability_blocking_issues": vul_block,
-          }
-          Path("plugin-result.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
-          PY2
-
-      - name: Upload plugin result
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: release-readiness-result-${{ matrix.plugin }}
-          path: plugin-result.json
-          retention-days: 7
-
-  report-results:
-    name: Report Results
-    needs: [extract-plugins, plugin-checks]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Create check run
+      - name: Create unified Release Readiness check
         id: create_check
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+          CHECKOUT_SHA: ${{ steps.checkout_sha.outputs.sha }}
         with:
           script: |
+            const prNumber = Number(process.env.PR_NUMBER || 0);
+            let headSha = process.env.CHECKOUT_SHA;
+
+            if (prNumber > 0) {
+              try {
+                const { data: pr } = await github.rest.pulls.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: prNumber,
+                });
+                headSha = pr.head.sha;
+              } catch (error) {
+                core.warning(`Failed to fetch PR head SHA for #${prNumber}: ${error.message}`);
+              }
+            }
+
             const { data: checkRun } = await github.rest.checks.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               name: 'Release Readiness',
-              head_sha: '${{ needs.extract-plugins.outputs.head_sha }}',
+              head_sha: headSha,
               status: 'in_progress',
               started_at: new Date().toISOString(),
-              output: { title: 'Release Readiness Check', summary: 'Aggregating plugin results...' }
+              output: {
+                title: 'Release Readiness Check',
+                summary: 'Aggregating SonarQube and FOSSA results...'
+              }
             });
-            core.setOutput('check_run_id', checkRun.id);
 
-      - name: Download plugin artifacts
-        if: needs.plugin-checks.result != 'skipped'
-        continue-on-error: true
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
-        with:
-          pattern: release-readiness-result-*
-          merge-multiple: true
-          path: release-readiness-results
+            core.setOutput('check_run_id', String(checkRun.id));
+            core.setOutput('head_sha', headSha);
 
-      - name: Build aggregated report
+      - name: Run aggregated release readiness checks
         id: aggregate
         env:
-          PLUGINS: ${{ needs.extract-plugins.outputs.plugins }}
-          SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
+          FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+          SONARQUBE_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+          SONARQUBE_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
           REPO_OWNER: ${{ github.repository_owner }}
         run: |
-          python3 - <<'PY2'
+          python3 - <<'PY'
           import json
           import os
+          import subprocess
+          import base64
           import urllib.parse
+          import urllib.request
           from pathlib import Path
 
-          plugins = [p.strip() for p in os.environ.get("PLUGINS", "").split(",") if p.strip()]
-          sonar_host = os.environ.get("SONAR_HOST_URL", "https://sonarq.solace.com/")
+          workspace = Path.cwd()
+          repo_owner = os.environ["REPO_OWNER"]
+          fossa_api_key = os.environ["FOSSA_API_KEY"]
+          sonar_token = os.environ["SONARQUBE_TOKEN"]
+          sonar_host = os.environ["SONARQUBE_HOST_URL"]
           if not sonar_host.endswith("/"):
               sonar_host += "/"
-          repo_owner = os.environ["REPO_OWNER"]
-          results_dir = Path("release-readiness-results")
-          by_plugin = {}
-          if results_dir.exists():
-              for file in results_dir.glob("*.json"):
+          sonar_api = f"{sonar_host}api/hotspots/search"
+          head_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          short_sha = head_sha[:12]
+
+          def run_cmd(cmd, cwd=None, env=None):
+              return subprocess.run(
+                  cmd,
+                  cwd=cwd,
+                  env=env,
+                  check=False,
+                  capture_output=True,
+                  text=True,
+              )
+
+          fetch_main = run_cmd(["git", "fetch", "origin", "main"])
+          if fetch_main.returncode != 0:
+              print(fetch_main.stdout)
+              print(fetch_main.stderr)
+
+          changed_files = run_cmd(["git", "diff", "--name-only", "origin/main...HEAD"])
+          changed = changed_files.stdout.splitlines() if changed_files.returncode == 0 else []
+          plugins = sorted({line.split("/", 1)[0] for line in changed if line.startswith("sam-") and "/" in line})
+
+          def extract_version(plugin):
+              result = run_cmd(["hatch", "version"], cwd=plugin)
+              version = result.stdout.strip().splitlines()[-1].strip() if result.returncode == 0 and result.stdout.strip() else ""
+              return version or short_sha
+
+          def build_fossa_url(project_id, revision, category):
+              locator = urllib.parse.quote(f"custom+48578/{project_id}", safe="")
+              encoded_revision = urllib.parse.quote(revision, safe="")
+              return (
+                  f"https://app.fossa.com/projects/{locator}/refs/branch/main/{encoded_revision}/issues/{category}"
+                  "?page=1&count=20&sort=issue_count_desc&grouping=revision&status=active"
+              )
+
+          def run_fossa_guard(project_id, category, block_on, revision):
+              report_path = workspace / "fossa_guard_report.json"
+              if report_path.exists():
+                  report_path.unlink()
+
+              cmd = [
+                  "docker",
+                  "run",
+                  "--rm",
+                  "-e",
+                  f"FOSSA_API_KEY={fossa_api_key}",
+                  "-e",
+                  f"FOSSA_PROJECT_ID={project_id}",
+                  "-e",
+                  f"FOSSA_CATEGORY={category}",
+                  "-e",
+                  "FOSSA_MODE=REPORT",
+                  "-e",
+                  f"BLOCK_ON={block_on}",
+                  "-e",
+                  "FOSSA_BRANCH=main",
+                  "-e",
+                  f"FOSSA_REVISION={revision}",
+                  "-v",
+                  f"{workspace}:/workspace",
+                  "-w",
+                  "/workspace",
+                  "ghcr.io/solacedev/maas-build-actions:latest",
+                  "/bin/sh",
+                  "-c",
+                  "source /maas-build-actions/venv/bin/activate && python3 /maas-build-actions/scripts/fossa-guard/fossa_guard.py",
+              ]
+
+              proc = run_cmd(cmd)
+              report = {}
+              if report_path.exists():
                   try:
-                      data = json.loads(file.read_text(encoding="utf-8"))
+                      report = json.loads(report_path.read_text(encoding="utf-8"))
                   except Exception:
-                      continue
-                  plugin = data.get("plugin")
-                  if plugin:
-                      by_plugin[plugin] = data
+                      report = {}
+
+              summary = report.get("summary", {}) if isinstance(report, dict) else {}
+              total_issues = int(summary.get("total_issues", 0) or 0)
+              blocking_issues = int(summary.get("blocking_issues", 0) or 0)
+              if proc.returncode != 0:
+                  status = "error"
+              elif blocking_issues > 0:
+                  status = "failed"
+              else:
+                  status = "passed"
+
+              return {
+                  "status": status,
+                  "total_issues": total_issues,
+                  "blocking_issues": blocking_issues,
+              }
+
+          def run_sonar(project_id):
+              high_count = 0
+              page = 1
+              page_size = 500
+              auth = base64.b64encode(f"{sonar_token}:".encode()).decode()
+              headers = {"Authorization": f"Basic {auth}"}
+              while True:
+                  params = urllib.parse.urlencode(
+                      {
+                          "projectKey": project_id,
+                          "branch": "main",
+                          "status": "TO_REVIEW",
+                          "p": page,
+                          "ps": page_size,
+                      }
+                  )
+                  request = urllib.request.Request(f"{sonar_api}?{params}", headers=headers)
+                  try:
+                      with urllib.request.urlopen(request, timeout=30) as response:
+                          payload = json.loads(response.read().decode("utf-8"))
+                  except Exception:
+                      # Do not classify missing SonarQube data as an issue.
+                      return {"status": "passed", "issues": 0}
+
+                  hotspots = payload.get("hotspots", [])
+                  high_count += sum(1 for h in hotspots if h.get("vulnerabilityProbability") == "HIGH")
+                  paging = payload.get("paging", {})
+                  total = int(paging.get("total", len(hotspots)) or 0)
+                  if page * page_size >= total:
+                      break
+                  page += 1
+
+              return {"status": "failed" if high_count > 0 else "passed", "issues": high_count}
 
           rows = []
           for plugin in plugins:
-              data = by_plugin.get(plugin, {})
-              version = data.get("version", "unknown")
               project_id = f"{repo_owner}_{plugin}"
-              sonar_outcome = data.get("sonar_outcome", "missing")
-              lic_outcome = data.get("fossa_licensing_outcome", "missing")
-              vul_outcome = data.get("fossa_vulnerability_outcome", "missing")
-              lic_total = int(data.get("licensing_total_issues", 0) or 0)
-              lic_block = int(data.get("licensing_blocking_issues", 0) or 0)
-              vul_total = int(data.get("vulnerability_total_issues", 0) or 0)
-              vul_block = int(data.get("vulnerability_blocking_issues", 0) or 0)
-              rows.append({
-                  "plugin": plugin,
-                  "project_id": project_id,
-                  "version": version,
-                  "sonar_outcome": sonar_outcome,
-                  "lic_outcome": lic_outcome,
-                  "vul_outcome": vul_outcome,
-                  "lic_total": lic_total,
-                  "lic_block": lic_block,
-                  "vul_total": vul_total,
-                  "vul_block": vul_block,
-                  "has_issues": sonar_outcome != "success" or lic_block > 0 or vul_block > 0 or lic_outcome != "success" or vul_outcome != "success",
-              })
+              version = extract_version(plugin)
+              sonar = run_sonar(project_id)
+              licensing = run_fossa_guard(project_id, "licensing", "policy_conflict", version)
+              vulnerabilities = run_fossa_guard(project_id, "vulnerability", "critical,high", version)
+
+              plugin_has_issues = (
+                  sonar["status"] == "failed"
+                  or licensing["total_issues"] > 0
+                  or vulnerabilities["total_issues"] > 0
+              )
+
+              rows.append(
+                  {
+                      "plugin": plugin,
+                      "project_id": project_id,
+                      "version": version,
+                      "sonar_status": sonar["status"],
+                      "sonar_issues": sonar["issues"],
+                      "licensing_status": licensing["status"],
+                      "licensing_total": licensing["total_issues"],
+                      "licensing_blocking": licensing["blocking_issues"],
+                      "vulnerability_status": vulnerabilities["status"],
+                      "vulnerability_total": vulnerabilities["total_issues"],
+                      "vulnerability_blocking": vulnerabilities["blocking_issues"],
+                      "has_issues": plugin_has_issues,
+                      "sonar_url": f"{sonar_host}dashboard?id={urllib.parse.quote(project_id, safe='')}",
+                      "fossa_licensing_url": build_fossa_url(project_id, version, "licensing"),
+                      "fossa_vulnerability_url": build_fossa_url(project_id, version, "vulnerability"),
+                      "fossa_report_url": f"https://app.fossa.com/projects/{urllib.parse.quote(f'custom+48578/{project_id}', safe='')}/refs/branch/main/{urllib.parse.quote(version, safe='')}",
+                  }
+              )
+
           rows.sort(key=lambda r: (not r["has_issues"], r["plugin"]))
 
-          with_issues = [r["plugin"] for r in rows if r["has_issues"]]
-          without_issues = [r["plugin"] for r in rows if not r["has_issues"]]
-          lic_total = sum(r["lic_total"] for r in rows)
-          lic_block = sum(r["lic_block"] for r in rows)
-          vul_total = sum(r["vul_total"] for r in rows)
-          vul_block = sum(r["vul_block"] for r in rows)
+          def mark(status):
+              if status == "passed":
+                  return "✅"
+              if status == "failed":
+                  return "❌"
+              return "⚠️"
 
-          sonar_failed = any(r["sonar_outcome"] != "success" for r in rows)
-          lic_failed = any(r["lic_block"] > 0 or r["lic_outcome"] != "success" for r in rows)
-          vul_failed = any(r["vul_block"] > 0 or r["vul_outcome"] != "success" for r in rows)
+          projects_with_issues = [r["plugin"] for r in rows if r["has_issues"]]
+          projects_without_issues = [r["plugin"] for r in rows if not r["has_issues"]]
+          licensing_total = sum(r["licensing_total"] for r in rows)
+          vulnerability_total = sum(r["vulnerability_total"] for r in rows)
+          sonar_total_issues = sum(r["sonar_issues"] for r in rows)
+
+          overall_sonar = "✅ Passed" if sonar_total_issues == 0 else f"❌ {sonar_total_issues} Issues"
+          overall_licensing = (
+              "✅ Passed" if licensing_total == 0 else f"❌ {licensing_total} Issues"
+          )
+          overall_vulnerability = (
+              "✅ Passed" if vulnerability_total == 0 else f"❌ {vulnerability_total} Issues"
+          )
 
           lines = [
               "## 🔐 Release Readiness Check Results",
@@ -325,47 +311,53 @@ jobs:
               "",
               "| Check | Scope | Status |",
               "|-------|-------|--------|",
-              f"| SonarQube Hotspots | Per-Plugin | {'⚠️ Some plugins have issues' if sonar_failed else '✅ All plugins passed'} |",
-              f"| FOSSA Licensing | Per-Plugin | {'⚠️' if lic_failed else '✅'} B:{lic_block} / T:{lic_total} |",
-              f"| FOSSA Vulnerabilities | Per-Plugin | {'⚠️' if vul_failed else '✅'} B:{vul_block} / T:{vul_total} |",
+              f"| SonarQube Hotspots | Per-Plugin | {overall_sonar} |",
+              f"| FOSSA Licensing | Per-Plugin | {overall_licensing} |",
+              f"| FOSSA Vulnerabilities | Per-Plugin | {overall_vulnerability} |",
               "",
               "### Projects With Issues",
           ]
-          lines += [f"- `{p}`" for p in with_issues] or ["- None"]
+          lines += [f"- `{p}`" for p in projects_with_issues] or ["- None"]
           lines += ["", "### Projects Without Issues"]
-          lines += [f"- `{p}`" for p in without_issues] or ["- None"]
-          lines += ["", "### Projects Checked (Issues First)", "", "| Plugin | SonarQube | FOSSA Licensing | FOSSA Vulnerabilities |", "|--------|-----------|-----------------|-----------------------|"]
+          lines += [f"- `{p}`" for p in projects_without_issues] or ["- None"]
 
+          lines += [
+              "",
+              "### Projects Checked (Issues First)",
+              "",
+              "| Plugin | SonarQube Hotspots | FOSSA Vulnerabilities | License Check | SonarQube Report | FOSSA Report |",
+              "|--------|-------------------|-----------------------|---------------|------------------|--------------|",
+          ]
           for r in rows:
-              project = r["project_id"]
-              sonar_url = f"{sonar_host}dashboard?id={urllib.parse.quote(project, safe='')}"
-              locator = urllib.parse.quote(f"custom+48578/{project}", safe="")
-              rev = urllib.parse.quote(r["version"], safe="")
-              lic_url = f"https://app.fossa.com/projects/{locator}/refs/branch/main/{rev}/issues/licensing?page=1&count=20&sort=issue_count_desc&grouping=revision&status=active"
-              vul_url = f"https://app.fossa.com/projects/{locator}/refs/branch/main/{rev}/issues/vulnerability?page=1&count=20&sort=issue_count_desc&grouping=revision&status=active"
-              sonar_status = "✅ Passed" if r["sonar_outcome"] == "success" else f"⚠️ {r['sonar_outcome']}"
-              lic_status = f"B:{r['lic_block']} / T:{r['lic_total']}" + ("" if r["lic_outcome"] == "success" else f", {r['lic_outcome']}")
-              vul_status = f"B:{r['vul_block']} / T:{r['vul_total']}" + ("" if r["vul_outcome"] == "success" else f", {r['vul_outcome']}")
-              lines.append(f"| `{r['plugin']}` | [{project}]({sonar_url}) ({sonar_status}) | [{project}]({lic_url}) ({lic_status}) | [{project}]({vul_url}) ({vul_status}) |")
+              sonar_text = "✅ Passed" if r["sonar_issues"] == 0 else f"❌ {r['sonar_issues']} Issues"
+              vulnerability_text = "✅ Passed" if r["vulnerability_total"] == 0 else f"❌ {r['vulnerability_total']} Issues"
+              licensing_text = "✅ Passed" if r["licensing_total"] == 0 else f"❌ {r['licensing_total']} Issues"
+              lines.append(
+                  f"| `{r['plugin']}` | {sonar_text} | {vulnerability_text} | {licensing_text} | "
+                  f"[View report]({r['sonar_url']}) | [View report]({r['fossa_report_url']}) |"
+              )
 
           lines += ["", "### Plugins Being Released"]
           lines += [f"- `{r['plugin']}`" for r in rows] or ["- No specific plugins detected"]
           lines += ["", "---", "*This check runs automatically on release-please PRs to ensure compliance before release.*"]
 
           report = "\n".join(lines)
-          results_dir.mkdir(parents=True, exist_ok=True)
-          report_path = results_dir / "report.md"
-          report_path.write_text(report, encoding="utf-8")
+          report_file = workspace / "release-readiness-report.md"
+          report_file.write_text(report, encoding="utf-8")
 
-          conclusion = "failure" if with_issues else "success"
-          summary = f"❌ {len(with_issues)} plugin(s) have release-readiness issues." if with_issues else "✅ All release-readiness checks passed."
+          conclusion = "failure" if projects_with_issues else "success"
+          summary = (
+              f"❌ {len(projects_with_issues)} plugin(s) have release-readiness issues."
+              if projects_with_issues
+              else "✅ All release-readiness checks passed."
+          )
 
-          out = Path(os.environ["GITHUB_OUTPUT"])
-          with out.open("a", encoding="utf-8") as fh:
-              fh.write(f"conclusion={conclusion}\n")
-              fh.write(f"summary={summary}\n")
-              fh.write(f"report_file={report_path}\n")
-          PY2
+          output_file = Path(os.environ["GITHUB_OUTPUT"])
+          with output_file.open("a", encoding="utf-8") as out:
+              out.write(f"report_file={report_file}\n")
+              out.write(f"conclusion={conclusion}\n")
+              out.write(f"summary={summary}\n")
+          PY
 
       - name: Write step summary
         run: cat "${{ steps.aggregate.outputs.report_file }}" >> "$GITHUB_STEP_SUMMARY"
@@ -375,24 +367,33 @@ jobs:
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         env:
           REPORT_FILE: ${{ steps.aggregate.outputs.report_file }}
+          PR_NUMBER: ${{ inputs.pr_number }}
         with:
           script: |
             const fs = require('fs');
-            const body = fs.existsSync(process.env.REPORT_FILE) ? fs.readFileSync(process.env.REPORT_FILE, 'utf8') : 'No report generated.';
-            const prNumber = ${{ inputs.pr_number }};
+            const reportPath = process.env.REPORT_FILE;
+            const body = fs.existsSync(reportPath) ? fs.readFileSync(reportPath, 'utf8') : 'No report generated.';
+            const prNumber = Number(process.env.PR_NUMBER);
+
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,
             });
-            const existing = comments.find(c => c.user.type === 'Bot' && c.body.includes('Release Readiness Check Results'));
-            if (existing) {
+
+            const existingComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('Release Readiness Check Results')
+            );
+
+            if (existingComment) {
               await github.rest.issues.deleteComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                comment_id: existing.id
+                comment_id: existingComment.id
               });
             }
+
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -400,7 +401,7 @@ jobs:
               body
             });
 
-      - name: Complete check run
+      - name: Complete unified Release Readiness check
         if: always()
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         env:
@@ -411,17 +412,32 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const text = fs.existsSync(process.env.REPORT_FILE) ? fs.readFileSync(process.env.REPORT_FILE, 'utf8') : 'No report generated.';
+            const checkRunId = Number(process.env.CHECK_RUN_ID || 0);
+            if (!checkRunId) {
+              core.warning('Missing check_run_id, skipping Release Readiness check update');
+              return;
+            }
+            const reportPath = process.env.REPORT_FILE;
+            const report = fs.existsSync(reportPath) ? fs.readFileSync(reportPath, 'utf8') : 'No report generated.';
+
             await github.rest.checks.update({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              check_run_id: process.env.CHECK_RUN_ID,
+              check_run_id: checkRunId,
               status: 'completed',
               conclusion: process.env.CONCLUSION || 'failure',
               completed_at: new Date().toISOString(),
               output: {
                 title: 'Release Readiness Check',
                 summary: process.env.SUMMARY || 'Release readiness check completed.',
-                text
-              }
+                text: report,
+              },
             });
+
+      - name: Enforce release readiness result
+        if: always()
+        run: |
+          if [ "${{ steps.aggregate.outputs.conclusion }}" != "success" ]; then
+            echo "${{ steps.aggregate.outputs.summary }}"
+            exit 1
+          fi

@@ -182,150 +182,105 @@ jobs:
       pull-requests: write
       checks: write
     steps:
-      - name: Create Check Run
-        id: create_check
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+      - name: Download plugin result artifacts
+        continue-on-error: true
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
-          script: |
-            const headSha = '${{ github.event.pull_request.head.sha }}';
-            console.log(`Creating SonarQube Quality Gate check run for SHA: ${headSha}`);
-
-            const { data: checkRun } = await github.rest.checks.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              name: 'SonarQube Quality Gate',
-              head_sha: headSha,
-              status: 'in_progress',
-              started_at: new Date().toISOString(),
-              output: {
-                title: 'SonarQube Quality Gate Check',
-                summary: 'Checking quality gate status for all modified plugins...'
-              }
-            });
-
-            console.log(`Check run created with ID: ${checkRun.id}`);
-            core.setOutput('check_run_id', checkRun.id);
-            return checkRun.id;
+          pattern: ci-plugin-result-*
+          merge-multiple: true
+          path: ci-plugin-results
 
       - name: Aggregate Quality Gate Results
         id: aggregate
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         env:
           SONARQUBE_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
+          PLUGINS_JSON: ${{ needs.label-pr.outputs.all_plugins }}
         with:
           script: |
-            const plugins = JSON.parse('${{ needs.label-pr.outputs.all_plugins }}');
+            const fs = require('fs');
+            const path = require('path');
+            const plugins = JSON.parse(process.env.PLUGINS_JSON || '[]');
             const prNumber = context.payload.pull_request.number;
-            const headSha = '${{ github.event.pull_request.head.sha }}';
             const sonarHostUrl = process.env.SONARQUBE_HOST_URL || 'https://sonarq.solace.com';
+            const resultDir = 'ci-plugin-results';
+            const byPlugin = new Map();
 
-            console.log(`Processing ${plugins.length} plugins`);
-            console.log(`Head SHA: ${headSha}`);
+            function collectJsonFiles(dir) {
+              if (!fs.existsSync(dir)) return [];
+              const files = [];
+              for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                const fullPath = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                  files.push(...collectJsonFiles(fullPath));
+                } else if (entry.isFile() && entry.name.endsWith('.json')) {
+                  files.push(fullPath);
+                }
+              }
+              return files;
+            }
 
-            // Get all check runs for this commit
-            const { data: checkRuns } = await github.rest.checks.listForRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: headSha,
-              per_page: 100
-            });
-
-            console.log(`Found ${checkRuns.check_runs.length} check runs total`);
+            if (fs.existsSync(resultDir)) {
+              for (const filePath of collectJsonFiles(resultDir)) {
+                try {
+                  const payload = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                  if (payload.plugin) byPlugin.set(payload.plugin, payload);
+                } catch (error) {
+                  console.log(`Failed parsing ${filePath}: ${error.message}`);
+                }
+              }
+            }
+            console.log(`Loaded ${byPlugin.size} plugin result payload(s) for SonarQube aggregation.`);
 
             let allPassed = true;
-            let pluginResults = [];
+            const pluginResults = [];
 
             for (const pluginObj of plugins) {
               const plugin = pluginObj.plugin_directory;
-              const checkName = `SonarQube: ${plugin}`;
-
-              // Find the check run for this plugin
-              const checkRun = checkRuns.check_runs.find(run => run.name === checkName);
-
-              let status = 'unknown';
-              let statusEmoji = '❓';
-
-              if (checkRun) {
-                console.log(`Plugin: ${plugin}, Check conclusion: ${checkRun.conclusion}`);
-
-                if (checkRun.conclusion === 'success') {
-                  status = 'passed';
-                  statusEmoji = '✅';
-                } else if (checkRun.conclusion === 'failure') {
-                  status = 'failed';
-                  statusEmoji = '❌';
-                  allPassed = false;
-                } else if (checkRun.conclusion === 'neutral' || checkRun.conclusion === 'skipped') {
-                  status = checkRun.conclusion;
-                  statusEmoji = '⏭️';
-                } else {
-                  status = checkRun.conclusion || 'unknown';
-                  statusEmoji = '⚠️';
-                }
-              } else {
-                console.log(`Check run not found for ${plugin}`);
-                statusEmoji = '⚠️';
-              }
+              const payload = byPlugin.get(plugin) || {};
+              const sonarOutcome = payload.sonar_outcome || 'missing';
+              const status = sonarOutcome === 'success' ? 'passed' : 'failed';
+              const statusEmoji = status === 'passed' ? '✅' : '❌';
+              if (status !== 'passed') allPassed = false;
 
               const sonarUrl = `${sonarHostUrl}dashboard?id=${context.repo.owner}_${plugin}&pullRequest=${prNumber}`;
-
               pluginResults.push({
-                plugin: plugin,
-                status: status,
-                statusEmoji: statusEmoji,
-                url: sonarUrl
+                plugin,
+                status,
+                statusEmoji,
+                outcome: sonarOutcome,
+                url: sonarUrl,
+                has_issues: status !== 'passed',
               });
-
-              console.log(`Plugin: ${plugin}, Status: ${status}`);
             }
+
+            pluginResults.sort((a, b) => {
+              if (a.has_issues === b.has_issues) return a.plugin.localeCompare(b.plugin);
+              return a.has_issues ? -1 : 1;
+            });
 
             core.setOutput('all_passed', allPassed);
             core.setOutput('plugin_results', JSON.stringify(pluginResults));
             return { allPassed, pluginResults };
 
-      - name: Update Check Run
+      - name: Write summary
         if: always()
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
-            const checkRunId = '${{ steps.create_check.outputs.check_run_id }}';
             const allPassed = '${{ steps.aggregate.outputs.all_passed }}' === 'true';
             const pluginResults = JSON.parse('${{ steps.aggregate.outputs.plugin_results }}');
-
-            console.log(`Updating check run ID: ${checkRunId}`);
-            console.log(`All passed: ${allPassed}`);
-
-            const conclusion = allPassed ? 'success' : 'failure';
-            const summary = allPassed
-              ? '✅ All plugins passed SonarQube quality gate'
-              : '❌ Some plugins failed SonarQube quality gate';
-
-            let outputText = '## SonarQube Quality Gate Results\n\n';
-            outputText += '| Plugin | Status | SonarQube |\n';
-            outputText += '|--------|--------|----------|\n';
-
+            const header = allPassed
+              ? '## ✅ SonarQube Quality Gate - All Passed'
+              : '## ❌ SonarQube Quality Gate - Issues Found';
+            let outputText = `${header}\n\n`;
+            outputText += '| Plugin | Quality Gate Status | Analysis |\n';
+            outputText += '|--------|---------------------|----------|\n';
             for (const result of pluginResults) {
-              const statusText = result.status === 'passed' ? 'Passed' :
-                                 result.status === 'failed' ? 'Failed' :
-                                 result.status.charAt(0).toUpperCase() + result.status.slice(1);
-              outputText += `| \`${result.plugin}\` | ${result.statusEmoji} ${statusText} | [View Results](${result.url}) |\n`;
+              const statusText = result.status === 'passed' ? 'Passed' : `Failed (${result.outcome})`;
+              outputText += `| \`${result.plugin}\` | ${result.statusEmoji} ${statusText} | [See analysis details on SonarQube](${result.url}) |\n`;
             }
-
-            await github.rest.checks.update({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              check_run_id: checkRunId,
-              status: 'completed',
-              conclusion: conclusion,
-              completed_at: new Date().toISOString(),
-              output: {
-                title: 'SonarQube Quality Gate Check',
-                summary: summary,
-                text: outputText
-              }
-            });
-
-            console.log(`Check run completed with conclusion: ${conclusion}`);
+            await core.summary.addRaw(outputText).write();
 
       - name: Comment on PR
         if: always()
@@ -388,6 +343,221 @@ jobs:
               issue_number: prNumber,
               body: body
             });
+
+      - name: Enforce SonarQube quality gate
+        if: always()
+        run: |
+          if [ "${{ steps.aggregate.outputs.all_passed }}" != "true" ]; then
+            echo "SonarQube quality gate failed"
+            exit 1
+          fi
+
+  # Aggregate unit test results into one check
+  unit-tests-quality-gate:
+    name: Unit Tests
+    needs: [label-pr, builds]
+    if: always() && github.event_name == 'pull_request' && needs.label-pr.outputs.all_plugins != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+    steps:
+      - name: Download plugin result artifacts
+        continue-on-error: true
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          pattern: ci-plugin-result-*
+          merge-multiple: true
+          path: ci-plugin-results
+
+      - name: Aggregate unit test results
+        id: aggregate
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        env:
+          PLUGINS_JSON: ${{ needs.label-pr.outputs.all_plugins }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const plugins = JSON.parse(process.env.PLUGINS_JSON || '[]');
+            const resultDir = 'ci-plugin-results';
+            const byPlugin = new Map();
+
+            function collectJsonFiles(dir) {
+              if (!fs.existsSync(dir)) return [];
+              const files = [];
+              for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                const fullPath = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                  files.push(...collectJsonFiles(fullPath));
+                } else if (entry.isFile() && entry.name.endsWith('.json')) {
+                  files.push(fullPath);
+                }
+              }
+              return files;
+            }
+
+            if (fs.existsSync(resultDir)) {
+              for (const filePath of collectJsonFiles(resultDir)) {
+                try {
+                  const payload = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                  if (payload.plugin) byPlugin.set(payload.plugin, payload);
+                } catch (error) {
+                  console.log(`Failed parsing ${filePath}: ${error.message}`);
+                }
+              }
+            }
+
+            let allPassed = true;
+            const pluginResults = [];
+            const failingPlugins = [];
+            const missingPlugins = [];
+
+            for (const pluginObj of plugins) {
+              const plugin = pluginObj.plugin_directory;
+              const payload = byPlugin.get(plugin) || {};
+              const testStatus = payload.tests_status || 'missing';
+              const isMissing = testStatus === 'missing';
+              const isIssue = !(testStatus === 'passed' || testStatus === 'skipped');
+              if (isIssue) allPassed = false;
+              if (isIssue) failingPlugins.push(plugin);
+              if (isMissing) missingPlugins.push(plugin);
+              pluginResults.push({
+                plugin,
+                status: testStatus,
+                junit_exists: payload.junit_exists === true,
+                coverage_exists: payload.coverage_exists === true,
+                test_outcome: payload.test_outcome || 'missing',
+                has_issues: isIssue,
+              });
+            }
+
+            pluginResults.sort((a, b) => {
+              if (a.has_issues === b.has_issues) return a.plugin.localeCompare(b.plugin);
+              return a.has_issues ? -1 : 1;
+            });
+
+            console.log(`Loaded ${byPlugin.size} plugin result payload(s) for Unit Tests aggregation.`);
+            if (missingPlugins.length > 0) {
+              console.log(`Missing test payload for plugin(s): ${missingPlugins.join(', ')}`);
+            }
+            if (failingPlugins.length > 0) {
+              console.log(`Failing plugin(s): ${failingPlugins.join(', ')}`);
+            }
+
+            core.setOutput('all_passed', allPassed);
+            core.setOutput('plugin_results', JSON.stringify(pluginResults));
+            core.setOutput('failing_plugins', JSON.stringify(failingPlugins));
+            core.setOutput('missing_plugins', JSON.stringify(missingPlugins));
+
+      - name: Write unit test summary
+        if: always()
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const allPassed = '${{ steps.aggregate.outputs.all_passed }}' === 'true';
+            const pluginResults = JSON.parse('${{ steps.aggregate.outputs.plugin_results }}');
+            const header = allPassed
+              ? '## ✅ Unit Tests - All Passed'
+              : '## ❌ Unit Tests - Issues Found';
+
+            let text = `${header}\n\n`;
+            text += '| Plugin | Test Status | JUnit | Coverage |\n';
+            text += '|--------|-------------|-------|----------|\n';
+
+            for (const result of pluginResults) {
+              const statusText = result.status === 'passed'
+                ? '✅ Passed'
+                : result.status === 'skipped'
+                ? '⏭️ Skipped'
+                : '❌ Failed';
+              text += `| \`${result.plugin}\` | ${statusText} | ${result.junit_exists ? 'Yes' : 'No'} | ${result.coverage_exists ? 'Yes' : 'No'} |\n`;
+            }
+
+            await core.summary.addRaw(text).write();
+
+      - name: Update Unit Tests status check details
+        if: always()
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const allPassed = '${{ steps.aggregate.outputs.all_passed }}' === 'true';
+            const pluginResults = JSON.parse('${{ steps.aggregate.outputs.plugin_results }}');
+            const failingPlugins = JSON.parse('${{ steps.aggregate.outputs.failing_plugins }}');
+            const missingPlugins = JSON.parse('${{ steps.aggregate.outputs.missing_plugins }}');
+            const title = allPassed ? 'Unit Tests Passed' : 'Unit Tests Failed';
+            const header = allPassed
+              ? '## ✅ Unit Tests - All Passed'
+              : '## ❌ Unit Tests - Issues Found';
+
+            const rows = pluginResults.map((result) => {
+              const statusText = result.status === 'passed'
+                ? '✅ Passed'
+                : result.status === 'skipped'
+                ? '⏭️ Skipped'
+                : result.status === 'missing'
+                ? '⚠️ Missing Result'
+                : '❌ Failed';
+              return `| \`${result.plugin}\` | ${statusText} | ${result.test_outcome} | ${result.junit_exists ? 'Yes' : 'No'} | ${result.coverage_exists ? 'Yes' : 'No'} |`;
+            });
+
+            const summary = [
+              header,
+              '',
+              `- Failing plugins: ${failingPlugins.length}`,
+              `- Missing payloads: ${missingPlugins.length}`,
+              '',
+              '| Plugin | Test Status | Step Outcome | JUnit | Coverage |',
+              '|--------|-------------|--------------|-------|----------|',
+              ...rows,
+            ].join('\n');
+
+            const checkRuns = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              per_page: 100,
+            });
+
+            const candidateRuns = checkRuns.data.check_runs
+              .filter((run) => {
+                if (run.app?.slug !== 'github-actions') return false;
+                const name = (run.name || '').toLowerCase();
+                return name === 'unit tests' || name.includes('unit tests') || name.includes('unit-tests-quality-gate');
+              })
+              .sort((a, b) => {
+                const aTime = new Date(a.started_at || a.created_at || 0).getTime();
+                const bTime = new Date(b.started_at || b.created_at || 0).getTime();
+                return bTime - aTime;
+              });
+
+            const currentRun =
+              candidateRuns.find((run) => run.status !== 'completed') ||
+              candidateRuns[0];
+
+            if (!currentRun) {
+              core.warning('Unable to locate current Unit Tests check run for output update.');
+              return;
+            }
+
+            await github.rest.checks.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              check_run_id: currentRun.id,
+              output: {
+                title,
+                summary,
+              },
+            });
+
+      - name: Enforce unit tests gate
+        if: always()
+        run: |
+          if [ "${{ steps.aggregate.outputs.all_passed }}" != "true" ]; then
+            echo "Unit tests failed for one or more plugins"
+            echo "Failing plugins: ${{ steps.aggregate.outputs.failing_plugins }}"
+            echo "Missing payloads: ${{ steps.aggregate.outputs.missing_plugins }}"
+            exit 1
+          fi
 
   # Aggregate FOSSA diff guard across all changed plugins into one check/comment
   fossa-report:
@@ -538,9 +708,11 @@ jobs:
               : '## ❌ FOSSA Report - Issues Found';
 
             const tableRows = results.map((r) => {
-              const licensingExtra = r.licensing_exit_code === 0 ? '' : ', scan error';
-              const vulnerabilityExtra = r.vulnerability_exit_code === 0 ? '' : ', scan error';
-              return `| \`${r.plugin}\` | [${r.project_id}](${r.licensing_url}) (B:${r.licensing_blocking_issues} / T:${r.licensing_total_issues}${licensingExtra}) | [${r.project_id}](${r.vulnerability_url}) (B:${r.vulnerability_blocking_issues} / T:${r.vulnerability_total_issues}${vulnerabilityExtra}) |`;
+              const licensingPassed = r.licensing_exit_code === 0 && r.licensing_blocking_issues === 0;
+              const vulnerabilityPassed = r.vulnerability_exit_code === 0 && r.vulnerability_blocking_issues === 0;
+              const licensingStatus = licensingPassed ? '✅' : '❌';
+              const vulnerabilityStatus = vulnerabilityPassed ? '✅' : '❌';
+              return `| \`${r.plugin}\` | ${licensingStatus} | ${r.licensing_total_issues} | ${r.licensing_blocking_issues} | [View report](${r.licensing_url}) | ${vulnerabilityStatus} | ${r.vulnerability_total_issues} | ${r.vulnerability_blocking_issues} | [View report](${r.vulnerability_url}) |`;
             });
 
             const body = [
@@ -548,8 +720,8 @@ jobs:
               '',
               '### Overall Counts',
               '',
-              `- Licensing: **B:${totalLicensingBlocking} / T:${totalLicensing}**`,
-              `- Vulnerabilities: **B:${totalVulnerabilityBlocking} / T:${totalVulnerability}**`,
+              `- Licensing issues: **${totalLicensing}** (blockers: **${totalLicensingBlocking}**)`,
+              `- Vulnerability issues: **${totalVulnerability}** (blockers: **${totalVulnerabilityBlocking}**)`,
               '',
               '### Projects With Issues',
               withIssues.length > 0 ? withIssues.map(p => `- \`${p}\``).join('\n') : '- None',
@@ -557,8 +729,8 @@ jobs:
               '### Projects Without Issues',
               withoutIssues.length > 0 ? withoutIssues.map(p => `- \`${p}\``).join('\n') : '- None',
               '',
-              '| Plugin | FOSSA Licensing | FOSSA Vulnerabilities |',
-              '|--------|-----------------|-----------------------|',
+              '| Plugin | Licensing | Licensing Issues | Licensing Blockers | Licensing Report | Vulnerabilities | Vulnerability Issues | Vulnerability Blockers | Vulnerability Report |',
+              '|--------|-----------|------------------|--------------------|------------------|-----------------|----------------------|------------------------|----------------------|',
               ...tableRows,
               '',
               '---',
@@ -603,7 +775,7 @@ jobs:
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
-    needs: [label-pr, builds, sonarqube-quality-gate, fossa-report]
+    needs: [label-pr, builds, sonarqube-quality-gate, unit-tests-quality-gate, fossa-report]
     if: always()
     steps:
       - name: Check CI status
@@ -619,6 +791,13 @@ jobs:
                 echo "SonarQube quality gate passed or was skipped"
               else
                 echo "SonarQube quality gate failed"
+                exit 1
+              fi
+
+              if [[ "${{ needs.unit-tests-quality-gate.result }}" == "success" || "${{ needs.unit-tests-quality-gate.result }}" == "skipped" ]]; then
+                echo "Unit tests gate passed or was skipped"
+              else
+                echo "Unit tests gate failed"
                 exit 1
               fi
 
