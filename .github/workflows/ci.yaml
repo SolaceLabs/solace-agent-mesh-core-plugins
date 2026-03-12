@@ -10,6 +10,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
   actions: write
   statuses: write
   checks: write
@@ -180,6 +181,7 @@ jobs:
     if: always()
     permissions:
       pull-requests: write
+      issues: write
       checks: write
       actions: read
     steps:
