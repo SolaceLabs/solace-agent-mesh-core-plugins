@@ -360,6 +360,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       checks: write
+      actions: read
     steps:
       - name: Download plugin result artifacts
         continue-on-error: true
@@ -511,18 +512,62 @@ jobs:
               ...rows,
             ].join('\n');
 
-            const checkRuns = await github.rest.checks.listForRef({
+            async function updateCheckRun(checkRunId) {
+              await github.rest.checks.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                check_run_id: Number(checkRunId),
+                output: {
+                  title,
+                  summary,
+                },
+              });
+            }
+
+            // Primary path: resolve check run from current workflow jobs.
+            try {
+              const jobsResp = await github.rest.actions.listJobsForWorkflowRun({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: context.runId,
+                per_page: 100,
+              });
+              const jobCandidates = jobsResp.data.jobs || [];
+              const currentJob = jobCandidates.find((job) => {
+                const name = (job.name || '').toLowerCase();
+                return name === 'unit tests' || name.includes('unit tests');
+              });
+              if (currentJob?.check_run_url) {
+                const match = currentJob.check_run_url.match(/\/check-runs\/(\d+)$/);
+                if (match) {
+                  await updateCheckRun(match[1]);
+                  core.info(`Updated Unit Tests check run via actions job lookup: ${match[1]}`);
+                  return;
+                }
+              }
+              core.info('Actions job lookup did not resolve a check run URL for Unit Tests; falling back to checks API lookup.');
+            } catch (error) {
+              core.info(`Actions job lookup unavailable, falling back to checks API lookup: ${error.message}`);
+            }
+
+            // Fallback path: resolve check run from checks API on the current SHA.
+            const checksResp = await github.rest.checks.listForRef({
               owner: context.repo.owner,
               repo: context.repo.repo,
               ref: context.sha,
               per_page: 100,
             });
 
-            const candidateRuns = checkRuns.data.check_runs
+            const allRuns = checksResp.data.check_runs || [];
+            const unitRunCandidates = allRuns
               .filter((run) => {
-                if (run.app?.slug !== 'github-actions') return false;
                 const name = (run.name || '').toLowerCase();
-                return name === 'unit tests' || name.includes('unit tests') || name.includes('unit-tests-quality-gate');
+                const detailsUrl = (run.details_url || '').toLowerCase();
+                return (
+                  name === 'unit tests' ||
+                  name.includes('unit tests') ||
+                  detailsUrl.includes(`/actions/runs/${context.runId}`)
+                );
               })
               .sort((a, b) => {
                 const aTime = new Date(a.started_at || a.created_at || 0).getTime();
@@ -530,24 +575,14 @@ jobs:
                 return bTime - aTime;
               });
 
-            const currentRun =
-              candidateRuns.find((run) => run.status !== 'completed') ||
-              candidateRuns[0];
-
-            if (!currentRun) {
-              core.warning('Unable to locate current Unit Tests check run for output update.');
+            if (unitRunCandidates.length > 0) {
+              await updateCheckRun(unitRunCandidates[0].id);
+              core.info(`Updated Unit Tests check run via checks API lookup: ${unitRunCandidates[0].id}`);
               return;
             }
 
-            await github.rest.checks.update({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              check_run_id: currentRun.id,
-              output: {
-                title,
-                summary,
-              },
-            });
+            const seenNames = allRuns.map((run) => run.name).slice(0, 20).join(', ');
+            core.info(`Skipped Unit Tests check update; no matching check run found. Seen check names: ${seenNames}`);
 
       - name: Enforce unit tests gate
         if: always()
@@ -670,6 +705,7 @@ jobs:
                   "vulnerability_total_issues": vul_total,
                   "vulnerability_blocking_issues": vul_blocking,
                   "vulnerability_exit_code": vul_rc,
+                  "report_url": f"https://app.fossa.com/projects/{locator}/refs/branch/PR/{encoded_revision}",
                   "licensing_url": licensing_url,
                   "vulnerability_url": vulnerability_url,
                   "has_issues": has_issues,
@@ -696,45 +732,68 @@ jobs:
             const prNumber = context.payload.pull_request.number;
 
             const withIssues = results.filter(r => r.has_issues).map(r => r.plugin);
-            const withoutIssues = results.filter(r => !r.has_issues).map(r => r.plugin);
+            const totalLicensingIssues = results.reduce((sum, r) => {
+              const total = Number(r.licensing_total_issues || 0);
+              const blocking = Number(r.licensing_blocking_issues || 0);
+              const fallback = r.licensing_exit_code === 0 ? 0 : 1;
+              return sum + Math.max(total, blocking, fallback);
+            }, 0);
+            const totalVulnerabilityIssues = results.reduce((sum, r) => {
+              const total = Number(r.vulnerability_total_issues || 0);
+              const blocking = Number(r.vulnerability_blocking_issues || 0);
+              const fallback = r.vulnerability_exit_code === 0 ? 0 : 1;
+              return sum + Math.max(total, blocking, fallback);
+            }, 0);
 
-            const totalLicensing = results.reduce((sum, r) => sum + (r.licensing_total_issues || 0), 0);
-            const totalLicensingBlocking = results.reduce((sum, r) => sum + (r.licensing_blocking_issues || 0), 0);
-            const totalVulnerability = results.reduce((sum, r) => sum + (r.vulnerability_total_issues || 0), 0);
-            const totalVulnerabilityBlocking = results.reduce((sum, r) => sum + (r.vulnerability_blocking_issues || 0), 0);
+            const overallLicensing = totalLicensingIssues === 0
+              ? '✅ Passed'
+              : `❌ ${totalLicensingIssues} Issues`;
+            const overallVulnerability = totalVulnerabilityIssues === 0
+              ? '✅ Passed'
+              : `❌ ${totalVulnerabilityIssues} Issues`;
 
             const header = withIssues.length === 0
-              ? '## ✅ FOSSA Report - All Passed'
-              : '## ❌ FOSSA Report - Issues Found';
+              ? '## ✅ FOSSA Guard (PR Diff) - No New Issues Introduced'
+              : '## ❌ FOSSA Guard (PR Diff) - New Issues Introduced';
 
             const tableRows = results.map((r) => {
               const licensingPassed = r.licensing_exit_code === 0 && r.licensing_blocking_issues === 0;
               const vulnerabilityPassed = r.vulnerability_exit_code === 0 && r.vulnerability_blocking_issues === 0;
-              const licensingStatus = licensingPassed ? '✅' : '❌';
-              const vulnerabilityStatus = vulnerabilityPassed ? '✅' : '❌';
-              return `| \`${r.plugin}\` | ${licensingStatus} | ${r.licensing_total_issues} | ${r.licensing_blocking_issues} | [View report](${r.licensing_url}) | ${vulnerabilityStatus} | ${r.vulnerability_total_issues} | ${r.vulnerability_blocking_issues} | [View report](${r.vulnerability_url}) |`;
+              const licensingIssues = Math.max(
+                Number(r.licensing_total_issues || 0),
+                Number(r.licensing_blocking_issues || 0),
+                r.licensing_exit_code === 0 ? 0 : 1,
+              );
+              const vulnerabilityIssues = Math.max(
+                Number(r.vulnerability_total_issues || 0),
+                Number(r.vulnerability_blocking_issues || 0),
+                r.vulnerability_exit_code === 0 ? 0 : 1,
+              );
+              const licensingStatus = licensingPassed ? '✅ Passed' : `❌ ${licensingIssues} Issues`;
+              const vulnerabilityStatus = vulnerabilityPassed ? '✅ Passed' : `❌ ${vulnerabilityIssues} Issues`;
+              const reportUrl = r.report_url || r.vulnerability_url || r.licensing_url;
+              return `| \`${r.plugin}\` | ${vulnerabilityStatus} | ${licensingStatus} | [View report](${reportUrl}) |`;
             });
 
             const body = [
               header,
               '',
-              '### Overall Counts',
+              '_Diff mode compares PR head against base revision and reports only newly introduced issues._',
               '',
-              `- Licensing issues: **${totalLicensing}** (blockers: **${totalLicensingBlocking}**)`,
-              `- Vulnerability issues: **${totalVulnerability}** (blockers: **${totalVulnerabilityBlocking}**)`,
+              '| Check | Scope | Status |',
+              '|-------|-------|--------|',
+              `| FOSSA Vulnerabilities | Per-Plugin (PR Diff) | ${overallVulnerability} |`,
+              `| License Check | Per-Plugin (PR Diff) | ${overallLicensing} |`,
               '',
-              '### Projects With Issues',
+              '### Projects With New Issues',
               withIssues.length > 0 ? withIssues.map(p => `- \`${p}\``).join('\n') : '- None',
               '',
-              '### Projects Without Issues',
-              withoutIssues.length > 0 ? withoutIssues.map(p => `- \`${p}\``).join('\n') : '- None',
-              '',
-              '| Plugin | Licensing | Licensing Issues | Licensing Blockers | Licensing Report | Vulnerabilities | Vulnerability Issues | Vulnerability Blockers | Vulnerability Report |',
-              '|--------|-----------|------------------|--------------------|------------------|-----------------|----------------------|------------------------|----------------------|',
+              '| Plugin | FOSSA Vulnerabilities | License Check | FOSSA Report |',
+              '|--------|-----------------------|---------------|--------------|',
               ...tableRows,
               '',
               '---',
-              '*Diff mode checks compare changed plugin revisions against the PR base revision and show newly introduced issues.*',
+              '*Only newly introduced issues are shown in this report.*',
             ].join('\n');
 
             await core.summary.addRaw(body).write();
