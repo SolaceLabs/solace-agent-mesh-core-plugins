@@ -39,7 +39,7 @@ permissions:
 
 jobs:
   release-readiness:
-    name: Release Readiness
+    name: Release Readiness Runner
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -61,7 +61,7 @@ jobs:
           sonarqube_host_url: ${{ secrets.SONARQUBE_HOST_URL }}
           repo_owner: ${{ github.repository_owner }}
           base_branch: main
-          check_name: Release Readiness
+          check_name: Release Readiness Check
           comment_marker: Release Readiness Check Results
           update_pr_comment: "true"
           update_check_details: "true"

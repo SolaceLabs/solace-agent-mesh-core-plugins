@@ -172,18 +172,19 @@ jobs:
       SONARQUBE_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
       SONARQUBE_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
 
-  # Aggregate SonarQube Quality Gate results for all plugins
-  sonarqube-quality-gate:
-    name: SonarQube Quality Gate
-    needs: [label-pr, builds]
-    if: always() && github.event_name == 'pull_request' && needs.label-pr.outputs.all_plugins != '[]'
+  # CI Status check - aggregates all job results
+  ci-status:
+    name: CI Status
     runs-on: ubuntu-latest
+    needs: [label-pr, builds]
+    if: always()
     permissions:
       pull-requests: write
       checks: write
       actions: read
     steps:
       - name: Download plugin result artifacts
+        if: always() && github.event_name == 'pull_request' && needs.label-pr.outputs.all_plugins != '[]' && (needs.builds.result == 'success' || needs.builds.result == 'skipped')
         continue-on-error: true
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
@@ -191,8 +192,10 @@ jobs:
           merge-multiple: true
           path: ci-plugin-results
 
-      - name: Aggregate SonarQube quality gate report
-        id: aggregate
+      - name: Publish SonarQube Quality Gate check
+        id: sonar_gate
+        if: always() && github.event_name == 'pull_request' && needs.label-pr.outputs.all_plugins != '[]' && (needs.builds.result == 'success' || needs.builds.result == 'skipped')
+        continue-on-error: true
         uses: SolaceDev/solace-public-workflows/.github/actions/pr-plugin-check-report@aggregation
         with:
           check_type: sonarqube
@@ -206,26 +209,10 @@ jobs:
           update_check_details: "true"
           fail_on_issues: "true"
 
-  # Aggregate unit test results into one check
-  unit-tests-quality-gate:
-    name: Unit Tests
-    needs: [label-pr, builds]
-    if: always() && github.event_name == 'pull_request' && needs.label-pr.outputs.all_plugins != '[]'
-    runs-on: ubuntu-latest
-    permissions:
-      checks: write
-      actions: read
-    steps:
-      - name: Download plugin result artifacts
+      - name: Publish Unit Tests check
+        id: unit_tests_gate
+        if: always() && github.event_name == 'pull_request' && needs.label-pr.outputs.all_plugins != '[]' && (needs.builds.result == 'success' || needs.builds.result == 'skipped')
         continue-on-error: true
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
-        with:
-          pattern: ci-plugin-result-*
-          merge-multiple: true
-          path: ci-plugin-results
-
-      - name: Aggregate unit tests report
-        id: aggregate
         uses: SolaceDev/solace-public-workflows/.github/actions/pr-plugin-check-report@aggregation
         with:
           check_type: unit-tests
@@ -237,19 +224,10 @@ jobs:
           update_check_details: "true"
           fail_on_issues: "true"
 
-  # Aggregate FOSSA diff guard across all changed plugins into one check/comment
-  fossa-guard:
-    name: FOSSA Guard
-    needs: [label-pr, builds]
-    if: always() && github.event_name == 'pull_request' && !contains(github.head_ref, 'release-please') && needs.label-pr.outputs.all_plugins != '[]' && (needs.builds.result == 'success' || needs.builds.result == 'skipped')
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-      checks: write
-      actions: read
-    steps:
-      - name: Aggregate FOSSA diff report
-        id: aggregate
+      - name: Publish FOSSA Guard check
+        id: fossa_guard_gate
+        if: always() && github.event_name == 'pull_request' && !contains(github.head_ref, 'release-please') && needs.label-pr.outputs.all_plugins != '[]' && (needs.builds.result == 'success' || needs.builds.result == 'skipped')
+        continue-on-error: true
         uses: SolaceDev/solace-public-workflows/.github/actions/pr-fossa-diff-report@aggregation
         with:
           plugins_json: ${{ needs.label-pr.outputs.all_plugins }}
@@ -264,20 +242,6 @@ jobs:
           update_check_details: "true"
           fail_on_issues: "true"
 
-  # CI Status check - aggregates all job results
-  ci-status:
-    name: CI Status
-    runs-on: ubuntu-latest
-    needs:
-      [
-        label-pr,
-        builds,
-        sonarqube-quality-gate,
-        unit-tests-quality-gate,
-        fossa-guard,
-      ]
-    if: always()
-    steps:
       - name: Check CI status
         run: |
           if [[ "${{ needs.label-pr.outputs.all_plugins }}" == "[]" ]]; then
@@ -287,14 +251,14 @@ jobs:
 
             # Check SonarQube quality gate for PRs
             if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-              if [[ "${{ needs.sonarqube-quality-gate.result }}" == "success" || "${{ needs.sonarqube-quality-gate.result }}" == "skipped" ]]; then
+              if [[ "${{ steps.sonar_gate.outcome }}" == "success" || "${{ steps.sonar_gate.outcome }}" == "skipped" ]]; then
                 echo "SonarQube quality gate passed or was skipped"
               else
                 echo "SonarQube quality gate failed"
                 exit 1
               fi
 
-              if [[ "${{ needs.unit-tests-quality-gate.result }}" == "success" || "${{ needs.unit-tests-quality-gate.result }}" == "skipped" ]]; then
+              if [[ "${{ steps.unit_tests_gate.outcome }}" == "success" || "${{ steps.unit_tests_gate.outcome }}" == "skipped" ]]; then
                 echo "Unit tests gate passed or was skipped"
               else
                 echo "Unit tests gate failed"
@@ -304,7 +268,7 @@ jobs:
               # Check aggregated FOSSA guard for non-release-please PRs
               if [[ "${{ github.head_ref }}" == *"release-please"* ]]; then
                 echo "Release-please PR detected - skipping FOSSA report gate"
-              elif [[ "${{ needs.fossa-guard.result }}" == "success" || "${{ needs.fossa-guard.result }}" == "skipped" ]]; then
+              elif [[ "${{ steps.fossa_guard_gate.outcome }}" == "success" || "${{ steps.fossa_guard_gate.outcome }}" == "skipped" ]]; then
                 echo "FOSSA guard passed or was skipped"
               else
                 echo "FOSSA guard failed"
