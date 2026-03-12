@@ -198,6 +198,8 @@ jobs:
         id: sonar_gate
         if: always() && github.event_name == 'pull_request' && needs.label-pr.outputs.all_plugins != '[]' && (needs.builds.result == 'success' || needs.builds.result == 'skipped')
         continue-on-error: true
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         uses: SolaceDev/solace-public-workflows/.github/actions/pr-plugin-check-report@aggregation
         with:
           check_type: sonarqube
@@ -215,6 +217,8 @@ jobs:
         id: unit_tests_gate
         if: always() && github.event_name == 'pull_request' && needs.label-pr.outputs.all_plugins != '[]' && (needs.builds.result == 'success' || needs.builds.result == 'skipped')
         continue-on-error: true
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         uses: SolaceDev/solace-public-workflows/.github/actions/pr-plugin-check-report@aggregation
         with:
           check_type: unit-tests
@@ -230,6 +234,8 @@ jobs:
         id: fossa_guard_gate
         if: always() && github.event_name == 'pull_request' && !contains(github.head_ref, 'release-please') && needs.label-pr.outputs.all_plugins != '[]' && (needs.builds.result == 'success' || needs.builds.result == 'skipped')
         continue-on-error: true
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         uses: SolaceDev/solace-public-workflows/.github/actions/pr-fossa-diff-report@aggregation
         with:
           plugins_json: ${{ needs.label-pr.outputs.all_plugins }}
