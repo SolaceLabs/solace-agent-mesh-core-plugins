@@ -41,6 +41,11 @@ on:
           - sam-sql-database
           - sam-sql-database-tool
           - sam-webhook-gateway
+      ref:
+        description: "Git ref to checkout (branch or SHA)"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -60,6 +65,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          ref: ${{ inputs.ref || github.ref }}
           fetch-depth: 0
           sparse-checkout: ${{ inputs.plugin_directory }}
 
@@ -95,14 +101,22 @@ jobs:
           # Check if tests directory exists
           if [ ! -d "tests" ]; then
             echo "No tests directory found, skipping tests"
+            echo "tests_present=false" >> $GITHUB_OUTPUT
             echo "junit_exists=false" >> $GITHUB_OUTPUT
             echo "coverage_exists=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          # Run tests with coverage if pytest-cov is available, otherwise without
-          hatch -v run hatch-test.py3.13:pytest tests/ --cov --cov-report=xml:coverage.xml --cov-report=term --junitxml=junit.xml
+          echo "tests_present=true" >> $GITHUB_OUTPUT
 
+          # Run tests with coverage if pytest-cov is available, otherwise without
+          if hatch -v run hatch-test.py3.13:pip show pytest-cov > /dev/null 2>&1; then
+            echo "Running tests with coverage..."
+            hatch -v run hatch-test.py3.13:pytest tests/ --cov --cov-report=xml:coverage.xml --cov-report=term --junitxml=junit.xml
+          else
+            echo "Running tests without coverage (pytest-cov not available)..."
+            hatch -v run hatch-test.py3.13:pytest tests/ --junitxml=junit.xml
+          fi
 
           # Check if result files exist
           if [ -f coverage.xml ]; then
@@ -115,14 +129,6 @@ jobs:
           else
             echo "junit_exists=false" >> $GITHUB_OUTPUT
           fi
-
-      - name: Status Check - Unit Tests
-        uses: mikepenz/action-junit-report@3585e9575db828022551b4231f165eb59a0e74e3 # v5.6.2
-        if: always() && steps.test.outputs.junit_exists == 'true'
-        with:
-          check_name: Unit Tests - ${{ inputs.plugin_directory }}
-          report_paths: ${{ inputs.plugin_directory }}/junit.xml
-          include_passed: true
 
       - name: SonarQube Scan
         id: sonarqube-scan
@@ -139,7 +145,7 @@ jobs:
             -Dsonar.sources=src
             -Dsonar.python.version=3.10,3.11,3.12,3.13
             -Dsonar.sourceEncoding=UTF-8
-            -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.python.coverage.reportPaths=**/coverage.xml
             -Dsonar.exclusions=**/__pycache__/**,**/dist/**,**/.hatch/**,**/build/**,**/*.egg-info/**,**/tests/**
             -Dsonar.cpd.exclusions=**/tests/**
             -Dsonar.pullrequest.github.summary_comment=false
@@ -153,45 +159,51 @@ jobs:
           echo "SonarQube scan outcome: ${{ steps.sonarqube-scan.outcome }}"
           echo "status=${{ steps.sonarqube-scan.outcome }}" >> $GITHUB_OUTPUT
 
-      - name: Report SonarQube Status via Check
-        if: always() && github.event_name == 'pull_request'
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+      - name: Build CI plugin result payload
+        if: always()
+        shell: bash
         env:
+          PLUGIN: ${{ inputs.plugin_directory }}
+          TEST_OUTCOME: ${{ steps.test.outcome }}
+          TESTS_PRESENT: ${{ steps.test.outputs.tests_present }}
+          JUNIT_EXISTS: ${{ steps.test.outputs.junit_exists }}
+          COVERAGE_EXISTS: ${{ steps.test.outputs.coverage_exists }}
           SONAR_OUTCOME: ${{ steps.sonarqube-scan.outcome }}
-          SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          tests_present = os.environ.get("TESTS_PRESENT") == "true"
+          test_outcome = os.environ.get("TEST_OUTCOME", "missing")
+          if not tests_present:
+              tests_status = "skipped"
+          elif test_outcome == "success":
+              tests_status = "passed"
+          else:
+              tests_status = "failed"
+
+          payload = {
+              "plugin": os.environ.get("PLUGIN"),
+              "tests_status": tests_status,
+              "tests_present": tests_present,
+              "test_outcome": test_outcome,
+              "junit_exists": os.environ.get("JUNIT_EXISTS") == "true",
+              "coverage_exists": os.environ.get("COVERAGE_EXISTS") == "true",
+              "sonar_outcome": os.environ.get("SONAR_OUTCOME", "missing"),
+          }
+          result_file = f"ci-plugin-result-{os.environ.get('PLUGIN')}.json"
+          Path(result_file).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+          PY
+
+      - name: Upload CI plugin result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          script: |
-            const outcome = process.env.SONAR_OUTCOME;
-            const plugin = '${{ inputs.plugin_directory }}';
-            const sonarHostUrl = process.env.SONAR_HOST_URL || 'https://sonarq.solace.com';
-            const prNumber = context.payload.pull_request.number;
-            const headSha = context.payload.pull_request.head.sha;
-
-            const conclusion = outcome === 'success' ? 'success' :
-                              outcome === 'failure' ? 'failure' :
-                              'neutral';
-
-            const summary = outcome === 'success'
-              ? `✅ Quality gate passed for ${plugin}`
-              : outcome === 'failure'
-              ? `❌ Quality gate failed for ${plugin}`
-              : `⚠️ SonarQube scan status: ${outcome}`;
-
-            const sonarUrl = `${sonarHostUrl}dashboard?id=${context.repo.owner}_${plugin}&pullRequest=${prNumber}`;
-
-            await github.rest.checks.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              name: `SonarQube: ${plugin}`,
-              head_sha: headSha,
-              status: 'completed',
-              conclusion: conclusion,
-              output: {
-                title: `SonarQube Quality Gate - ${plugin}`,
-                summary: summary,
-                text: `[View detailed analysis on SonarQube](${sonarUrl})`
-              }
-            });
+          name: ci-plugin-result-${{ inputs.plugin_directory }}
+          path: ci-plugin-result-${{ inputs.plugin_directory }}.json
+          retention-days: 7
 
       - name: Build and Verify Package
         shell: bash
@@ -209,15 +221,37 @@ jobs:
           path: ${{ inputs.plugin_directory }}/dist/
           retention-days: 7
 
+      - name: Resolve FOSSA scan target
+        id: fossa_target
+        shell: bash
+        working-directory: ${{ inputs.plugin_directory }}
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.head_ref }}" == *"release-please"* ]]; then
+            BRANCH="main"
+            REVISION="$(hatch version 2>/dev/null || true)"
+            if [[ -z "$REVISION" ]]; then
+              REVISION="${{ github.sha }}"
+            fi
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BRANCH="PR"
+            REVISION="${{ github.head_ref }}"
+          else
+            BRANCH="${{ github.event.repository.default_branch }}"
+            REVISION="${{ github.sha }}"
+          fi
+
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+          echo "Resolved FOSSA scan target: branch=$BRANCH revision=$REVISION"
+
       # FOSSA Scan - uploads plugin data to FOSSA as unique project
-      # Guard checks run at repo level in ci.yaml on main branch
       - name: FOSSA Scan
-        continue-on-error: true
         uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@main
         with:
           scanners: "fossa"
           additional_scan_params: |
-            fossa.branch=${{ github.event.pull_request.number && 'PR' || github.event.repository.default_branch }}
-            fossa.revision=${{ github.event.pull_request.number && github.head_ref || github.sha }}
-            fossa.config=${{ inputs.plugin_directory }}/.fossa.yml
+            fossa.path=${{ inputs.plugin_directory }}/
+            fossa.project=${{ github.repository_owner }}_${{ inputs.plugin_directory }}
+            fossa.branch=${{ steps.fossa_target.outputs.branch }}
+            fossa.revision=${{ steps.fossa_target.outputs.revision }}
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
