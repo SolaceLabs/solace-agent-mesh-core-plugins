@@ -181,6 +181,7 @@ jobs:
     permissions:
       pull-requests: write
       checks: write
+      actions: read
     steps:
       - name: Download plugin result artifacts
         continue-on-error: true
@@ -190,167 +191,20 @@ jobs:
           merge-multiple: true
           path: ci-plugin-results
 
-      - name: Aggregate Quality Gate Results
+      - name: Aggregate SonarQube quality gate report
         id: aggregate
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
-        env:
-          SONARQUBE_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
-          PLUGINS_JSON: ${{ needs.label-pr.outputs.all_plugins }}
+        uses: SolaceDev/solace-public-workflows/.github/actions/pr-plugin-check-report@aggregation
         with:
-          script: |
-            const fs = require('fs');
-            const path = require('path');
-            const plugins = JSON.parse(process.env.PLUGINS_JSON || '[]');
-            const prNumber = context.payload.pull_request.number;
-            const sonarHostUrl = process.env.SONARQUBE_HOST_URL || 'https://sonarq.solace.com';
-            const resultDir = 'ci-plugin-results';
-            const byPlugin = new Map();
-
-            function collectJsonFiles(dir) {
-              if (!fs.existsSync(dir)) return [];
-              const files = [];
-              for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-                const fullPath = path.join(dir, entry.name);
-                if (entry.isDirectory()) {
-                  files.push(...collectJsonFiles(fullPath));
-                } else if (entry.isFile() && entry.name.endsWith('.json')) {
-                  files.push(fullPath);
-                }
-              }
-              return files;
-            }
-
-            if (fs.existsSync(resultDir)) {
-              for (const filePath of collectJsonFiles(resultDir)) {
-                try {
-                  const payload = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-                  if (payload.plugin) byPlugin.set(payload.plugin, payload);
-                } catch (error) {
-                  console.log(`Failed parsing ${filePath}: ${error.message}`);
-                }
-              }
-            }
-            console.log(`Loaded ${byPlugin.size} plugin result payload(s) for SonarQube aggregation.`);
-
-            let allPassed = true;
-            const pluginResults = [];
-
-            for (const pluginObj of plugins) {
-              const plugin = pluginObj.plugin_directory;
-              const payload = byPlugin.get(plugin) || {};
-              const sonarOutcome = payload.sonar_outcome || 'missing';
-              const status = sonarOutcome === 'success' ? 'passed' : 'failed';
-              const statusEmoji = status === 'passed' ? '✅' : '❌';
-              if (status !== 'passed') allPassed = false;
-
-              const sonarUrl = `${sonarHostUrl}dashboard?id=${context.repo.owner}_${plugin}&pullRequest=${prNumber}`;
-              pluginResults.push({
-                plugin,
-                status,
-                statusEmoji,
-                outcome: sonarOutcome,
-                url: sonarUrl,
-                has_issues: status !== 'passed',
-              });
-            }
-
-            pluginResults.sort((a, b) => {
-              if (a.has_issues === b.has_issues) return a.plugin.localeCompare(b.plugin);
-              return a.has_issues ? -1 : 1;
-            });
-
-            core.setOutput('all_passed', allPassed);
-            core.setOutput('plugin_results', JSON.stringify(pluginResults));
-            return { allPassed, pluginResults };
-
-      - name: Write summary
-        if: always()
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
-        with:
-          script: |
-            const allPassed = '${{ steps.aggregate.outputs.all_passed }}' === 'true';
-            const pluginResults = JSON.parse('${{ steps.aggregate.outputs.plugin_results }}');
-            const header = allPassed
-              ? '## ✅ SonarQube Quality Gate - All Passed'
-              : '## ❌ SonarQube Quality Gate - Issues Found';
-            let outputText = `${header}\n\n`;
-            outputText += '| Plugin | Quality Gate Status | Analysis |\n';
-            outputText += '|--------|---------------------|----------|\n';
-            for (const result of pluginResults) {
-              const statusText = result.status === 'passed' ? 'Passed' : `Failed (${result.outcome})`;
-              outputText += `| \`${result.plugin}\` | ${result.statusEmoji} ${statusText} | [See analysis details on SonarQube](${result.url}) |\n`;
-            }
-            await core.summary.addRaw(outputText).write();
-
-      - name: Comment on PR
-        if: always()
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
-        with:
-          script: |
-            const pluginResults = JSON.parse('${{ steps.aggregate.outputs.plugin_results }}');
-            const allPassed = '${{ steps.aggregate.outputs.all_passed }}' === 'true';
-            const prNumber = context.payload.pull_request.number;
-
-            const header = allPassed
-              ? '## ✅ SonarQube Quality Gate - All Passed'
-              : '## ❌ SonarQube Quality Gate - Issues Found';
-
-            let tableRows = [];
-            for (const result of pluginResults) {
-              const statusText = result.status === 'passed' ? 'Passed' :
-                                 result.status === 'failed' ? 'Failed' :
-                                 result.status.charAt(0).toUpperCase() + result.status.slice(1);
-              tableRows.push(`| \`${result.plugin}\` | ${result.statusEmoji} ${statusText} | [See analysis details on SonarQube](${result.url}) |`);
-            }
-
-            const body = [
-              header,
-              '',
-              '| Plugin | Quality Gate Status | Analysis |',
-              '|--------|-------------------|----------|',
-              ...tableRows,
-              '',
-              '---',
-              '*Quality gate checks are run for each modified plugin. Click the SonarQube links above for detailed analysis.*'
-            ].join('\n');
-
-            // Find and delete existing SonarQube comment
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-            });
-
-            const existingComment = comments.find(comment =>
-              comment.user.type === 'Bot' &&
-              comment.body.includes('SonarQube Quality Gate')
-            );
-
-            if (existingComment) {
-              console.log(`Deleting existing comment ${existingComment.id}`);
-              await github.rest.issues.deleteComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existingComment.id
-              });
-            }
-
-            // Create new comment
-            console.log(`Creating new SonarQube comment on PR #${prNumber}`);
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              body: body
-            });
-
-      - name: Enforce SonarQube quality gate
-        if: always()
-        run: |
-          if [ "${{ steps.aggregate.outputs.all_passed }}" != "true" ]; then
-            echo "SonarQube quality gate failed"
-            exit 1
-          fi
+          check_type: sonarqube
+          plugins_json: ${{ needs.label-pr.outputs.all_plugins }}
+          results_dir: ci-plugin-results
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          sonarqube_host_url: ${{ secrets.SONARQUBE_HOST_URL }}
+          check_name: SonarQube Quality Gate
+          comment_on_pr: "true"
+          comment_marker: SonarQube Quality Gate
+          update_check_details: "true"
+          fail_on_issues: "true"
 
   # Aggregate unit test results into one check
   unit-tests-quality-gate:
@@ -370,229 +224,18 @@ jobs:
           merge-multiple: true
           path: ci-plugin-results
 
-      - name: Aggregate unit test results
+      - name: Aggregate unit tests report
         id: aggregate
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
-        env:
-          PLUGINS_JSON: ${{ needs.label-pr.outputs.all_plugins }}
+        uses: SolaceDev/solace-public-workflows/.github/actions/pr-plugin-check-report@aggregation
         with:
-          script: |
-            const fs = require('fs');
-            const path = require('path');
-            const plugins = JSON.parse(process.env.PLUGINS_JSON || '[]');
-            const resultDir = 'ci-plugin-results';
-            const byPlugin = new Map();
-
-            function collectJsonFiles(dir) {
-              if (!fs.existsSync(dir)) return [];
-              const files = [];
-              for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-                const fullPath = path.join(dir, entry.name);
-                if (entry.isDirectory()) {
-                  files.push(...collectJsonFiles(fullPath));
-                } else if (entry.isFile() && entry.name.endsWith('.json')) {
-                  files.push(fullPath);
-                }
-              }
-              return files;
-            }
-
-            if (fs.existsSync(resultDir)) {
-              for (const filePath of collectJsonFiles(resultDir)) {
-                try {
-                  const payload = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-                  if (payload.plugin) byPlugin.set(payload.plugin, payload);
-                } catch (error) {
-                  console.log(`Failed parsing ${filePath}: ${error.message}`);
-                }
-              }
-            }
-
-            let allPassed = true;
-            const pluginResults = [];
-            const failingPlugins = [];
-            const missingPlugins = [];
-
-            for (const pluginObj of plugins) {
-              const plugin = pluginObj.plugin_directory;
-              const payload = byPlugin.get(plugin) || {};
-              const testStatus = payload.tests_status || 'missing';
-              const isMissing = testStatus === 'missing';
-              const isIssue = !(testStatus === 'passed' || testStatus === 'skipped');
-              if (isIssue) allPassed = false;
-              if (isIssue) failingPlugins.push(plugin);
-              if (isMissing) missingPlugins.push(plugin);
-              pluginResults.push({
-                plugin,
-                status: testStatus,
-                junit_exists: payload.junit_exists === true,
-                coverage_exists: payload.coverage_exists === true,
-                test_outcome: payload.test_outcome || 'missing',
-                has_issues: isIssue,
-              });
-            }
-
-            pluginResults.sort((a, b) => {
-              if (a.has_issues === b.has_issues) return a.plugin.localeCompare(b.plugin);
-              return a.has_issues ? -1 : 1;
-            });
-
-            console.log(`Loaded ${byPlugin.size} plugin result payload(s) for Unit Tests aggregation.`);
-            if (missingPlugins.length > 0) {
-              console.log(`Missing test payload for plugin(s): ${missingPlugins.join(', ')}`);
-            }
-            if (failingPlugins.length > 0) {
-              console.log(`Failing plugin(s): ${failingPlugins.join(', ')}`);
-            }
-
-            core.setOutput('all_passed', allPassed);
-            core.setOutput('plugin_results', JSON.stringify(pluginResults));
-            core.setOutput('failing_plugins', JSON.stringify(failingPlugins));
-            core.setOutput('missing_plugins', JSON.stringify(missingPlugins));
-
-      - name: Write unit test summary
-        if: always()
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
-        with:
-          script: |
-            const allPassed = '${{ steps.aggregate.outputs.all_passed }}' === 'true';
-            const pluginResults = JSON.parse('${{ steps.aggregate.outputs.plugin_results }}');
-            const header = allPassed
-              ? '## ✅ Unit Tests - All Passed'
-              : '## ❌ Unit Tests - Issues Found';
-
-            let text = `${header}\n\n`;
-            text += '| Plugin | Test Status | JUnit | Coverage |\n';
-            text += '|--------|-------------|-------|----------|\n';
-
-            for (const result of pluginResults) {
-              const statusText = result.status === 'passed'
-                ? '✅ Passed'
-                : result.status === 'skipped'
-                ? '⏭️ Skipped'
-                : '❌ Failed';
-              text += `| \`${result.plugin}\` | ${statusText} | ${result.junit_exists ? 'Yes' : 'No'} | ${result.coverage_exists ? 'Yes' : 'No'} |\n`;
-            }
-
-            await core.summary.addRaw(text).write();
-
-      - name: Update Unit Tests status check details
-        if: always()
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
-        with:
-          script: |
-            const allPassed = '${{ steps.aggregate.outputs.all_passed }}' === 'true';
-            const pluginResults = JSON.parse('${{ steps.aggregate.outputs.plugin_results }}');
-            const failingPlugins = JSON.parse('${{ steps.aggregate.outputs.failing_plugins }}');
-            const missingPlugins = JSON.parse('${{ steps.aggregate.outputs.missing_plugins }}');
-            const title = allPassed ? 'Unit Tests Passed' : 'Unit Tests Failed';
-            const header = allPassed
-              ? '## ✅ Unit Tests - All Passed'
-              : '## ❌ Unit Tests - Issues Found';
-
-            const rows = pluginResults.map((result) => {
-              const statusText = result.status === 'passed'
-                ? '✅ Passed'
-                : result.status === 'skipped'
-                ? '⏭️ Skipped'
-                : result.status === 'missing'
-                ? '⚠️ Missing Result'
-                : '❌ Failed';
-              return `| \`${result.plugin}\` | ${statusText} | ${result.test_outcome} | ${result.junit_exists ? 'Yes' : 'No'} | ${result.coverage_exists ? 'Yes' : 'No'} |`;
-            });
-
-            const summary = [
-              header,
-              '',
-              `- Failing plugins: ${failingPlugins.length}`,
-              `- Missing payloads: ${missingPlugins.length}`,
-              '',
-              '| Plugin | Test Status | Step Outcome | JUnit | Coverage |',
-              '|--------|-------------|--------------|-------|----------|',
-              ...rows,
-            ].join('\n');
-
-            async function updateCheckRun(checkRunId) {
-              await github.rest.checks.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                check_run_id: Number(checkRunId),
-                output: {
-                  title,
-                  summary,
-                },
-              });
-            }
-
-            // Primary path: resolve check run from current workflow jobs.
-            try {
-              const jobsResp = await github.rest.actions.listJobsForWorkflowRun({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                run_id: context.runId,
-                per_page: 100,
-              });
-              const jobCandidates = jobsResp.data.jobs || [];
-              const currentJob = jobCandidates.find((job) => {
-                const name = (job.name || '').toLowerCase();
-                return name === 'unit tests' || name.includes('unit tests');
-              });
-              if (currentJob?.check_run_url) {
-                const match = currentJob.check_run_url.match(/\/check-runs\/(\d+)$/);
-                if (match) {
-                  await updateCheckRun(match[1]);
-                  core.info(`Updated Unit Tests check run via actions job lookup: ${match[1]}`);
-                  return;
-                }
-              }
-              core.info('Actions job lookup did not resolve a check run URL for Unit Tests; falling back to checks API lookup.');
-            } catch (error) {
-              core.info(`Actions job lookup unavailable, falling back to checks API lookup: ${error.message}`);
-            }
-
-            // Fallback path: resolve check run from checks API on the current SHA.
-            const checksResp = await github.rest.checks.listForRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: context.sha,
-              per_page: 100,
-            });
-
-            const allRuns = checksResp.data.check_runs || [];
-            const unitRunCandidates = allRuns
-              .filter((run) => {
-                const name = (run.name || '').toLowerCase();
-                const detailsUrl = (run.details_url || '').toLowerCase();
-                return (
-                  name === 'unit tests' ||
-                  name.includes('unit tests') ||
-                  detailsUrl.includes(`/actions/runs/${context.runId}`)
-                );
-              })
-              .sort((a, b) => {
-                const aTime = new Date(a.started_at || a.created_at || 0).getTime();
-                const bTime = new Date(b.started_at || b.created_at || 0).getTime();
-                return bTime - aTime;
-              });
-
-            if (unitRunCandidates.length > 0) {
-              await updateCheckRun(unitRunCandidates[0].id);
-              core.info(`Updated Unit Tests check run via checks API lookup: ${unitRunCandidates[0].id}`);
-              return;
-            }
-
-            const seenNames = allRuns.map((run) => run.name).slice(0, 20).join(', ');
-            core.info(`Skipped Unit Tests check update; no matching check run found. Seen check names: ${seenNames}`);
-
-      - name: Enforce unit tests gate
-        if: always()
-        run: |
-          if [ "${{ steps.aggregate.outputs.all_passed }}" != "true" ]; then
-            echo "Unit tests failed for one or more plugins"
-            echo "Failing plugins: ${{ steps.aggregate.outputs.failing_plugins }}"
-            echo "Missing payloads: ${{ steps.aggregate.outputs.missing_plugins }}"
-            exit 1
-          fi
+          check_type: unit-tests
+          plugins_json: ${{ needs.label-pr.outputs.all_plugins }}
+          results_dir: ci-plugin-results
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          check_name: Unit Tests
+          comment_on_pr: "false"
+          update_check_details: "true"
+          fail_on_issues: "true"
 
   # Aggregate FOSSA diff guard across all changed plugins into one check/comment
   fossa-report:
@@ -602,239 +245,37 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
-    env:
-      FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
-      PLUGINS_JSON: ${{ needs.label-pr.outputs.all_plugins }}
-      REPO_OWNER: ${{ github.repository_owner }}
-      HEAD_REF: ${{ github.head_ref }}
-      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      checks: write
+      actions: read
     steps:
-      - name: Run FOSSA diff scans for all changed plugins
-        shell: bash
-        run: |
-          mkdir -p fossa-report
-          python3 - <<'PY'
-          import json
-          import os
-          import subprocess
-          import urllib.parse
-          from pathlib import Path
-
-          plugins = [p["plugin_directory"] for p in json.loads(os.environ["PLUGINS_JSON"])]
-          owner = os.environ["REPO_OWNER"]
-          head_ref = os.environ["HEAD_REF"]
-          base_sha = os.environ["BASE_SHA"]
-          fossa_api_key = os.environ["FOSSA_API_KEY"]
-          workspace = os.getcwd()
-
-          def run_guard(project_id: str, category: str, block_on: str):
-              cmd = [
-                  "docker", "run", "--rm",
-                  "-e", f"FOSSA_API_KEY={fossa_api_key}",
-                  "-e", f"FOSSA_PROJECT_ID={project_id}",
-                  "-e", f"FOSSA_CATEGORY={category}",
-                  "-e", "FOSSA_MODE=REPORT",
-                  "-e", f"BLOCK_ON={block_on}",
-                  "-e", "FOSSA_BRANCH=PR",
-                  "-e", f"FOSSA_REVISION={head_ref}",
-                  "-e", "ENABLE_DIFF_MODE=true",
-                  "-e", f"DIFF_BASE_REVISION_SHA={base_sha}",
-                  "-v", f"{workspace}:/workspace",
-                  "-w", "/workspace",
-                  "ghcr.io/solacedev/maas-build-actions:latest",
-                  "/bin/sh",
-                  "-c",
-                  "source /maas-build-actions/venv/bin/activate && python3 /maas-build-actions/scripts/fossa-guard/fossa_guard.py",
-              ]
-              completed = subprocess.run(cmd, check=False)
-              report_file = Path("fossa_guard_report.json")
-              report_data = {}
-              if report_file.exists():
-                  try:
-                      report_data = json.loads(report_file.read_text(encoding="utf-8"))
-                  except Exception:
-                      report_data = {}
-              return completed.returncode, report_data
-
-          def summary_counts(report: dict):
-              summary = report.get("summary", {}) if isinstance(report, dict) else {}
-              total = int(summary.get("total_issues", 0) or 0)
-              blocking = int(summary.get("blocking_issues", 0) or 0)
-              return total, blocking
-
-          results = []
-          for plugin in plugins:
-              project_id = f"{owner}_{plugin}"
-              locator = urllib.parse.quote(f"custom+48578/{project_id}", safe="")
-              encoded_revision = urllib.parse.quote(head_ref, safe="")
-
-              lic_rc, lic_report = run_guard(project_id, "licensing", "policy_conflict")
-              lic_total, lic_blocking = summary_counts(lic_report)
-              Path(f"fossa-report/{plugin}-licensing.json").write_text(
-                  json.dumps(lic_report, indent=2), encoding="utf-8"
-              )
-
-              vul_rc, vul_report = run_guard(project_id, "vulnerability", "critical,high")
-              vul_total, vul_blocking = summary_counts(vul_report)
-              Path(f"fossa-report/{plugin}-vulnerability.json").write_text(
-                  json.dumps(vul_report, indent=2), encoding="utf-8"
-              )
-
-              licensing_url = (
-                  f"https://app.fossa.com/projects/{locator}/refs/branch/PR/{encoded_revision}/issues/licensing"
-                  "?page=1&count=20&sort=issue_count_desc&grouping=revision&status=active"
-              )
-              vulnerability_url = (
-                  f"https://app.fossa.com/projects/{locator}/refs/branch/PR/{encoded_revision}/issues/vulnerability"
-                  "?page=1&count=20&sort=issue_count_desc&grouping=revision&status=active"
-              )
-
-              has_issues = (
-                  lic_blocking > 0
-                  or vul_blocking > 0
-                  or lic_rc != 0
-                  or vul_rc != 0
-              )
-
-              results.append({
-                  "plugin": plugin,
-                  "project_id": project_id,
-                  "licensing_total_issues": lic_total,
-                  "licensing_blocking_issues": lic_blocking,
-                  "licensing_exit_code": lic_rc,
-                  "vulnerability_total_issues": vul_total,
-                  "vulnerability_blocking_issues": vul_blocking,
-                  "vulnerability_exit_code": vul_rc,
-                  "report_url": f"https://app.fossa.com/projects/{locator}/refs/branch/PR/{encoded_revision}",
-                  "licensing_url": licensing_url,
-                  "vulnerability_url": vulnerability_url,
-                  "has_issues": has_issues,
-              })
-
-          results.sort(key=lambda r: (not r["has_issues"], r["plugin"]))
-
-          Path("fossa-report/results.json").write_text(
-              json.dumps({"results": results}, indent=2), encoding="utf-8"
-          )
-          PY
-
-      - name: Publish aggregated FOSSA report
-        id: report
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+      - name: Aggregate FOSSA diff report
+        id: aggregate
+        uses: SolaceDev/solace-public-workflows/.github/actions/pr-fossa-diff-report@aggregation
         with:
-          script: |
-            const fs = require('fs');
-            const reportPath = 'fossa-report/results.json';
-            const reportData = fs.existsSync(reportPath)
-              ? JSON.parse(fs.readFileSync(reportPath, 'utf8'))
-              : { results: [] };
-            const results = reportData.results || [];
-            const prNumber = context.payload.pull_request.number;
-
-            const withIssues = results.filter(r => r.has_issues).map(r => r.plugin);
-            const totalLicensingIssues = results.reduce((sum, r) => {
-              const total = Number(r.licensing_total_issues || 0);
-              const blocking = Number(r.licensing_blocking_issues || 0);
-              const fallback = r.licensing_exit_code === 0 ? 0 : 1;
-              return sum + Math.max(total, blocking, fallback);
-            }, 0);
-            const totalVulnerabilityIssues = results.reduce((sum, r) => {
-              const total = Number(r.vulnerability_total_issues || 0);
-              const blocking = Number(r.vulnerability_blocking_issues || 0);
-              const fallback = r.vulnerability_exit_code === 0 ? 0 : 1;
-              return sum + Math.max(total, blocking, fallback);
-            }, 0);
-
-            const overallLicensing = totalLicensingIssues === 0
-              ? '✅ Passed'
-              : `❌ ${totalLicensingIssues} Issues`;
-            const overallVulnerability = totalVulnerabilityIssues === 0
-              ? '✅ Passed'
-              : `❌ ${totalVulnerabilityIssues} Issues`;
-
-            const header = withIssues.length === 0
-              ? '## ✅ FOSSA Guard (PR Diff) - No New Issues Introduced'
-              : '## ❌ FOSSA Guard (PR Diff) - New Issues Introduced';
-
-            const tableRows = results.map((r) => {
-              const licensingPassed = r.licensing_exit_code === 0 && r.licensing_blocking_issues === 0;
-              const vulnerabilityPassed = r.vulnerability_exit_code === 0 && r.vulnerability_blocking_issues === 0;
-              const licensingIssues = Math.max(
-                Number(r.licensing_total_issues || 0),
-                Number(r.licensing_blocking_issues || 0),
-                r.licensing_exit_code === 0 ? 0 : 1,
-              );
-              const vulnerabilityIssues = Math.max(
-                Number(r.vulnerability_total_issues || 0),
-                Number(r.vulnerability_blocking_issues || 0),
-                r.vulnerability_exit_code === 0 ? 0 : 1,
-              );
-              const licensingStatus = licensingPassed ? '✅ Passed' : `❌ ${licensingIssues} Issues`;
-              const vulnerabilityStatus = vulnerabilityPassed ? '✅ Passed' : `❌ ${vulnerabilityIssues} Issues`;
-              const reportUrl = r.report_url || r.vulnerability_url || r.licensing_url;
-              return `| \`${r.plugin}\` | ${vulnerabilityStatus} | ${licensingStatus} | [View report](${reportUrl}) |`;
-            });
-
-            const body = [
-              header,
-              '',
-              '_Diff mode compares PR head against base revision and reports only newly introduced issues._',
-              '',
-              '| Check | Scope | Status |',
-              '|-------|-------|--------|',
-              `| FOSSA Vulnerabilities | Per-Plugin (PR Diff) | ${overallVulnerability} |`,
-              `| License Check | Per-Plugin (PR Diff) | ${overallLicensing} |`,
-              '',
-              '### Projects With New Issues',
-              withIssues.length > 0 ? withIssues.map(p => `- \`${p}\``).join('\n') : '- None',
-              '',
-              '| Plugin | FOSSA Vulnerabilities | License Check | FOSSA Report |',
-              '|--------|-----------------------|---------------|--------------|',
-              ...tableRows,
-              '',
-              '---',
-              '*Only newly introduced issues are shown in this report.*',
-            ].join('\n');
-
-            await core.summary.addRaw(body).write();
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-            });
-
-            const existingComment = comments.find(comment =>
-              comment.user.type === 'Bot' &&
-              comment.body.includes('FOSSA Report')
-            );
-
-            if (existingComment) {
-              await github.rest.issues.deleteComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existingComment.id
-              });
-            }
-
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              body
-            });
-
-            const hasIssues = withIssues.length > 0;
-            core.setOutput('has_issues', hasIssues ? 'true' : 'false');
-            if (hasIssues) {
-              core.setFailed(`FOSSA report found issues in ${withIssues.length} plugin(s).`);
-            }
+          plugins_json: ${{ needs.label-pr.outputs.all_plugins }}
+          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
+          repo_owner: ${{ github.repository_owner }}
+          head_ref: ${{ github.head_ref }}
+          base_sha: ${{ github.event.pull_request.base.sha }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          check_name: FOSSA Report
+          comment_on_pr: "true"
+          comment_marker: FOSSA Guard (PR Diff)
+          update_check_details: "true"
+          fail_on_issues: "true"
 
   # CI Status check - aggregates all job results
   ci-status:
     name: CI Status
     runs-on: ubuntu-latest
-    needs: [label-pr, builds, sonarqube-quality-gate, unit-tests-quality-gate, fossa-report]
+    needs:
+      [
+        label-pr,
+        builds,
+        sonarqube-quality-gate,
+        unit-tests-quality-gate,
+        fossa-report,
+      ]
     if: always()
     steps:
       - name: Check CI status
