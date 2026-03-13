@@ -45,8 +45,10 @@ from solace_agent_mesh.common.a2a import ContentPart
 from solace_agent_mesh.agent.utils.artifact_helpers import (
     load_artifact_content_or_metadata,
     save_artifact_with_metadata,
+    format_artifact_uri,
 )
 from solace_agent_mesh.common.utils import is_text_based_mime_type
+from solace_agent_mesh.common.data_parts import StructuredInvocationRequest
 
 log = logging.getLogger(__name__)
 
@@ -568,6 +570,102 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
         )
         return {"id": user_identity_str, "source": source}
 
+    def _resolve_target_name(
+        self,
+        handler_config: Dict[str, Any],
+        msg_for_expression: SolaceMessage,
+        expression_key: str,
+        static_key: str,
+        log_id_prefix: str,
+    ) -> Optional[str]:
+        """
+        Resolve a target name from handler config using expression or static value.
+        Expression takes precedence over static value.
+
+        Args:
+            handler_config: The handler configuration dict
+            msg_for_expression: SolaceMessage to evaluate expressions against
+            expression_key: Config key for the expression (e.g., "target_agent_name_expression")
+            static_key: Config key for the static value (e.g., "target_agent_name")
+            log_id_prefix: Prefix for log messages
+
+        Returns:
+            Resolved target name or None if not found
+        """
+        # Try expression first
+        expression = handler_config.get(expression_key)
+        if expression:
+            try:
+                result = msg_for_expression.get_data(expression)
+                if result:
+                    log.debug(
+                        "%s %s resolved from expression: %s",
+                        log_id_prefix,
+                        static_key,
+                        result,
+                    )
+                    return result
+            except Exception as e:
+                log.warning(
+                    "%s Failed to evaluate %s '%s': %s. Falling back to static.",
+                    log_id_prefix,
+                    expression_key,
+                    expression,
+                    e,
+                )
+
+        # Fall back to static value
+        static_value = handler_config.get(static_key)
+        if static_value:
+            log.debug(
+                "%s %s from static config: %s",
+                log_id_prefix,
+                static_key,
+                static_value,
+            )
+        return static_value
+
+    def _get_format_info(self, payload_format: str) -> Dict[str, str]:
+        """
+        Get mime type and file extension for a payload format.
+        Supported formats: json, yaml, text, csv
+        """
+        format_map = {
+            "json": {"mime_type": "application/json", "extension": "json"},
+            "yaml": {"mime_type": "application/yaml", "extension": "yaml"},
+            "text": {"mime_type": "text/plain", "extension": "txt"},
+            "csv": {"mime_type": "text/csv", "extension": "csv"},
+        }
+        return format_map.get(payload_format, format_map["json"])
+
+    def _serialize_for_format(self, data: Any, payload_format: str) -> bytes:
+        """
+        Serialize data to bytes for the specified payload format.
+        """
+        import yaml
+        import csv
+        import io
+
+        if payload_format == "json":
+            return json.dumps(data).encode("utf-8")
+        elif payload_format == "yaml":
+            return yaml.safe_dump(data, default_flow_style=False).encode("utf-8")
+        elif payload_format == "text":
+            return str(data).encode("utf-8")
+        elif payload_format == "csv":
+            if isinstance(data, list) and data and isinstance(data[0], dict):
+                output = io.StringIO()
+                writer = csv.DictWriter(output, fieldnames=data[0].keys())
+                writer.writeheader()
+                writer.writerows(data)
+                return output.getvalue().encode("utf-8")
+            else:
+                # Fallback to JSON for non-list-of-dict data
+                return json.dumps(data).encode("utf-8")
+        else:
+            # Default to JSON
+            return json.dumps(data).encode("utf-8")
+
     async def _process_artifacts_from_message(
         self,
         msg_for_expression: SolaceMessage,
@@ -730,6 +828,12 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
     ) -> Tuple[Optional[str], List[ContentPart], Dict[str, Any]]:
         """
         Translates an incoming SolaceMessage into A2A task parameters.
+
+        Supports two modes:
+        1. Normal invocation: Creates TextPart from input_expression (existing behavior)
+        2. Structured invocation: Creates StructuredInvocationRequest DataPart + FilePart artifact
+           - Enabled when target_workflow_name is specified, OR
+           - When structured_invocation block has schemas defined
         """
         log_id_prefix = f"{self.log_identifier}[TranslateInput]"
         a2a_parts: List[ContentPart] = []
@@ -752,6 +856,43 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             log.error("%s Failed to decode payload: %s", log_id_prefix, e)
             return None, [], {"error": "Payload decoding failed"}
 
+        # Determine target and invocation mode
+        structured_config = handler_config.get("structured_invocation", {})
+
+        # Resolve target workflow name (expression or static)
+        target_workflow_name = self._resolve_target_name(
+            handler_config,
+            msg_for_expression,
+            "target_workflow_name_expression",
+            "target_workflow_name",
+            log_id_prefix,
+        )
+
+        # Structured invocation is enabled if:
+        # 1. target_workflow_name is specified, OR
+        # 2. structured_invocation block has schemas defined
+        is_structured = bool(target_workflow_name) or bool(
+            structured_config.get("input_schema") or structured_config.get("output_schema")
+        )
+
+        # Determine target name - workflow name takes precedence over agent name
+        if target_workflow_name:
+            target_agent_name = target_workflow_name
+        else:
+            # Resolve target agent name (expression or static)
+            target_agent_name = self._resolve_target_name(
+                handler_config,
+                msg_for_expression,
+                "target_agent_name_expression",
+                "target_agent_name",
+                log_id_prefix,
+            )
+
+        if not target_agent_name:
+            log.error("%s Could not determine target_agent_name.", log_id_prefix)
+            return None, [], {"error": "Target agent name not configured or resolved"}
+
+        # Process any artifact_processing configuration (applies to both modes)
         created_artifact_uris = await self._process_artifacts_from_message(
             msg_for_expression, handler_config, user_identity, a2a_session_id
         )
@@ -777,68 +918,124 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 "%s 'input_expression' is missing in handler_config.", log_id_prefix
             )
             return None, [], {"error": "Missing input_expression"}
-        try:
-            transformed_text = msg_for_expression.get_data(input_expression)
-            if transformed_text is not None:
-                text_part = a2a.create_text_part(text=str(transformed_text))
-                a2a_parts.append(text_part)
-            else:
-                log.warning(
-                    "%s Input expression '%s' yielded None. Creating empty TextPart.",
-                    log_id_prefix,
-                    input_expression,
-                )
-                text_part = a2a.create_text_part(text="")
-                a2a_parts.append(text_part)
-            log.debug(
-                "%s Input expression evaluated. Result length: %d",
-                log_id_prefix,
-                len(transformed_text or ""),
-            )
-        except Exception as e:
-            log.error(
-                "%s Failed to evaluate input_expression '%s': %s",
-                log_id_prefix,
-                input_expression,
-                e,
-            )
-            return None, [], {"error": f"Input expression evaluation failed: {e}"}
 
-        target_agent_name: Optional[str] = None
-        target_agent_name_expression = handler_config.get(
-            "target_agent_name_expression"
-        )
-        if target_agent_name_expression:
+        if is_structured:
+            # Structured invocation mode
+            log.debug(
+                "%s Using structured invocation mode (workflow: %s)",
+                log_id_prefix,
+                bool(target_workflow_name),
+            )
+
+            # Determine payload format and corresponding mime type/extension
+            payload_format = handler_config.get("payload_format", "json")
+            format_info = self._get_format_info(payload_format)
+            mime_type = format_info["mime_type"]
+            file_extension = format_info["extension"]
+
+            # Use handler name as the node_id
+            node_id = handler_config.get("name", "gateway_handler")
+
+            # Create StructuredInvocationRequest DataPart
+            invocation_request = StructuredInvocationRequest(
+                type="structured_invocation_request",
+                workflow_name=self.gateway_id,  # Caller identity
+                node_id=node_id,
+                input_schema=structured_config.get("input_schema"),
+                output_schema=structured_config.get("output_schema"),
+                suggested_output_filename=f"{self.gateway_id}_{node_id}_{uuid.uuid4().hex[:8]}.{file_extension}",
+            )
+
+            # Insert DataPart as first part (required by protocol)
+            a2a_parts.insert(0, a2a.create_data_part(data=invocation_request.model_dump()))
+
+            # Get input data and save as artifact
             try:
-                target_agent_name = msg_for_expression.get_data(
-                    target_agent_name_expression
-                )
-                log.debug(
-                    "%s Target agent name from expression: %s",
-                    log_id_prefix,
-                    target_agent_name,
-                )
+                input_data = msg_for_expression.get_data(input_expression)
+                if input_data is not None:
+                    filename = f"input_{node_id}_{a2a_session_id}.{file_extension}"
+                    content_bytes = self._serialize_for_format(input_data, payload_format)
+
+                    save_result = await save_artifact_with_metadata(
+                        artifact_service=self.shared_artifact_service,
+                        app_name=self.gateway_id,
+                        user_id=user_identity.get("id"),
+                        session_id=a2a_session_id,
+                        filename=filename,
+                        content_bytes=content_bytes,
+                        mime_type=mime_type,
+                        metadata_dict={"source": "event_mesh_gateway_structured"},
+                        timestamp=datetime.now(timezone.utc),
+                    )
+
+                    if save_result["status"] in ["success", "partial_success"]:
+                        data_version = save_result.get("data_version", 0)
+                        uri = format_artifact_uri(
+                            app_name=self.gateway_id,
+                            user_id=user_identity.get("id"),
+                            session_id=a2a_session_id,
+                            filename=filename,
+                            version=data_version,
+                        )
+                        a2a_parts.append(
+                            a2a.create_file_part_from_uri(
+                                uri=uri, name=filename, mime_type=mime_type
+                            )
+                        )
+                        log.info(
+                            "%s Created structured input artifact: %s",
+                            log_id_prefix,
+                            uri,
+                        )
+                    else:
+                        log.error(
+                            "%s Failed to save structured input artifact: %s",
+                            log_id_prefix,
+                            save_result.get("message"),
+                        )
+                        return None, [], {"error": "Failed to save input artifact"}
+                else:
+                    log.warning(
+                        "%s Input expression '%s' yielded None for structured invocation.",
+                        log_id_prefix,
+                        input_expression,
+                    )
             except Exception as e:
-                log.warning(
-                    "%s Failed to evaluate target_agent_name_expression '%s': %s. Falling back to static.",
+                log.error(
+                    "%s Failed to process structured input: %s",
                     log_id_prefix,
-                    target_agent_name_expression,
                     e,
                 )
-                target_agent_name = None
+                return None, [], {"error": f"Structured input processing failed: {e}"}
 
-        if not target_agent_name:
-            target_agent_name = handler_config.get("target_agent_name")
-            if target_agent_name:
+        else:
+            # Normal text-based invocation (existing behavior)
+            try:
+                transformed_text = msg_for_expression.get_data(input_expression)
+                if transformed_text is not None:
+                    text_part = a2a.create_text_part(text=str(transformed_text))
+                    a2a_parts.append(text_part)
+                else:
+                    log.warning(
+                        "%s Input expression '%s' yielded None. Creating empty TextPart.",
+                        log_id_prefix,
+                        input_expression,
+                    )
+                    text_part = a2a.create_text_part(text="")
+                    a2a_parts.append(text_part)
                 log.debug(
-                    "%s Target agent name from static config: %s",
+                    "%s Input expression evaluated. Result length: %d",
                     log_id_prefix,
-                    target_agent_name,
+                    len(str(transformed_text) if transformed_text else ""),
                 )
-
-        if not target_agent_name:
-            log.error("%s Could not determine target_agent_name.", log_id_prefix)
-            return None, [], {"error": "Target agent name not configured or resolved"}
+            except Exception as e:
+                log.error(
+                    "%s Failed to evaluate input_expression '%s': %s",
+                    log_id_prefix,
+                    input_expression,
+                    e,
+                )
+                return None, [], {"error": f"Input expression evaluation failed: {e}"}
 
         external_request_context = {
             "event_handler_name": handler_config.get("name"),
@@ -850,7 +1047,11 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             "a2a_session_id": a2a_session_id,
             "user_id_for_a2a": user_identity.get("id"),
             "target_agent_name": target_agent_name,
+            "is_structured_invocation": is_structured,
         }
+
+        if is_structured:
+            external_request_context["structured_config"] = structured_config
 
         forward_context_config = handler_config.get("forward_context", {})
         if forward_context_config:
@@ -924,6 +1125,10 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                 "a2a_task_response": task_data.model_dump(exclude_none=True),
             }
 
+            # Check if this was a structured invocation
+            is_structured = external_request_context.get("is_structured_invocation", False)
+            structured_result = None
+
             # Process the final status message for text and data parts
             if task_data.status and task_data.status.message:
                 message = task_data.status.message
@@ -933,9 +1138,12 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                     if isinstance(part, TextPart):
                         text_parts_content.append(part.text)
                     elif isinstance(part, DataPart):
-                        simplified_payload["data"].append(
-                            part.model_dump(exclude_none=True)
-                        )
+                        # Check if this is a StructuredInvocationResult
+                        part_data = part.model_dump(exclude_none=True)
+                        data_content = part_data.get("data", {})
+                        if isinstance(data_content, dict) and data_content.get("type") == "structured_invocation_result":
+                            structured_result = data_content
+                        simplified_payload["data"].append(part_data)
                 if text_parts_content:
                     simplified_payload["text"] = "\n".join(text_parts_content)
 
@@ -949,6 +1157,78 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
                                 part, external_request_context, handler_config
                             )
                             simplified_payload["files"].append(file_info)
+
+            # For structured invocations, extract the output artifact content
+            if is_structured and structured_result:
+                simplified_payload["structured_result"] = structured_result
+
+                if structured_result.get("status") == "success":
+                    artifact_ref = structured_result.get("output_artifact_ref")
+                    if artifact_ref:
+                        try:
+                            artifact_name = artifact_ref.get("name")
+                            artifact_version = artifact_ref.get("version", 0)
+
+                            artifact_content = await load_artifact_content_or_metadata(
+                                artifact_service=self.shared_artifact_service,
+                                app_name=external_request_context.get("app_name_for_artifacts"),
+                                user_id=external_request_context.get("user_id_for_artifacts"),
+                                session_id=external_request_context.get("a2a_session_id"),
+                                filename=artifact_name,
+                                version=artifact_version,
+                                return_raw_bytes=True,
+                            )
+
+                            if artifact_content.get("status") == "success":
+                                # Parse the artifact content as JSON
+                                content_bytes = artifact_content.get("raw_bytes")
+                                if content_bytes:
+                                    if isinstance(content_bytes, bytes):
+                                        content_str = content_bytes.decode("utf-8")
+                                    else:
+                                        content_str = content_bytes
+                                    try:
+                                        simplified_payload["structured_output"] = json.loads(content_str)
+                                    except json.JSONDecodeError:
+                                        simplified_payload["structured_output"] = content_str
+                            else:
+                                log.warning(
+                                    "%s Failed to load structured output artifact '%s': %s",
+                                    log_id_prefix,
+                                    artifact_name,
+                                    artifact_content.get("message"),
+                                )
+                        except Exception as artifact_err:
+                            log.warning(
+                                "%s Error loading structured output artifact: %s",
+                                log_id_prefix,
+                                artifact_err,
+                                exc_info=True,
+                            )
+                elif structured_result.get("status") == "error":
+                    # Structured invocation failed - route to error handler
+                    error_message = structured_result.get("error_message", "Unknown structured invocation error")
+                    log.warning(
+                        "%s Structured invocation returned error: %s",
+                        log_id_prefix,
+                        error_message,
+                    )
+                    # Create a JSONRPCError and delegate to error handler
+                    structured_error = JSONRPCError(
+                        code=-32000,
+                        message=f"Structured invocation failed: {error_message}",
+                        data={
+                            "structured_result": structured_result,
+                            "error_type": "structured_invocation_error",
+                        },
+                    )
+                    await self._send_error_to_external(external_request_context, structured_error)
+                    return  # Don't continue with success handler
+            elif is_structured:
+                log.warning(
+                    "%s Structured invocation expected but no structured_result found in response",
+                    log_id_prefix,
+                )
 
             original_user_props = external_request_context.get(
                 "original_solace_user_properties", {}
@@ -1481,6 +1761,14 @@ class EventMeshGatewayComponent(BaseGatewayComponent):
             return False
 
         try:
+            # Set session behavior for structured invocations (workflows require RUN_BASED)
+            if external_request_context.get("is_structured_invocation"):
+                external_request_context["session_behavior"] = "RUN_BASED"
+                log.debug(
+                    "%s Structured invocation detected, setting session_behavior to RUN_BASED",
+                    log_id_prefix,
+                )
+
             task_id = await self.submit_a2a_task(
                 target_agent_name=target_agent_name,
                 a2a_parts=a2a_parts,

@@ -10,7 +10,7 @@ type = "gateway"
 
 [project]
 name = "sam_event_mesh_gateway"
-version = "0.1.0"
+version = "1.0.0"
 description = "Solace Agent Mesh Gateway plugin for integrating with Solace PubSub+ event brokers."
 readme = "README.md"
 authors = [
@@ -52,6 +52,6 @@ dependencies = [
   "pytest-mock>=3.0.0",
   "pytest-cov>=4.0.0",
   "pytest-xdist>=3.5.0",
-  "solace-agent-mesh>=1.0.6",
+  "solace-agent-mesh>=1.16.0",
   "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure"
 ]

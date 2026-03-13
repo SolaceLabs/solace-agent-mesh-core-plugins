@@ -116,6 +116,35 @@ class EventMeshGatewayApp(BaseGatewayApp):
                         "required": False,
                         "description": "SAC expression to dynamically determine the target A2A agent name.",
                     },
+                    "target_workflow_name": {
+                        "type": "string",
+                        "required": False,
+                        "description": "Static name of the target workflow. Mutually exclusive with target_agent_name. Automatically enables structured invocation mode.",
+                    },
+                    "target_workflow_name_expression": {
+                        "type": "string",
+                        "required": False,
+                        "description": "SAC expression to dynamically determine the target workflow name. Automatically enables structured invocation mode.",
+                    },
+                    "structured_invocation": {
+                        "type": "object",
+                        "required": False,
+                        "description": "Configuration for structured invocation mode (used with target_agent_name only, not target_workflow_name). Enables schema-validated input/output.",
+                        "properties": {
+                            "input_schema": {
+                                "type": "object",
+                                "required": False,
+                                "description": "JSON Schema for input validation.",
+                                "additionalProperties": True,
+                            },
+                            "output_schema": {
+                                "type": "object",
+                                "required": False,
+                                "description": "JSON Schema for expected output validation.",
+                                "additionalProperties": True,
+                            },
+                        },
+                    },
                     "forward_context": {
                         "type": "object",
                         "required": False,
