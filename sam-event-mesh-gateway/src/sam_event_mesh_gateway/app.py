@@ -29,6 +29,50 @@ class EventMeshGatewayApp(BaseGatewayApp):
 
     SPECIFIC_APP_SCHEMA_PARAMS: List[Dict[str, Any]] = [
         {
+            "name": "acknowledgment_policy",
+            "required": False,
+            "type": "object",
+            "default": {},
+            "description": "Default acknowledgment policy for incoming data plane messages. Controls when and how Solace messages are acknowledged. Per-event_handler overrides are supported.",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "required": False,
+                    "default": "on_receive",
+                    "enum": ["on_receive", "on_completion"],
+                    "description": "When to acknowledge messages. 'on_receive': ACK immediately upon receipt (default, fire-and-forget). 'on_completion': ACK only after the A2A task completes successfully.",
+                },
+                "on_failure": {
+                    "type": "object",
+                    "required": False,
+                    "default": {},
+                    "description": "Controls message settlement when processing fails (only applies when mode is 'on_completion').",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "required": False,
+                            "default": "nack",
+                            "enum": ["ack", "nack"],
+                            "description": "Action on failure. 'nack': negatively acknowledge (default). 'ack': acknowledge even on failure.",
+                        },
+                        "nack_outcome": {
+                            "type": "string",
+                            "required": False,
+                            "default": "rejected",
+                            "enum": ["rejected", "failed"],
+                            "description": "NACK outcome when action is 'nack'. 'rejected': message is redelivered (default). 'failed': message goes to dead letter queue.",
+                        },
+                    },
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "required": False,
+                    "default": 300,
+                    "description": "Maximum seconds to wait for task completion before settling the message as a failure (only applies when mode is 'on_completion'). Default: 300 (5 minutes).",
+                },
+            },
+        },
+        {
             "name": "event_mesh_broker_config",
             "required": True,
             "type": "object",
@@ -187,6 +231,43 @@ class EventMeshGatewayApp(BaseGatewayApp):
                                         "description": "Expression to get the content encoding ('base64', 'text', 'binary'). Use 'list_item:'. If omitted, content type is inferred.",
                                     },
                                 },
+                            },
+                        },
+                    },
+                    "acknowledgment_policy": {
+                        "type": "object",
+                        "required": False,
+                        "description": "Override the gateway-level acknowledgment policy for this handler. Any field set here overrides the gateway default.",
+                        "properties": {
+                            "mode": {
+                                "type": "string",
+                                "required": False,
+                                "enum": ["on_receive", "on_completion"],
+                                "description": "Override acknowledgment mode for this handler.",
+                            },
+                            "on_failure": {
+                                "type": "object",
+                                "required": False,
+                                "description": "Override failure settlement behavior for this handler.",
+                                "properties": {
+                                    "action": {
+                                        "type": "string",
+                                        "required": False,
+                                        "enum": ["ack", "nack"],
+                                        "description": "Override failure action for this handler.",
+                                    },
+                                    "nack_outcome": {
+                                        "type": "string",
+                                        "required": False,
+                                        "enum": ["rejected", "failed"],
+                                        "description": "Override NACK outcome for this handler.",
+                                    },
+                                },
+                            },
+                            "timeout_seconds": {
+                                "type": "integer",
+                                "required": False,
+                                "description": "Override timeout for this handler.",
                             },
                         },
                     },

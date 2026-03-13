@@ -8,7 +8,8 @@
 4. [Template Parameters](#template-parameters)
 5. [Prompt Rephrasing](#prompt-rephrasing)
 6. [Filter Expressions](#filter-expressions)
-7. [Audit Metadata](#audit-metadata)
+7. [REMi Event Publishing](#remi-event-publishing)
+8. [Audit Metadata](#audit-metadata)
 
 ---
 
@@ -94,6 +95,7 @@ When the user asks a question, use the `NucliaRagTool` tool:
 | `output_filename_base` | String | `"nuclia_answer"` | Base name for output artifacts |
 | `artifact_description_query_max_length` | Integer | `150` | Max query length in artifact description |
 | `inline_citation_links` | Boolean | `true` | Make citation markers clickable |
+| `remi_publish_topic` | String | None | Topic template for publishing REMi evaluation events. Supports variables: `{interaction_id}`, `{tool_name}`, `{learning_id}` |
 
 ### Complete Example
 
@@ -353,6 +355,103 @@ Common filter properties you can use:
 | `field` | Filter by specific fields | `{"prop": "field", "type": "text", "name": "title"}` |
 | `created` | Filter by creation date | `{"prop": "created", "since": "2024-01-01"}` |
 | `modified` | Filter by modification date | `{"prop": "modified", "until": "2024-12-31"}` |
+
+---
+
+## REMi Event Publishing
+
+The Nuclia RAG Tool can publish evaluation events to a Solace event mesh topic for calculating REMi (Retrieval-Augmented Generation Evaluation Metric) scores. This feature enables monitoring and analysis of RAG quality.
+
+### Understanding REMi Publishing
+
+- **Purpose**: Publish query, context, answer, and status information for RAG evaluation
+- **Target**: Solace event mesh topic with dynamic variable support
+- **Payload**: Standardized JSON structure with interaction tracking
+- **Use Case**: Quality monitoring, performance analysis, and continuous improvement of RAG responses
+
+### Configuration
+
+```yaml
+tool_config:
+  remi_publish_topic: "sam/remi/created/{interaction_id}/tool/{tool_name}"
+```
+
+The topic template supports the following variables:
+- `{interaction_id}`: Automatically replaced with the task ID from the invocation context
+- `{tool_name}`: Automatically replaced with the configured tool name
+- `{learning_id}`: Automatically replaced with the Nuclia learning ID
+
+### Published Payload Structure
+
+When a successful query is made, the following payload is published:
+
+```json
+{
+  "interactionId": "gdk-task-a6b708d4306f4349a9698eb4a854c2e4",
+  "toolName": "NucliaRagTool",
+  "nuclia_learning_id": "d7c93ad4d1154359b1daac18c3ae0134",
+  "question": "What is the time off policy?",
+  "answer": "The time off policy states...",
+  "contexts": [
+    "chunk1 text content",
+    "chunk2 text content",
+    "chunk3 text content"
+  ],
+  "status": "success"
+}
+```
+
+### Payload Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `interactionId` | String | Task ID from the invocation context (correlates with interaction) |
+| `toolName` | String | The configured tool name |
+| `nuclia_learning_id` | String | Nuclia's learning ID for tracking the query |
+| `question` | String | The rephrased query sent to Nuclia |
+| `answer` | String | The generated answer from Nuclia |
+| `contexts` | Array | List of text chunks (paragraphs) used to generate the answer |
+| `status` | String | Status from Nuclia's response (e.g., "success") |
+
+### Complete Configuration Example
+
+```yaml
+tools:
+  - tool_type: python
+    component_module: sam_nuclia_tool.nuclia_rag_tool
+    class_name: NucliaRagTool
+    tool_config:
+      tool_name: "generate_answer_with_citations"
+      base_url: "${NUCLIA_BASE_URL}"
+      kb_id: "${NUCLIA_KB_ID}"
+      token: "${NUCLIA_TOKEN}"
+      api_key: "${NUCLIA_API_KEY}"
+
+      # REMi publishing configuration
+      remi_publish_topic: "sam/remi/created/{interaction_id}/tool/{tool_name}"
+```
+
+### How It Works
+
+1. User makes a query through the tool
+2. Tool processes the query and gets a response from Nuclia
+3. If `remi_publish_topic` is configured and a valid response is received:
+   - Extract contexts from the Nuclia response
+   - Build the payload with interaction metadata
+   - Format the topic by replacing variables
+   - Publish the message to the Solace event mesh
+4. External systems can subscribe to the topic pattern for evaluation
+
+### Error Handling
+
+If publishing fails:
+- The error is logged but does not affect the tool's response to the agent
+- The tool continues to return the answer to the user
+- Check logs for `"Could not emit message to event mesh"` messages
+
+### Disabling REMi Publishing
+
+To disable REMi event publishing, simply omit the `remi_publish_topic` configuration or set it to an empty value.
 
 ---
 

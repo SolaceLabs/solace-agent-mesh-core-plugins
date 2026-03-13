@@ -157,7 +157,7 @@ class NucliaRagToolConfig(BaseModel):
         description="The Nuclia Service Account API token for authentication",
         min_length=1,
     )
-    api_key: str = Field(description="The Nuclia Account ID", min_length=1)
+    account_id: str = Field(description="The Nuclia Account ID", min_length=1)
 
     # --- Performance & Cost Control ---
     top_k: int = Field(
@@ -233,6 +233,16 @@ class NucliaRagToolConfig(BaseModel):
         default=None,
         description="DEPRECATED: Use 'template_parameters' instead. Provided for backward compatibility.",
         exclude=True,  # Don't include in serialization
+    )
+
+    remi_publish_topic: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional topic template for publishing REMi evaluation events. "
+            "Supports dynamic variables: {interaction_id}, {tool_name}, {learning_id}. "
+            "Example: 'sam/remi/created/{interaction_id}/tool/{tool_name}'. "
+            "Published payload includes: interactionId, toolName, nuclia_learning_id, question, answer, contexts, status."
+        ),
     )
 
     @model_validator(mode="after")

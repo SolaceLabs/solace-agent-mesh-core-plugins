@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 import requests
 from slack_sdk.errors import SlackApiError
 
+from .message_queue import retry_with_backoff
+
 if TYPE_CHECKING:
     from .adapter import SlackAdapter
 
@@ -139,10 +141,15 @@ async def send_slack_message(
     text: str,
     blocks: Optional[List[Dict]] = None,
 ) -> Optional[str]:
-    """Wrapper for chat.postMessage with error handling."""
+    """Wrapper for chat.postMessage with error handling and rate limit retry."""
     try:
-        response = await adapter.slack_app.client.chat_postMessage(
-            channel=channel, text=text, thread_ts=thread_ts, blocks=blocks
+        response = await retry_with_backoff(
+            adapter.slack_app.client.chat_postMessage,
+            channel=channel,
+            text=text,
+            thread_ts=thread_ts,
+            blocks=blocks,
+            operation_name=f"send_slack_message to {channel}",
         )
         message_ts = response.get("ts")
         if message_ts:
@@ -172,10 +179,15 @@ async def update_slack_message(
     text: str,
     blocks: Optional[List[Dict]] = None,
 ):
-    """Wrapper for chat.update with error handling."""
+    """Wrapper for chat.update with error handling and rate limit retry."""
     try:
-        await adapter.slack_app.client.chat_update(
-            channel=channel, ts=ts, text=text, blocks=blocks
+        await retry_with_backoff(
+            adapter.slack_app.client.chat_update,
+            channel=channel,
+            ts=ts,
+            text=text,
+            blocks=blocks,
+            operation_name=f"update_slack_message {ts} in {channel}",
         )
         log.debug("Successfully updated message %s in channel %s", ts, channel)
     except Exception as e:
@@ -195,13 +207,17 @@ async def upload_slack_file(
     """
     Uploads a file to Slack using the three-step external upload process
     to ensure atomic message/file posting and correct ordering.
+    Includes rate limit retry logic for Slack API calls.
     """
     log_id_prefix = "[SlackUpload]"
     try:
-        # Step 1: Get an upload URL and file_id from Slack
+        # Step 1: Get an upload URL and file_id from Slack (with retry)
         log.debug("%s Step 1: Getting upload URL for '%s'", log_id_prefix, filename)
-        upload_url_response = await adapter.slack_app.client.files_getUploadURLExternal(
-            filename=filename, length=len(content_bytes)
+        upload_url_response = await retry_with_backoff(
+            adapter.slack_app.client.files_getUploadURLExternal,
+            filename=filename,
+            length=len(content_bytes),
+            operation_name=f"files_getUploadURLExternal for {filename}",
         )
         upload_url = upload_url_response.get("upload_url")
         file_id = upload_url_response.get("file_id")
@@ -223,18 +239,20 @@ async def upload_slack_file(
         )
         upload_response.raise_for_status()  # Will raise an exception for non-2xx responses
 
-        # Step 3: Complete the upload and post the file to the channel
+        # Step 3: Complete the upload and post the file to the channel (with retry)
         log.debug(
             "%s Step 3: Completing external upload for file_id %s.",
             log_id_prefix,
             file_id,
         )
         comment = initial_comment or f"Attached file: {filename}"
-        await adapter.slack_app.client.files_completeUploadExternal(
+        await retry_with_backoff(
+            adapter.slack_app.client.files_completeUploadExternal,
             files=[{"id": file_id, "title": filename}],
             channel_id=channel,
             thread_ts=thread_ts,
             initial_comment=comment,
+            operation_name=f"files_completeUploadExternal for {filename}",
         )
 
         log.debug(
