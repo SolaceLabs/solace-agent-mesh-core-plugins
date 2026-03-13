@@ -8,8 +8,10 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
   checks: write
   statuses: write
+  actions: read
 
 jobs:
   release-please:
@@ -48,6 +50,13 @@ jobs:
     name: Release Readiness Check
     needs: release-please
     if: needs.release-please.outputs.prs_created == 'true'
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      checks: write
+      statuses: write
+      actions: read
     uses: ./.github/workflows/release-readiness-check.yaml
     with:
       pr_number: ${{ fromJSON(needs.release-please.outputs.pr_number) }}

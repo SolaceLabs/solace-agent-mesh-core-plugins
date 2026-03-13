@@ -19,6 +19,8 @@ import sys
 from pathlib import Path
 from typing import Set
 
+from plugin_exceptions import DEPRECATED_PLUGINS
+
 
 def get_plugin_directories(repo_root: Path) -> Set[str]:
     """Get all plugin directories (directories starting with 'sam-')."""
@@ -123,9 +125,23 @@ def main():
     print(f"Repository root: {repo_root}")
     print()
 
-    # Get all plugin directories
-    actual_plugins = get_plugin_directories(repo_root)
-    print(f"Found {len(actual_plugins)} plugin directories:")
+    # Get all plugin directories and filter deprecated ones
+    all_plugins = get_plugin_directories(repo_root)
+    deprecated_plugins = all_plugins & DEPRECATED_PLUGINS
+    actual_plugins = all_plugins - DEPRECATED_PLUGINS
+
+    print(f"Found {len(all_plugins)} plugin directories:")
+    for plugin in sorted(all_plugins):
+        print(f"  - {plugin}")
+    print()
+
+    if deprecated_plugins:
+        print(f"Ignoring {len(deprecated_plugins)} deprecated plugins:")
+        for plugin in sorted(deprecated_plugins):
+            print(f"  - {plugin}")
+        print()
+
+    print(f"Using {len(actual_plugins)} active plugins for validation:")
     for plugin in sorted(actual_plugins):
         print(f"  - {plugin}")
     print()
@@ -144,8 +160,10 @@ def main():
     for config_name, config_plugins in configs:
         print(f"Checking {config_name}...")
 
-        missing = actual_plugins - config_plugins
-        extra = config_plugins - actual_plugins
+        # Deprecated plugins are allowed to be absent in config files.
+        filtered_config_plugins = config_plugins - DEPRECATED_PLUGINS
+        missing = actual_plugins - filtered_config_plugins
+        extra = filtered_config_plugins - actual_plugins
 
         if missing:
             all_match = False
@@ -160,7 +178,7 @@ def main():
                 print(f"      - {plugin}")
 
         if not missing and not extra:
-            print(f"  ✅ All {len(config_plugins)} plugins are configured")
+            print(f"  ✅ All {len(filtered_config_plugins)} active plugins are configured")
 
         print()
 
