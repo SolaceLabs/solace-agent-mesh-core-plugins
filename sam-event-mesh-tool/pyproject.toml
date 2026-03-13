@@ -10,7 +10,7 @@ type = "tool"
 
 [project]
 name = "sam_event_mesh_tool"
-version = "0.1.0"
+version = "0.1.1"
 authors = [
   { name="Edward Funnekotter", email="edward.funnekotter@solace.com" },
 ]
