@@ -1,9 +1,10 @@
 from typing import Dict, Any, Optional
-from pydantic import BaseModel, Field, model_validator, SecretStr
+from pydantic import BaseModel, Field, model_validator, field_validator, SecretStr
 from google.genai import types as adk_types
 from solace_agent_mesh.agent.tools.dynamic_tool import DynamicTool
 from solace_agent_mesh.agent.sac.component import SamAgentComponent
 from .services.database_service import DatabaseService
+from .services.connection_validator import validate_connection_string
 
 import logging
 log = logging.getLogger(__name__)
@@ -38,6 +39,58 @@ class DatabaseConfig(BaseModel):
         default=3600,
         description="Time-to-live for schema cache in seconds (default: 3600 = 1 hour).",
     )
+
+    # Connection pool settings
+    pool_size: int = Field(
+        default=10,
+        description="Number of persistent connections to maintain in the pool (default: 10).",
+    )
+    max_overflow: int = Field(
+        default=10,
+        description="Maximum temporary connections allowed beyond pool_size during traffic spikes (default: 10).",
+    )
+    pool_timeout: int = Field(
+        default=30,
+        description="Seconds to wait for a pool connection before raising TimeoutError (default: 30).",
+    )
+    pool_recycle: int = Field(
+        default=1800,
+        description=(
+            "Recycle connections after this many seconds to prevent stale connections. "
+            "Set below your database's idle timeout (default: 1800). Use -1 to disable."
+        ),
+    )
+    pool_pre_ping: bool = Field(
+        default=True,
+        description="Test connections for liveness before use. Disable only to improve performance on reliable networks (default: true).",
+    )
+
+    # Engine-level settings
+    connect_args: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Extra keyword arguments passed directly to the database driver's connect() call. "
+            "Use for SSL certificates, driver-specific timeouts, charsets, etc."
+        ),
+    )
+    isolation_level: Optional[str] = Field(
+        default=None,
+        description=(
+            "Transaction isolation level: 'READ_COMMITTED', 'SERIALIZABLE', 'AUTOCOMMIT', etc. "
+            "Defaults to the database dialect's default if not set."
+        ),
+    )
+    echo: bool = Field(
+        default=False,
+        description="Log all SQL statements to the Python logger. Enable for development/troubleshooting only (default: false).",
+    )
+
+    @field_validator('connection_string', mode='before')
+    @classmethod
+    def validate_connection_string_format(cls, v: str) -> str:
+        """Validate connection string format before converting to SecretStr."""
+        validate_connection_string(v)
+        return v
 
     @model_validator(mode='after')
     def check_required_fields(self) -> 'DatabaseConfig':
@@ -74,7 +127,7 @@ class SqlDatabaseTool(DynamicTool):
         base_description = self.tool_config.get("tool_description", "")
 
         if not self._connection_healthy:
-            status_message = f"\n\n❌ WARNING: This database is currently UNAVAILABLE.\n"
+            status_message = "\n\n❌ WARNING: This database is currently UNAVAILABLE.\n"
             if self._connection_error:
                 status_message += f"Connection Error: {self._connection_error}\n"
             status_message += "Queries to this database will fail until connectivity is restored."
@@ -108,7 +161,15 @@ class SqlDatabaseTool(DynamicTool):
         try:
             self.db_service = DatabaseService(
                 connection_string=connection_string,
-                cache_ttl_seconds=cache_ttl
+                cache_ttl_seconds=cache_ttl,
+                pool_size=self.tool_config.pool_size,
+                max_overflow=self.tool_config.max_overflow,
+                pool_timeout=self.tool_config.pool_timeout,
+                pool_recycle=self.tool_config.pool_recycle,
+                pool_pre_ping=self.tool_config.pool_pre_ping,
+                connect_args=self.tool_config.connect_args,
+                isolation_level=self.tool_config.isolation_level,
+                echo=self.tool_config.echo,
             )
         except Exception as e:
             self._connection_healthy = False

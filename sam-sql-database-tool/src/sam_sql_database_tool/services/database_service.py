@@ -19,14 +19,42 @@ log = logging.getLogger(__name__)
 class DatabaseService:
     """A generic service for handling SQL database operations."""
 
-    def __init__(self, connection_string: str, cache_ttl_seconds: int = 3600):
+    def __init__(
+        self,
+        connection_string: str,
+        cache_ttl_seconds: int = 3600,
+        pool_size: int = 10,
+        max_overflow: int = 10,
+        pool_timeout: int = 30,
+        pool_recycle: int = 1800,
+        pool_pre_ping: bool = True,
+        connect_args: Optional[dict] = None,
+        isolation_level: Optional[str] = None,
+        echo: bool = False,
+    ):
         """Initialize the database service.
 
         Args:
             connection_string: Database connection string.
             cache_ttl_seconds: Time-to-live for schema cache in seconds (default: 3600 = 1 hour).
+            pool_size: Number of persistent connections to maintain in the pool (default: 10).
+            max_overflow: Maximum temporary connections allowed beyond pool_size (default: 10).
+            pool_timeout: Seconds to wait for a pool connection before raising TimeoutError (default: 30).
+            pool_recycle: Recycle connections after this many seconds (default: 1800). Use -1 to disable.
+            pool_pre_ping: Test connections for liveness before use (default: True).
+            connect_args: Extra kwargs passed directly to the DBAPI connect() call (default: {}).
+            isolation_level: Transaction isolation level, e.g. 'READ_COMMITTED' (default: dialect default).
+            echo: Log all SQL statements to the Python logger (default: False).
         """
         self.connection_string = connection_string
+        self.pool_size = pool_size
+        self.max_overflow = max_overflow
+        self.pool_timeout = pool_timeout
+        self.pool_recycle = pool_recycle
+        self.pool_pre_ping = pool_pre_ping
+        self.connect_args = connect_args or {}
+        self.isolation_level = isolation_level
+        self.echo = echo
         self.engine: Optional[Engine] = None
         self._schema_cache: Optional[str] = None
         self._cache_timestamp: Optional[datetime] = None
@@ -77,14 +105,18 @@ class DatabaseService:
 
     def _create_engine(self) -> Engine:
         """Creates a SQLAlchemy engine with connection pooling for parallel operations."""
-        return sa.create_engine(
-            self.connection_string,
-            pool_size=10,
-            max_overflow=10,
-            pool_timeout=30,
-            pool_recycle=1800,
-            pool_pre_ping=True,
+        kwargs = dict(
+            pool_size=self.pool_size,
+            max_overflow=self.max_overflow,
+            pool_timeout=self.pool_timeout,
+            pool_recycle=self.pool_recycle,
+            pool_pre_ping=self.pool_pre_ping,
+            connect_args=self.connect_args,
+            echo=self.echo,
         )
+        if self.isolation_level is not None:
+            kwargs["isolation_level"] = self.isolation_level
+        return sa.create_engine(self.connection_string, **kwargs)
 
     def close(self) -> None:
         """Dispose of the engine and its connection pool."""

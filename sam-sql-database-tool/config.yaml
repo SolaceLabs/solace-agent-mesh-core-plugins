@@ -106,6 +106,18 @@ apps:
             schema_sample_size: 50
             cache_ttl_seconds: 1800 # 30 minutes
 
+            # Optional connection pool tuning:
+            # pool_size: 10           # Persistent connections kept in pool (default: 10)
+            # max_overflow: 10        # Additional connections allowed during traffic bursts (default: 10)
+            # pool_timeout: 30        # Seconds to wait for a free connection before error (default: 30)
+            # pool_recycle: 1800      # Recycle connections after N seconds — set below your DB's idle timeout (default: 1800)
+            # pool_pre_ping: true     # Test connections before use; disable for perf on reliable networks (default: true)
+
+            # Optional engine-level settings:
+            # echo: false             # Log all SQL statements — enable for development/troubleshooting only (default: false)
+            # isolation_level: "READ_COMMITTED"  # Transaction isolation level; omit to use the database dialect's default
+            # connect_args: {}        # Extra driver kwargs passed to connect(), e.g. SSL certs or driver timeouts
+
       session_service: 
         type: "sql"
         database_url: "${__COMPONENT_UPPER_SNAKE_CASE_NAME___DATABASE_URL, sqlite:///__COMPONENT_SNAKE_CASE_NAME__.db}"

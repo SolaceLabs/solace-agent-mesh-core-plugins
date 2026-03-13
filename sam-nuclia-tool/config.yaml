@@ -87,7 +87,11 @@ apps:
             artifact_description_query_max_length: 150
             inline_citation_links: true
             include_citations_in_tool_response: false # If true, citations are added as a main field in the tool response. (Include in the main response regardless)
-            
+
+            # REMi Event Publishing - Supports variables: {interaction_id}, {tool_name}, {learning_id}
+            # Example: "sam/remi/created/{interaction_id}/tool/{tool_name}"
+            remi_publish_topic: ${REMI_PUBLISH_TOPIC}
+
             # --- Dynamic Prompt/Context Configuration ---
             prompt_rephrasing:
               template: |
