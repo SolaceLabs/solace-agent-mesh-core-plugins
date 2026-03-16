@@ -19,6 +19,8 @@ import sys
 from pathlib import Path
 from typing import Set
 
+from plugin_exceptions import DEPRECATED_PLUGINS
+
 
 def get_plugin_directories(repo_root: Path) -> Set[str]:
     """Get all plugin directories (directories starting with 'sam-')."""
@@ -255,9 +257,23 @@ def main():
     print(f"Repository root: {repo_root}")
     print()
 
-    # Get all plugin directories
-    actual_plugins = get_plugin_directories(repo_root)
-    print(f"Found {len(actual_plugins)} plugin directories:")
+    # Get all plugin directories and filter deprecated ones
+    all_plugins = get_plugin_directories(repo_root)
+    deprecated_plugins = all_plugins & DEPRECATED_PLUGINS
+    actual_plugins = all_plugins - DEPRECATED_PLUGINS
+
+    print(f"Found {len(all_plugins)} plugin directories:")
+    for plugin in sorted(all_plugins):
+        print(f"  - {plugin}")
+    print()
+
+    if deprecated_plugins:
+        print(f"Ignoring {len(deprecated_plugins)} deprecated plugins:")
+        for plugin in sorted(deprecated_plugins):
+            print(f"  - {plugin}")
+        print()
+
+    print(f"Using {len(actual_plugins)} active plugins for synchronization:")
     for plugin in sorted(actual_plugins):
         print(f"  - {plugin}")
     print()
