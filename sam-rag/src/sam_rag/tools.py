@@ -301,7 +301,7 @@ async def search_documents(
         # Get relevant chunks and content from vector database
         content, chunks = await augmentation_handler.augment(
             query,
-            inv_context.session, # Pass the session object to augment
+            session_id_str, # Pass the session ID string to augment
             filter=filter_criteria,
             return_chunks=True  # Make sure augment method returns the actual chunks
         )
