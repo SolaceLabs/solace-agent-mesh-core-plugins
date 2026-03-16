@@ -11,12 +11,18 @@ permissions:
   contents: read
   id-token: write # Required for PyPI Trusted Publishing
   checks: write # For FOSSA status checks
+  statuses: write # For FOSSA commit status
+  pull-requests: write # For FOSSA to comment (if needed)
 
 jobs:
-  publish:
-    name: Publish to PyPI
+  # Extract metadata from release tag
+  extract-metadata:
+    name: Extract Package Metadata
     runs-on: ubuntu-latest
-    environment: pypi # Environment with PyPI trusted publisher configured
+    outputs:
+      package_path: ${{ steps.extract.outputs.path }}
+      version: ${{ steps.extract.outputs.version }}
+      full_tag: ${{ steps.extract.outputs.full_tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -38,6 +44,7 @@ jobs:
 
           echo "path=$PACKAGE_PATH" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "full_tag=$TAG" >> $GITHUB_OUTPUT
 
       - name: Verify package exists
         run: |
@@ -46,6 +53,16 @@ jobs:
             exit 1
           fi
           echo "Found package at ${{ steps.extract.outputs.path }}"
+
+  # Publish to PyPI
+  publish:
+    name: Publish to PyPI
+    needs: [extract-metadata]
+    runs-on: ubuntu-latest
+    environment: pypi # Environment with PyPI trusted publisher configured
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -59,20 +76,20 @@ jobs:
 
       - name: Build package
         run: |
-          cd ${{ steps.extract.outputs.path }}
+          cd ${{ needs.extract-metadata.outputs.package_path }}
           hatch build
 
       - name: Show built artifacts
         run: |
-          echo "Built artifacts for ${{ steps.extract.outputs.path }}:"
-          ls -la ${{ steps.extract.outputs.path }}/dist/
+          echo "Built artifacts for ${{ needs.extract-metadata.outputs.package_path }}:"
+          ls -la ${{ needs.extract-metadata.outputs.package_path }}/dist/
 
       - name: Verify package version
         run: |
-          cd ${{ steps.extract.outputs.path }}
+          cd ${{ needs.extract-metadata.outputs.package_path }}
           # Check that the built package version matches the release tag
           BUILT_VERSION=$(hatch version)
-          EXPECTED_VERSION="${{ steps.extract.outputs.version }}"
+          EXPECTED_VERSION="${{ needs.extract-metadata.outputs.version }}"
 
           echo "Built version: $BUILT_VERSION"
           echo "Expected version: $EXPECTED_VERSION"
@@ -86,7 +103,7 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # release/v1
         with:
-          packages-dir: ${{ steps.extract.outputs.path }}/dist/
+          packages-dir: ${{ needs.extract-metadata.outputs.package_path }}/dist/
           verbose: true
 
       - name: Update Release with build artifacts
@@ -94,36 +111,39 @@ jobs:
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: |
-            ${{ steps.extract.outputs.path }}/dist/*.whl
-            ${{ steps.extract.outputs.path }}/dist/*.tar.gz
+            ${{ needs.extract-metadata.outputs.package_path }}/dist/*.whl
+            ${{ needs.extract-metadata.outputs.package_path }}/dist/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-        # Run FOSSA scan and tag with version for license tracking
-      - name: FOSSA Scan - Publish
-        uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@main # main
-        with:
-          scanners: fossa
-          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
-          additional_scan_params: |
-            fossa.branch=main
-            fossa.revision=${{ steps.extract.outputs.version }}
-            fossa.config=${{ steps.extract.outputs.path }}/.fossa.yml
 
       - name: Create summary
         run: |
           echo "## 📦 Package Published Successfully" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Package:** ${{ steps.extract.outputs.path }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** ${{ steps.extract.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Package:** ${{ needs.extract-metadata.outputs.package_path }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.extract-metadata.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "**Tag:** ${{ github.event.release.tag_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**FOSSA Revision:** ${{ steps.extract.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Security Checks" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ FOSSA Vulnerability Check passed" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ FOSSA Licensing Check passed" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Built artifacts:" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          ls -la ${{ steps.extract.outputs.path }}/dist/ >> $GITHUB_STEP_SUMMARY
+          ls -la ${{ needs.extract-metadata.outputs.package_path }}/dist/ >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Note:** FOSSA scan will run after publishing to record version for tracking." >> $GITHUB_STEP_SUMMARY
+
+  # FOSSA scan AFTER publishing - records version for tracking (non-blocking)
+  # Security validation already occurred in Release-Please PR
+  fossa-scan:
+    name: FOSSA Version Recording
+    needs: [extract-metadata, publish]
+    if: always() && needs.publish.result == 'success'
+    uses: SolaceDev/solace-public-workflows/.github/workflows/sca-scan-and-guard.yaml@main
+    with:
+      git_ref: ${{ needs.extract-metadata.outputs.full_tag }}
+      use_vault: false
+      config_file: '${{ needs.extract-metadata.outputs.package_path }}/workflow-config.json'
+      additional_scan_params: |
+        fossa.config=${{ needs.extract-metadata.outputs.package_path }}/.fossa.yml
+        fossa.revision=${{ needs.extract-metadata.outputs.version }}
+    secrets:
+      FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}

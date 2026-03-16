@@ -1,8 +1,6 @@
-# Configuration used for fossa scan
 version: 3
 
 project:
-  locator: SolaceLabs_sam-event-mesh-gateway
   id: SolaceLabs_sam-event-mesh-gateway
   name: sam-event-mesh-gateway
   labels:

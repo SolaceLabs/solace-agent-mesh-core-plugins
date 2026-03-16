@@ -1,8 +1,6 @@
-# Configuration used for fossa scan
 version: 3
 
 project:
-  locator: SolaceLabs_sam-event-mesh-agent
   id: SolaceLabs_sam-event-mesh-agent
   name: sam-event-mesh-agent
   labels:

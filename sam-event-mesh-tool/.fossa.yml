@@ -1,8 +1,6 @@
-# Configuration used for fossa scan
 version: 3
 
 project:
-  locator: SolaceLabs_sam-event-mesh-tool
   id: SolaceLabs_sam-event-mesh-tool
   name: sam-event-mesh-tool
   labels:
