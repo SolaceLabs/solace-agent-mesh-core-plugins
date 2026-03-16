@@ -40,9 +40,71 @@ permissions:
   actions: read
 
 jobs:
+  detect-plugins:
+    name: Detect Plugins
+    runs-on: ubuntu-latest
+    outputs:
+      all_plugins: ${{ steps.detect.outputs.all_plugins }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Detect changed plugins from base branch
+        id: detect
+        shell: bash
+        run: |
+          git fetch origin main
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+          PLUGINS=$(echo "$CHANGED_FILES" | grep -E '^sam-[^/]+/' | cut -d'/' -f1 | sort -u | tr '\n' ',' | sed 's/,$//')
+
+          if [ -z "$PLUGINS" ]; then
+            echo "all_plugins=[]" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          JSON="["
+          FIRST=true
+          IFS=',' read -ra PLUGIN_ARRAY <<< "$PLUGINS"
+          for plugin in "${PLUGIN_ARRAY[@]}"; do
+            plugin=$(echo "$plugin" | xargs)
+            if [ -z "$plugin" ]; then
+              continue
+            fi
+            if [ "$FIRST" = true ]; then
+              FIRST=false
+            else
+              JSON="$JSON,"
+            fi
+            JSON="$JSON{\"plugin_directory\":\"$plugin\"}"
+          done
+          JSON="$JSON]"
+          echo "all_plugins=$JSON" >> "$GITHUB_OUTPUT"
+
+  builds:
+    needs: detect-plugins
+    if: needs.detect-plugins.outputs.all_plugins != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.detect-plugins.outputs.all_plugins) }}
+    name: Build Plugin - ${{ matrix.plugin_directory }}
+    uses: ./.github/workflows/build-plugin.yaml
+    with:
+      plugin_directory: ${{ matrix.plugin_directory }}
+      ref: ${{ inputs.ref || github.ref }}
+    secrets:
+      FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+      SONARQUBE_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+      SONARQUBE_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
+
   release-readiness:
     name: Release Readiness Runner
     runs-on: ubuntu-latest
+    needs: [detect-plugins, builds]
+    if: always() && needs.detect-plugins.outputs.all_plugins != '[]' && (needs.builds.result == 'success' || needs.builds.result == 'skipped')
     permissions:
       contents: read
       pull-requests: write
@@ -51,14 +113,12 @@ jobs:
       statuses: write
       actions: read
     steps:
-      - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Download plugin result artifacts
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
-          ref: ${{ inputs.ref || github.ref }}
-          fetch-depth: 0
-
-      - name: Install Hatch
-        uses: pypa/hatch@install
+          pattern: ci-plugin-result-*
+          merge-multiple: true
+          path: ci-plugin-results
 
       - name: Run reusable release readiness aggregation
         uses: SolaceDev/solace-public-workflows/.github/actions/pr-release-readiness-check@aggregation

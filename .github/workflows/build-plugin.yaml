@@ -8,9 +8,14 @@ on:
         description: "Directory of the plugin"
         required: true
         type: string
+      ref:
+        description: "Git ref to checkout (branch or SHA)"
+        required: false
+        type: string
+        default: ""
     secrets:
       COMMIT_KEY:
-        required: true
+        required: false
       FOSSA_API_KEY:
         required: true
       SONARQUBE_TOKEN:
@@ -164,52 +169,6 @@ jobs:
           echo "SonarQube scan outcome: ${{ steps.sonarqube-scan.outcome }}"
           echo "status=${{ steps.sonarqube-scan.outcome }}" >> $GITHUB_OUTPUT
 
-      - name: Build CI plugin result payload
-        if: always()
-        shell: bash
-        env:
-          PLUGIN: ${{ inputs.plugin_directory }}
-          TEST_OUTCOME: ${{ steps.test.outcome }}
-          TESTS_PRESENT: ${{ steps.test.outputs.tests_present }}
-          JUNIT_EXISTS: ${{ steps.test.outputs.junit_exists }}
-          COVERAGE_EXISTS: ${{ steps.test.outputs.coverage_exists }}
-          SONAR_OUTCOME: ${{ steps.sonarqube-scan.outcome }}
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          tests_present = os.environ.get("TESTS_PRESENT") == "true"
-          test_outcome = os.environ.get("TEST_OUTCOME", "missing")
-          if not tests_present:
-              tests_status = "skipped"
-          elif test_outcome == "success":
-              tests_status = "passed"
-          else:
-              tests_status = "failed"
-
-          payload = {
-              "plugin": os.environ.get("PLUGIN"),
-              "tests_status": tests_status,
-              "tests_present": tests_present,
-              "test_outcome": test_outcome,
-              "junit_exists": os.environ.get("JUNIT_EXISTS") == "true",
-              "coverage_exists": os.environ.get("COVERAGE_EXISTS") == "true",
-              "sonar_outcome": os.environ.get("SONAR_OUTCOME", "missing"),
-          }
-          result_file = f"ci-plugin-result-{os.environ.get('PLUGIN')}.json"
-          Path(result_file).write_text(json.dumps(payload, indent=2), encoding="utf-8")
-          PY
-
-      - name: Upload CI plugin result
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: ci-plugin-result-${{ inputs.plugin_directory }}
-          path: ci-plugin-result-${{ inputs.plugin_directory }}.json
-          retention-days: 7
-
       - name: Build and Verify Package
         shell: bash
         run: |
@@ -231,22 +190,37 @@ jobs:
         shell: bash
         working-directory: ${{ inputs.plugin_directory }}
         run: |
-          if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.head_ref }}" == *"release-please"* ]]; then
+          REF_HINT="${{ inputs.ref || github.ref_name }}"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            IS_RELEASE_PLEASE_PR=$([[ "${{ github.head_ref }}" == *"release-please"* ]] && echo "true" || echo "false")
+          else
+            IS_RELEASE_PLEASE_PR=$([[ "$REF_HINT" == *"release-please"* ]] && echo "true" || echo "false")
+          fi
+
+          if [[ "$IS_RELEASE_PLEASE_PR" == "true" ]]; then
             BRANCH="main"
             REVISION="$(hatch version 2>/dev/null || true)"
             if [[ -z "$REVISION" ]]; then
               REVISION="${{ steps.get-sha.outputs.sha }}"
             fi
+            ENABLE_DIFF_MODE="false"
+            DIFF_BASE_REVISION_SHA=""
           elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
             BRANCH="PR"
-            REVISION="${{ github.event.pull_request.number }}"
+            REVISION="${{ github.head_ref }}"
+            ENABLE_DIFF_MODE="true"
+            DIFF_BASE_REVISION_SHA="${{ github.event.pull_request.base.sha }}"
           else
             BRANCH="${{ github.event.repository.default_branch }}"
             REVISION="${{ steps.get-sha.outputs.sha }}"
+            ENABLE_DIFF_MODE="false"
+            DIFF_BASE_REVISION_SHA=""
           fi
 
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+          echo "enable_diff_mode=$ENABLE_DIFF_MODE" >> "$GITHUB_OUTPUT"
+          echo "diff_base_revision_sha=$DIFF_BASE_REVISION_SHA" >> "$GITHUB_OUTPUT"
           echo "Resolved FOSSA scan target: branch=$BRANCH revision=$REVISION"
 
       # FOSSA Scan - uploads plugin data to FOSSA as unique project
@@ -260,3 +234,160 @@ jobs:
             fossa.branch=${{ steps.fossa_target.outputs.branch }}
             fossa.revision=${{ steps.fossa_target.outputs.revision }}
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
+
+      - name: FOSSA Guard - Licensing
+        id: fossa_guard_licensing
+        continue-on-error: true
+        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
+        with:
+          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
+          fossa_project_id: "${{ github.repository_owner }}_${{ inputs.plugin_directory }}"
+          fossa_category: licensing
+          fossa_mode: REPORT
+          block_on: policy_conflict
+          fossa_branch: ${{ steps.fossa_target.outputs.branch }}
+          fossa_revision: ${{ steps.fossa_target.outputs.revision }}
+          enable_diff_mode: ${{ steps.fossa_target.outputs.enable_diff_mode }}
+          diff_base_revision_sha: ${{ steps.fossa_target.outputs.diff_base_revision_sha }}
+          enable_pr_comment: "false"
+          enable_status_check: "false"
+
+      - name: Persist FOSSA licensing report
+        if: always()
+        shell: bash
+        env:
+          PLUGIN: ${{ inputs.plugin_directory }}
+        run: |
+          SOURCE="${GITHUB_WORKSPACE}/fossa_guard_report.json"
+          DEST="fossa-guard-licensing-${PLUGIN}.json"
+          if [[ -f "$SOURCE" ]]; then
+            cp "$SOURCE" "$DEST"
+          else
+            echo '{"metadata":{"category":"licensing"},"summary":{"total_issues":0,"blocking_issues":0},"issues":[]}' > "$DEST"
+          fi
+
+      - name: FOSSA Guard - Vulnerability
+        id: fossa_guard_vulnerability
+        continue-on-error: true
+        uses: SolaceDev/solace-public-workflows/.github/actions/fossa-guard@main
+        with:
+          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
+          fossa_project_id: "${{ github.repository_owner }}_${{ inputs.plugin_directory }}"
+          fossa_category: vulnerability
+          fossa_mode: REPORT
+          block_on: critical,high
+          fossa_branch: ${{ steps.fossa_target.outputs.branch }}
+          fossa_revision: ${{ steps.fossa_target.outputs.revision }}
+          enable_diff_mode: ${{ steps.fossa_target.outputs.enable_diff_mode }}
+          diff_base_revision_sha: ${{ steps.fossa_target.outputs.diff_base_revision_sha }}
+          enable_pr_comment: "false"
+          enable_status_check: "false"
+
+      - name: Persist FOSSA vulnerability report
+        if: always()
+        shell: bash
+        env:
+          PLUGIN: ${{ inputs.plugin_directory }}
+        run: |
+          SOURCE="${GITHUB_WORKSPACE}/fossa_guard_report.json"
+          DEST="fossa-guard-vulnerability-${PLUGIN}.json"
+          if [[ -f "$SOURCE" ]]; then
+            cp "$SOURCE" "$DEST"
+          else
+            echo '{"metadata":{"category":"vulnerability"},"summary":{"total_issues":0,"blocking_issues":0},"issues":[]}' > "$DEST"
+          fi
+
+      - name: Build CI plugin result payload
+        if: always()
+        shell: bash
+        env:
+          PLUGIN: ${{ inputs.plugin_directory }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          TEST_OUTCOME: ${{ steps.test.outcome }}
+          TESTS_PRESENT: ${{ steps.test.outputs.tests_present }}
+          JUNIT_EXISTS: ${{ steps.test.outputs.junit_exists }}
+          COVERAGE_EXISTS: ${{ steps.test.outputs.coverage_exists }}
+          SONAR_OUTCOME: ${{ steps.sonarqube-scan.outcome }}
+          FOSSA_BRANCH: ${{ steps.fossa_target.outputs.branch }}
+          FOSSA_REVISION: ${{ steps.fossa_target.outputs.revision }}
+          FOSSA_DIFF_MODE: ${{ steps.fossa_target.outputs.enable_diff_mode }}
+          FOSSA_LICENSING_OUTCOME: ${{ steps.fossa_guard_licensing.outcome }}
+          FOSSA_VULNERABILITY_OUTCOME: ${{ steps.fossa_guard_vulnerability.outcome }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from urllib.parse import quote
+
+          def _load_summary(path: str) -> tuple[int, int]:
+              report_path = Path(path)
+              if not report_path.exists():
+                  return 0, 0
+              try:
+                  payload = json.loads(report_path.read_text(encoding="utf-8"))
+              except Exception:
+                  return 0, 0
+              summary = payload.get("summary", {}) if isinstance(payload, dict) else {}
+              total = int(summary.get("total_issues", 0) or 0)
+              blocking = int(summary.get("blocking_issues", 0) or 0)
+              return total, blocking
+
+          tests_present = os.environ.get("TESTS_PRESENT") == "true"
+          test_outcome = os.environ.get("TEST_OUTCOME", "missing")
+          if not tests_present:
+              tests_status = "skipped"
+          elif test_outcome == "success":
+              tests_status = "passed"
+          else:
+              tests_status = "failed"
+
+          plugin = os.environ.get("PLUGIN")
+          repo_owner = os.environ.get("REPO_OWNER")
+          branch = os.environ.get("FOSSA_BRANCH", "")
+          revision = os.environ.get("FOSSA_REVISION", "")
+          diff_mode = os.environ.get("FOSSA_DIFF_MODE", "false") == "true"
+          project_id = f"{repo_owner}_{plugin}"
+          locator = quote(f"custom+48578/{project_id}", safe="")
+          encoded_branch = quote(branch, safe="")
+          encoded_revision = quote(revision, safe="")
+          report_url = f"https://app.fossa.com/projects/{locator}/refs/branch/{encoded_branch}/{encoded_revision}"
+
+          licensing_total, licensing_blocking = _load_summary(
+              f"fossa-guard-licensing-{plugin}.json"
+          )
+          vulnerability_total, vulnerability_blocking = _load_summary(
+              f"fossa-guard-vulnerability-{plugin}.json"
+          )
+
+          payload = {
+              "plugin": plugin,
+              "tests_status": tests_status,
+              "tests_present": tests_present,
+              "test_outcome": test_outcome,
+              "junit_exists": os.environ.get("JUNIT_EXISTS") == "true",
+              "coverage_exists": os.environ.get("COVERAGE_EXISTS") == "true",
+              "sonar_outcome": os.environ.get("SONAR_OUTCOME", "missing"),
+              "fossa_project_id": project_id,
+              "fossa_branch": branch,
+              "fossa_revision": revision,
+              "fossa_diff_mode": diff_mode,
+              "fossa_report_url": report_url,
+              "fossa_licensing_outcome": os.environ.get("FOSSA_LICENSING_OUTCOME", "missing"),
+              "fossa_licensing_total_issues": licensing_total,
+              "fossa_licensing_blocking_issues": licensing_blocking,
+              "fossa_vulnerability_outcome": os.environ.get("FOSSA_VULNERABILITY_OUTCOME", "missing"),
+              "fossa_vulnerability_total_issues": vulnerability_total,
+              "fossa_vulnerability_blocking_issues": vulnerability_blocking,
+          }
+          result_file = f"ci-plugin-result-{plugin}.json"
+          Path(result_file).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+          PY
+
+      - name: Upload CI plugin result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ci-plugin-result-${{ inputs.plugin_directory }}
+          path: ci-plugin-result-${{ inputs.plugin_directory }}.json
+          retention-days: 7
