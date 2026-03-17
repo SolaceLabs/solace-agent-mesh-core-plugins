@@ -387,7 +387,7 @@ jobs:
         if: always()
         uses: SolaceDev/solace-public-workflows/.github/actions/monorepo-project-ci-report@aggregation
         with:
-          plugin_name: ${{ inputs.plugin_directory }}
+          project_name: ${{ inputs.plugin_directory}}
           project_path: ${{ inputs.plugin_directory }}
           repo_owner: ${{ github.repository_owner }}
           branch: ${{ steps.fossa_target.outputs.branch }}
