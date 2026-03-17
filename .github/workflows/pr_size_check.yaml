@@ -3,9 +3,12 @@ name: "PR Size Validation"
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    branches:
+      - "main"
 
 jobs:
   pr-size-check:
+    if: ${{  !contains(github.head_ref, 'release-please') }}
     name: PR Size Check
     runs-on: ubuntu-latest
     permissions:
