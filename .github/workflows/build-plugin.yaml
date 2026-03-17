@@ -78,6 +78,20 @@ jobs:
           echo "Base SHA: ${{ github.event.pull_request.base.sha }}"
           echo "Head SHA: ${{ github.event.pull_request.head.sha }}"
 
+      - name: Setup latest Python 3
+        id: setup-python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.x"
+          check-latest: true
+
+      - name: Resolve test runtime variables
+        id: test-runtime
+        shell: bash
+        run: |
+          echo "python_version=${{ steps.setup-python.outputs.python-version }}" >> "$GITHUB_OUTPUT"
+          echo "hatch_test_env=hatch-test" >> "$GITHUB_OUTPUT"
+
       - name: Install uv
         id: setup-uv
         uses: astral-sh/setup-uv@61cb8a9741eeb8a550a1b8544337180c0fc8476b # v7.2.0
@@ -85,7 +99,7 @@ jobs:
         run: uv tool install hatch
       - name: Create Hatch Environment
         working-directory: ${{ inputs.plugin_directory }}
-        run: hatch -v env create hatch-test.py3.13
+        run: hatch -v env create "${{ steps.test-runtime.outputs.hatch_test_env }}"
 
       - name: Install ODBC Driver 18 for SQL Server
         if: inputs.plugin_directory == 'sam-sql-database-tool'
@@ -101,11 +115,25 @@ jobs:
           sudo apt-get install -y freetds-dev tdsodbc unixodbc-dev
           sudo odbcinst -i -d -f /usr/share/tdsodbc/odbcinst.ini
 
-      - name: Test Plugin ${{ inputs.plugin_directory }} with Python 3.13
+      - name: Ensure test dependencies
+        working-directory: ${{ inputs.plugin_directory }}
+        shell: bash
+        env:
+          HATCH_TEST_ENV: ${{ steps.test-runtime.outputs.hatch_test_env }}
+        run: |
+          if [ ! -d "tests" ]; then
+            echo "No tests directory found, skipping test dependency setup"
+            exit 0
+          fi
+          . "${GITHUB_WORKSPACE}/.github/scripts/ensure_test_dependencies.sh"
+
+      - name: Test Plugin ${{ inputs.plugin_directory }} with Python ${{ steps.test-runtime.outputs.python_version }}
         id: test
         continue-on-error: true
         working-directory: ${{ inputs.plugin_directory }}
         shell: bash
+        env:
+          HATCH_TEST_ENV: ${{ steps.test-runtime.outputs.hatch_test_env }}
         run: |
           # Check if tests directory exists
           if [ ! -d "tests" ]; then
@@ -119,27 +147,12 @@ jobs:
 
           echo "tests_present=true" >> $GITHUB_OUTPUT
 
-          # Ensure required test tooling is available in the hatch test env.
-          MISSING=()
-          for pkg in pytest pytest-cov pytest-json-ctrf; do
-            if ! hatch -v run hatch-test.py3.13:pip show "$pkg" > /dev/null 2>&1; then
-              MISSING+=("$pkg")
-            fi
-          done
-
-          if [ ${#MISSING[@]} -gt 0 ]; then
-            echo "Installing missing test dependencies: ${MISSING[*]}"
-            hatch -v run hatch-test.py3.13:pip install pytest "pytest-cov>=4.0.0" "pytest-json-ctrf>=0.1.0"
-          fi
-
           # Keep file paths relative so Sonar running in a container can parse coverage.xml.
           printf "[run]\nrelative_files = True\n" > .coveragerc
 
           echo "Running tests with coverage and CTRF output..."
-          set +e
-          hatch -v run hatch-test.py3.13:pytest tests/ --cov --cov-config=.coveragerc --cov-report=xml:coverage.xml --cov-report=term --junitxml=junit.xml --ctrf report.json
-          TEST_RC=$?
-          set -e
+          TEST_RC=0
+          hatch -v run "${HATCH_TEST_ENV}:pytest" tests/ --cov --cov-config=.coveragerc --cov-report=xml:coverage.xml --cov-report=term --junitxml=junit.xml --ctrf report.json || TEST_RC=$?
 
           # Check if result files exist
           if [ -f coverage.xml ]; then
@@ -372,7 +385,7 @@ jobs:
 
       - name: Build unified CI plugin report payload
         if: always()
-        uses: SolaceDev/solace-public-workflows/.github/actions/plugin-ci-report@aggregation
+        uses: SolaceDev/solace-public-workflows/.github/actions/monorepo-project-ci-report@aggregation
         with:
           plugin_name: ${{ inputs.plugin_directory }}
           project_path: ${{ inputs.plugin_directory }}

@@ -80,8 +80,8 @@ jobs:
   label-pr:
     runs-on: ubuntu-24.04
     outputs:
-      all_plugins: ${{ steps.format-labels.outputs.all-plugins }}
-      pr_number: ${{ steps.resolve-pr-number.outputs.pr_number }}
+      all_plugins: ${{ steps.resolve-changed.outputs.all_plugins }}
+      pr_number: ${{ steps.resolve-changed.outputs.pr_number }}
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -97,117 +97,14 @@ jobs:
           sync-labels: true
           configuration-path: .github/pr_labeler.yaml
 
-      - name: Get changed plugins in PR
-        id: changed-pr
-        if: github.event_name == 'pull_request'
-        run: |
-          # Get all changed files in the PR by comparing against the base branch
-          # This compares the merge base to the PR head, capturing ALL changes in the PR
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-
-          echo "Base SHA: $BASE_SHA"
-          echo "Head SHA: $HEAD_SHA"
-
-          # Get changed files between base and head of PR
-          CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          echo "Changed files in PR:"
-          echo "$CHANGED_FILES"
-
-          # Extract plugin directories (top-level directories starting with sam-)
-          PLUGINS=$(echo "$CHANGED_FILES" | grep -E '^sam-[^/]+/' | cut -d'/' -f1 | sort -u | tr '\n' ',' | sed 's/,$//')
-          FILTERED_PLUGINS="$(PLUGINS="$PLUGINS" python3 - <<'PY'
-          import os
-          import sys
-          from pathlib import Path
-
-          sys.path.insert(0, str((Path(".github") / "scripts").resolve()))
-          from plugin_exceptions import DEPRECATED_PLUGINS  # noqa: E402
-
-          plugins = [p.strip() for p in os.environ.get("PLUGINS", "").split(",") if p.strip()]
-          filtered = [p for p in plugins if p not in DEPRECATED_PLUGINS]
-          print(",".join(filtered))
-          PY
-          )"
-          echo "Changed plugins: $PLUGINS"
-          echo "Filtered plugins (excluding deprecated): $FILTERED_PLUGINS"
-          echo "plugins=$FILTERED_PLUGINS" >> $GITHUB_OUTPUT
-
-      - name: Get changed plugins on push
-        id: changed-push
-        if: github.event_name == 'push'
-        run: |
-          # Get changed files between HEAD and HEAD~1
-          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only $(git rev-list --max-parents=0 HEAD) HEAD)
-          echo "Changed files: $CHANGED_FILES"
-
-          # Extract plugin directories (top-level directories starting with sam-)
-          PLUGINS=$(echo "$CHANGED_FILES" | grep -E '^sam-[^/]+/' | cut -d'/' -f1 | sort -u | tr '\n' ',' | sed 's/,$//')
-          FILTERED_PLUGINS="$(PLUGINS="$PLUGINS" python3 - <<'PY'
-          import os
-          import sys
-          from pathlib import Path
-
-          sys.path.insert(0, str((Path(".github") / "scripts").resolve()))
-          from plugin_exceptions import DEPRECATED_PLUGINS  # noqa: E402
-
-          plugins = [p.strip() for p in os.environ.get("PLUGINS", "").split(",") if p.strip()]
-          filtered = [p for p in plugins if p not in DEPRECATED_PLUGINS]
-          print(",".join(filtered))
-          PY
-          )"
-          echo "Changed plugins: $PLUGINS"
-          echo "Filtered plugins (excluding deprecated): $FILTERED_PLUGINS"
-          echo "plugins=$FILTERED_PLUGINS" >> $GITHUB_OUTPUT
-
-      - name: Resolve PR number
-        id: resolve-pr-number
-        run: |
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            echo "pr_number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "pr_number=" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Format plugins for matrix
-        id: format-labels
-        run: |
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            # Use changed plugins detected from PR diff
-            PLUGINS="${{ steps.changed-pr.outputs.plugins }}"
-          else
-            # Use changed plugins from push
-            PLUGINS="${{ steps.changed-push.outputs.plugins }}"
-          fi
-
-          echo "Changed plugins: $PLUGINS"
-
-          # Convert comma-separated list to JSON array of objects
-          if [ -z "$PLUGINS" ]; then
-            echo "all-plugins=[]" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          JSON="["
-          FIRST=true
-          IFS=',' read -ra PLUGIN_ARRAY <<< "$PLUGINS"
-          for plugin in "${PLUGIN_ARRAY[@]}"; do
-            # Trim whitespace
-            plugin=$(echo "$plugin" | xargs)
-            if [ -z "$plugin" ]; then
-              continue
-            fi
-            if [ "$FIRST" = true ]; then
-              FIRST=false
-            else
-              JSON="$JSON,"
-            fi
-            JSON="$JSON{\"plugin_directory\":\"$plugin\"}"
-          done
-          JSON="$JSON]"
-
-          echo "Generated JSON: $JSON"
-          echo "all-plugins=$JSON" >> $GITHUB_OUTPUT
+      - name: Resolve changed plugins and build matrix payload
+        id: resolve-changed
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python3 .github/scripts/resolve_changed_plugins.py
 
   # Build and test each plugin that changed
   builds:
@@ -273,7 +170,7 @@ jobs:
         continue-on-error: true
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        uses: SolaceDev/solace-public-workflows/.github/actions/pr-plugin-check-report@aggregation
+        uses: SolaceDev/solace-public-workflows/.github/actions/monorepo-ci-report-status@aggregation
         with:
           check_type: sonarqube
           plugins_json: ${{ needs.label-pr.outputs.all_plugins }}
@@ -293,7 +190,7 @@ jobs:
         continue-on-error: true
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        uses: SolaceDev/solace-public-workflows/.github/actions/pr-plugin-check-report@aggregation
+        uses: SolaceDev/solace-public-workflows/.github/actions/monorepo-ci-report-status@aggregation
         with:
           check_type: unit-tests
           plugins_json: ${{ needs.label-pr.outputs.all_plugins }}
@@ -387,13 +284,11 @@ jobs:
         continue-on-error: true
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        uses: SolaceDev/solace-public-workflows/.github/actions/pr-fossa-diff-report@aggregation
+        uses: SolaceDev/solace-public-workflows/.github/actions/monorepo-fossa-diff-report@aggregation
         with:
-          plugins_json: ${{ needs.label-pr.outputs.all_plugins }}
-          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
+          projects_json: ${{ needs.label-pr.outputs.all_plugins }}
           repo_owner: ${{ github.repository_owner }}
           head_ref: ${{ github.head_ref }}
-          base_sha: ${{ github.event.pull_request.base.sha }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           check_name: FOSSA Guard
           comment_on_pr: "true"
@@ -403,46 +298,47 @@ jobs:
 
       - name: Check CI status
         run: |
+          fail() {
+            echo "$1"
+            exit 1
+          }
+
           if [[ "${{ needs.label-pr.outputs.all_plugins }}" == "[]" ]]; then
             echo "No plugins changed, skipping build and quality checks"
-          elif [[ "${{ needs.builds.result }}" == "success" || "${{ needs.builds.result }}" == "skipped" ]]; then
-            echo "Build jobs passed or were skipped"
-
-            # Check SonarQube quality gate for PRs
-            if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-              if [[ "${{ github.head_ref }}" == *"release-please"* ]]; then
-                if [[ "${{ steps.release_readiness_gate.outcome }}" == "success" || "${{ steps.release_readiness_gate.outcome }}" == "skipped" ]]; then
-                  echo "Release readiness check passed or was skipped"
-                else
-                  echo "Release readiness check failed"
-                  exit 1
-                fi
-              else
-                if [[ "${{ steps.sonar_gate.outcome }}" == "success" || "${{ steps.sonar_gate.outcome }}" == "skipped" ]]; then
-                  echo "SonarQube quality gate passed or was skipped"
-                else
-                  echo "SonarQube quality gate failed"
-                  exit 1
-                fi
-
-                if [[ "${{ steps.unit_tests_gate.outcome }}" == "success" || "${{ steps.unit_tests_gate.outcome }}" == "skipped" ]]; then
-                  echo "Unit tests gate passed or was skipped"
-                else
-                  echo "Unit tests gate failed"
-                  exit 1
-                fi
-
-                if [[ "${{ steps.fossa_guard_gate.outcome }}" == "success" || "${{ steps.fossa_guard_gate.outcome }}" == "skipped" ]]; then
-                  echo "FOSSA guard passed or was skipped"
-                else
-                  echo "FOSSA guard failed"
-                  exit 1
-                fi
-              fi
-            fi
-          else
-            echo "Build jobs failed"
-            exit 1
+            exit 0
           fi
 
+          if [[ "${{ needs.builds.result }}" != "success" && "${{ needs.builds.result }}" != "skipped" ]]; then
+            fail "Build jobs failed"
+          fi
+          echo "Build jobs passed or were skipped"
+
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            echo "All CI checks passed!"
+            exit 0
+          fi
+
+          if [[ "${{ github.head_ref }}" == *"release-please"* ]]; then
+            if [[ "${{ steps.release_readiness_gate.outcome }}" != "success" && "${{ steps.release_readiness_gate.outcome }}" != "skipped" ]]; then
+              fail "Release readiness check failed"
+            fi
+            echo "Release readiness check passed or was skipped"
+            echo "All CI checks passed!"
+            exit 0
+          fi
+
+          if [[ "${{ steps.sonar_gate.outcome }}" != "success" && "${{ steps.sonar_gate.outcome }}" != "skipped" ]]; then
+            fail "SonarQube quality gate failed"
+          fi
+          echo "SonarQube quality gate passed or was skipped"
+
+          if [[ "${{ steps.unit_tests_gate.outcome }}" != "success" && "${{ steps.unit_tests_gate.outcome }}" != "skipped" ]]; then
+            fail "Unit tests gate failed"
+          fi
+          echo "Unit tests gate passed or was skipped"
+
+          if [[ "${{ steps.fossa_guard_gate.outcome }}" != "success" && "${{ steps.fossa_guard_gate.outcome }}" != "skipped" ]]; then
+            fail "FOSSA guard failed"
+          fi
+          echo "FOSSA guard passed or was skipped"
           echo "All CI checks passed!"
