@@ -9,6 +9,11 @@ they are properly configured in:
 - .release-please-manifest.json
 - release-please-config.json
 - .github/pr_labeler.yaml
+
+Why this script exists:
+- Plugin onboarding/removal touches multiple files.
+- Missing one file causes CI gaps, release issues, or unlabeled PRs.
+- This script provides a single consistency check and fails fast.
 """
 
 from __future__ import annotations
@@ -27,7 +32,8 @@ def get_plugin_directories(repo_root: Path) -> Set[str]:
     plugins = set()
     for item in repo_root.iterdir():
         if item.is_dir() and item.name.startswith("sam-"):
-            # Check if it's a valid plugin (has pyproject.toml)
+            # Treat only Python package directories as plugins to avoid
+            # counting utility/demo folders that start with `sam-`.
             if (item / "pyproject.toml").exists():
                 plugins.add(item.name)
     return plugins
@@ -41,7 +47,8 @@ def get_plugins_from_build_workflow(repo_root: Path) -> Set[str]:
 
     content = workflow_path.read_text()
 
-    # Find the options list under workflow_dispatch
+    # Parse the workflow-dispatch plugin options list without adding a YAML
+    # dependency to this script. We rely on indentation + "- sam-..." pattern.
     plugins = set()
     in_options = False
     for line in content.split("\n"):
@@ -67,7 +74,7 @@ def get_plugins_from_sync_workflow(repo_root: Path) -> Set[str]:
 
     content = workflow_path.read_text()
 
-    # Find plugins in paths section with ! prefix (exclusions)
+    # This workflow keeps plugin paths in exclusion format: "!sam-foo/**".
     plugins = set()
     for match in re.finditer(r'^\s*-\s*"!(sam-[\w-]+)/\*\*"', content, re.MULTILINE):
         plugins.add(match.group(1))
@@ -79,6 +86,7 @@ def get_plugins_from_manifest(repo_root: Path) -> Set[str]:
     """Extract plugin names from .release-please-manifest.json."""
     manifest_path = repo_root / ".release-please-manifest.json"
     if not manifest_path.exists():
+        # Missing file should surface as mismatch in the final comparison.
         return set()
 
     with open(manifest_path) as f:
@@ -107,7 +115,7 @@ def get_plugins_from_pr_labeler(repo_root: Path) -> Set[str]:
 
     content = labeler_path.read_text()
 
-    # Find all top-level keys that start with 'sam-'
+    # Labeler config uses plugin names as top-level YAML keys.
     plugins = set()
     for line in content.split("\n"):
         match = re.match(r"^(sam-[\w-]+):", line)
@@ -118,14 +126,16 @@ def get_plugins_from_pr_labeler(repo_root: Path) -> Set[str]:
 
 
 def main():
-    # Find repository root
+    # Resolve repo root relative to this script location so the command works
+    # regardless of current working directory.
     script_dir = Path(__file__).parent
     repo_root = script_dir.parent.parent
 
     print(f"Repository root: {repo_root}")
     print()
 
-    # Get all plugin directories and filter deprecated ones
+    # The source of truth is active plugin directories in the repository.
+    # Deprecated plugins are ignored to avoid forcing legacy config churn.
     all_plugins = get_plugin_directories(repo_root)
     deprecated_plugins = all_plugins & DEPRECATED_PLUGINS
     actual_plugins = all_plugins - DEPRECATED_PLUGINS
@@ -146,7 +156,7 @@ def main():
         print(f"  - {plugin}")
     print()
 
-    # Check each config file
+    # Compare each config file against the active plugin set.
     all_match = True
 
     configs = [
@@ -160,7 +170,7 @@ def main():
     for config_name, config_plugins in configs:
         print(f"Checking {config_name}...")
 
-        # Deprecated plugins are allowed to be absent in config files.
+        # Deprecated plugins are excluded from both sides of comparison.
         filtered_config_plugins = config_plugins - DEPRECATED_PLUGINS
         missing = actual_plugins - filtered_config_plugins
         extra = filtered_config_plugins - actual_plugins
@@ -182,7 +192,7 @@ def main():
 
         print()
 
-    # Summary
+    # Non-zero exit code lets CI fail when configuration drift is detected.
     if all_match:
         print("✅ All configuration files are in sync with plugin directories!")
         return 0
