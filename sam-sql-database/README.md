@@ -1,5 +1,15 @@
 # Solace Agent Mesh - SQL Database Agent Plugin for A2A ADK Host
 
+> **⚠️ DEPRECATED**: This plugin is deprecated and may be removed in a future release.
+>
+> **Please migrate to [sam-sql-database-tool](../sam-sql-database-tool/)**, which provides:
+> - Broader database engine support: PostgreSQL, MySQL, MariaDB, MSSQL, and Oracle
+> - Improved connection pooling and schema caching
+> - A framework-agnostic design compatible with any SAM agent
+> - Active development and continued support
+>
+> See the [sam-sql-database-tool README](../sam-sql-database-tool/README.md) for configuration and migration details.
+
 This plugin empowers the A2A ADK Host with natural language querying capabilities for SQL databases, supporting MySQL, PostgreSQL, and SQLite. It leverages the host's "Configurable Agent Initialization and Cleanup" feature and Google's Agent Development Kit (ADK) for its core LLM-driven logic.
 
 ## Features
