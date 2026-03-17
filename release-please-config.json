@@ -85,10 +85,6 @@
       "package-name": "sam_mcp_server_gateway_adapter",
       "changelog-path": "CHANGELOG.md"
     },
-    "sam-mermaid": {
-      "package-name": "sam_mermaid",
-      "changelog-path": "CHANGELOG.md"
-    },
     "sam-mongodb": {
       "package-name": "sam_mongodb",
       "changelog-path": "CHANGELOG.md"
