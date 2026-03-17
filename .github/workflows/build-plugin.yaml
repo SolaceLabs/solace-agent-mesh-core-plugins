@@ -221,79 +221,17 @@ jobs:
 
       - name: Resolve FOSSA scan target
         id: fossa_target
-        shell: bash
-        run: |
-          REF_HINT="${{ inputs.ref || github.ref_name }}"
-          EVENT_NAME="${{ github.event_name }}"
-          HEAD_REF="${{ github.head_ref }}"
-          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
-          CURRENT_REF_NAME="${{ github.ref_name }}"
-          BEFORE_SHA="${{ github.event.before }}"
-          CURRENT_SHA="${{ steps.get-sha.outputs.sha }}"
-          PLUGIN="${{ inputs.plugin_directory }}"
-
-          MANIFEST_FILE="${GITHUB_WORKSPACE}/.release-please-manifest.json"
-          MANIFEST_VERSION=""
-          if [[ -f "$MANIFEST_FILE" ]]; then
-            MANIFEST_VERSION="$(MANIFEST_FILE="$MANIFEST_FILE" PLUGIN="$PLUGIN" python3 -c "import json,os;from pathlib import Path;manifest=Path(os.environ['MANIFEST_FILE']);data=json.loads(manifest.read_text(encoding='utf-8')) if manifest.exists() else {};print(str(data.get(os.environ['PLUGIN'], '')).strip())")"
-          fi
-
-          VERSION_BUMP_ON_MAIN="false"
-          MAIN_BUMP_VERSION=""
-          if [[ "$EVENT_NAME" == "push" && "$CURRENT_REF_NAME" == "$DEFAULT_BRANCH" ]]; then
-            if [[ -n "$BEFORE_SHA" ]] && git cat-file -e "$BEFORE_SHA" 2>/dev/null; then
-              if git diff --name-only "$BEFORE_SHA" "$CURRENT_SHA" -- ".release-please-manifest.json" | grep -q ".release-please-manifest.json"; then
-                MAIN_BUMP_VERSION="$(PLUGIN="$PLUGIN" BEFORE_SHA="$BEFORE_SHA" CURRENT_SHA="$CURRENT_SHA" python3 -c "import json,os,subprocess;plugin=os.environ['PLUGIN'];before=os.environ['BEFORE_SHA'];current=os.environ['CURRENT_SHA'];getv=lambda rev:(lambda r:(json.loads(r.stdout).get(plugin,'') if r.returncode==0 and r.stdout else ''))(subprocess.run(['git','show',f'{rev}:.release-please-manifest.json'],capture_output=True,text=True));old=str(getv(before)).strip();new=str(getv(current)).strip();print(new if new and new!=old else '')")"
-                if [[ -n "$MAIN_BUMP_VERSION" ]]; then
-                  VERSION_BUMP_ON_MAIN="true"
-                fi
-              fi
-            fi
-          fi
-
-          if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            IS_RELEASE_PLEASE_PR=$([[ "$HEAD_REF" == *"release-please"* ]] && echo "true" || echo "false")
-          else
-            IS_RELEASE_PLEASE_PR=$([[ "$REF_HINT" == *"release-please"* ]] && echo "true" || echo "false")
-          fi
-
-          if [[ "$IS_RELEASE_PLEASE_PR" == "true" ]]; then
-            BRANCH="ReleasePleasePR"
-            REVISION="$MANIFEST_VERSION"
-            if [[ -z "$REVISION" ]]; then
-              REVISION="$(cd "$PLUGIN" && hatch version 2>/dev/null || true)"
-            fi
-            if [[ -z "$REVISION" ]]; then
-              REVISION="$CURRENT_SHA"
-            fi
-            ENABLE_DIFF_MODE="false"
-            DIFF_BASE_REVISION_SHA=""
-          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
-            BRANCH="PR"
-            REVISION="$HEAD_REF"
-            ENABLE_DIFF_MODE="true"
-            DIFF_BASE_REVISION_SHA="${{ github.event.pull_request.base.sha }}"
-          elif [[ "$EVENT_NAME" == "push" && "$CURRENT_REF_NAME" == "$DEFAULT_BRANCH" ]]; then
-            BRANCH="main"
-            if [[ "$VERSION_BUMP_ON_MAIN" == "true" ]]; then
-              REVISION="$MAIN_BUMP_VERSION"
-            else
-              REVISION="$CURRENT_SHA"
-            fi
-            ENABLE_DIFF_MODE="false"
-            DIFF_BASE_REVISION_SHA=""
-          else
-            BRANCH="$DEFAULT_BRANCH"
-            REVISION="$CURRENT_SHA"
-            ENABLE_DIFF_MODE="false"
-            DIFF_BASE_REVISION_SHA=""
-          fi
-
-          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
-          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
-          echo "enable_diff_mode=$ENABLE_DIFF_MODE" >> "$GITHUB_OUTPUT"
-          echo "diff_base_revision_sha=$DIFF_BASE_REVISION_SHA" >> "$GITHUB_OUTPUT"
-          echo "Resolved FOSSA scan target: branch=$BRANCH revision=$REVISION"
+        env:
+          REF_HINT: ${{ inputs.ref || github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          CURRENT_REF_NAME: ${{ github.ref_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ steps.get-sha.outputs.sha }}
+          PLUGIN_DIRECTORY: ${{ inputs.plugin_directory }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 .github/scripts/resolve_fossa_target.py
 
       # FOSSA Scan - uploads plugin data to FOSSA as unique project
       - name: FOSSA Scan
