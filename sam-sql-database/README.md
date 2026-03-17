@@ -8,7 +8,7 @@
 > - A framework-agnostic design compatible with any SAM agent
 > - Active development and continued support
 >
-> See the [sam-sql-database-tool README](../sam-sql-database-tool/README.md) for configuration and migration details.
+> See the [sam-sql-database-tool README](../sam-sql-database-tool/README.md) for configuration and more details.
 
 This plugin empowers the A2A ADK Host with natural language querying capabilities for SQL databases, supporting MySQL, PostgreSQL, and SQLite. It leverages the host's "Configurable Agent Initialization and Cleanup" feature and Google's Agent Development Kit (ADK) for its core LLM-driven logic.
 
