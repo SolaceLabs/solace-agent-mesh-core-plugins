@@ -30,20 +30,16 @@ on:
         type: choice
         options:
           - sam-bedrock-agent
-          - sam-event-mesh-agent
           - sam-event-mesh-gateway
           - sam-event-mesh-tool
           - sam-geo-information
-          - sam-mermaid
           - sam-mongodb
           - sam-nuclia-tool
           - sam-rag
           - sam-rest-gateway
           - sam-ruleset-lookup-tool
-          - sam-slack
           - sam-mcp-server-gateway-adapter
           - sam-slack-gateway-adapter
-          - sam-sql-database
           - sam-sql-database-tool
           - sam-webhook-gateway
       ref:
@@ -78,6 +74,9 @@ jobs:
         id: get-sha
         run: |
           echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "Checked out SHA: $sha"
+          echo "Base SHA: ${{ github.event.pull_request.base.sha }}"
+          echo "Head SHA: ${{ github.event.pull_request.head.sha }}"
 
       - name: Install uv
         id: setup-uv
