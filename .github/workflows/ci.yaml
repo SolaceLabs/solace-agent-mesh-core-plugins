@@ -237,7 +237,7 @@ jobs:
       pull-requests: write
       issues: write
       checks: write
-      actions: read
+      actions: write
     steps:
       - name: Download plugin result artifacts
         if: always() && github.event_name == 'pull_request' && needs.label-pr.outputs.all_plugins != '[]' && (needs.builds.result == 'success' || needs.builds.result == 'skipped')
@@ -347,12 +347,21 @@ jobs:
           PY
 
       - name: Merge CTRF reports
+        id: merge_ctrf
         if: always() && steps.collect_ctrf.outputs.has_reports == 'true'
         shell: bash
         run: npx ctrf-cli@0.0.5 merge ctrf-plugin-reports --output ctrf-merged.json
 
+      - name: Upload merged CTRF report artifact
+        if: always() && steps.collect_ctrf.outputs.has_reports == 'true' && steps.merge_ctrf.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ctrf-merged-report
+          path: ctrf-plugin-reports/ctrf-merged.json
+          retention-days: 7
+
       - name: Publish CTRF Test Report
-        if: always() && steps.collect_ctrf.outputs.has_reports == 'true'
+        if: always() && steps.collect_ctrf.outputs.has_reports == 'true' && steps.merge_ctrf.outcome == 'success'
         uses: ctrf-io/github-test-reporter@024bc4b64d997ca9da86833c6b9548c55c620e40 # v1.0.26
         with:
           report-path: "ctrf-plugin-reports/ctrf-merged.json"
@@ -364,7 +373,11 @@ jobs:
           commit-report: false
           status-check: true
           status-check-name: "Unit Tests (CTRF)"
-          summary: false
+          exit-on-no-files: true
+          upload-artifact: true
+          artifact-name: ctrf-processed-report
+          write-ctrf-to-file: ctrf-plugin-reports/ctrf-processed.json
+          summary: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
