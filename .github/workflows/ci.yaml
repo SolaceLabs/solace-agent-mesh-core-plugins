@@ -24,6 +24,20 @@ concurrency:
   cancel-in-progress: ${{ github.ref_name != github.event.repository.default_branch }}
 
 jobs:
+  pr-size-check:
+    if: ${{  !contains(github.head_ref, 'release-please') }}
+    name: PR Size Check
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+      pull-requests: read
+    steps:
+      - name: Validate PR Size
+        uses: SolaceDev/solace-public-workflows/.github/actions/pr-size-check@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          max-lines: 1500
+
   # Validate conventional commits for PRs
   validate-conventional-commit:
     name: "Validate Conventional Commit"
@@ -335,7 +349,7 @@ jobs:
       - name: Merge CTRF reports
         if: always() && steps.collect_ctrf.outputs.has_reports == 'true'
         shell: bash
-        run: npx ctrf-cli@0.0.5-next-1 merge ctrf-plugin-reports --output ctrf-plugin-reports/ctrf-merged.json
+        run: npx ctrf-cli@0.0.5 merge ctrf-plugin-reports --output ctrf-merged.json
 
       - name: Publish CTRF Test Report
         if: always() && steps.collect_ctrf.outputs.has_reports == 'true'
