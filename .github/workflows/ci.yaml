@@ -273,10 +273,10 @@ jobs:
         continue-on-error: true
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        uses: SolaceDev/solace-public-workflows/.github/actions/pr-plugin-check-report@aggregation
+        uses: SolaceDev/solace-public-workflows/.github/actions/pr-project-check-report@aggregation
         with:
           check_type: sonarqube
-          plugins_json: ${{ needs.label-pr.outputs.all_plugins }}
+          projects_json: ${{ needs.label-pr.outputs.all_plugins }}
           results_dir: ci-plugin-results
           github_token: ${{ secrets.GITHUB_TOKEN }}
           pr_number: ${{ github.event.pull_request.number }}
@@ -293,10 +293,10 @@ jobs:
         continue-on-error: true
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        uses: SolaceDev/solace-public-workflows/.github/actions/pr-plugin-check-report@aggregation
+        uses: SolaceDev/solace-public-workflows/.github/actions/pr-project-check-report@aggregation
         with:
           check_type: unit-tests
-          plugins_json: ${{ needs.label-pr.outputs.all_plugins }}
+          projects_json: ${{ needs.label-pr.outputs.all_plugins }}
           results_dir: ci-plugin-results
           github_token: ${{ secrets.GITHUB_TOKEN }}
           pr_number: ${{ github.event.pull_request.number }}
@@ -305,46 +305,14 @@ jobs:
           update_check_details: "true"
           fail_on_issues: "true"
 
-      - name: Collect CTRF reports from plugin payloads
+      - name: Collect CTRF reports from project payloads
         id: collect_ctrf
         if: always() && github.event_name == 'pull_request' && !contains(github.head_ref, 'release-please') && needs.label-pr.outputs.all_plugins != '[]'
         shell: bash
-        run: |
-          mkdir -p ctrf-plugin-reports
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          results_dir = Path("ci-plugin-results")
-          out_dir = Path("ctrf-plugin-reports")
-          out_dir.mkdir(parents=True, exist_ok=True)
-
-          count = 0
-          for path in results_dir.rglob("*.json"):
-              try:
-                  payload = json.loads(path.read_text(encoding="utf-8"))
-              except Exception:
-                  continue
-              plugin = str(payload.get("plugin", "")).strip()
-              ctrf = payload.get("unit_test_report", {})
-              if not plugin or not isinstance(ctrf, dict):
-                  continue
-              if not ctrf.get("results"):
-                  continue
-              (out_dir / f"{plugin}.json").write_text(
-                  json.dumps(ctrf, indent=2),
-                  encoding="utf-8",
-              )
-              count += 1
-
-          output_path = os.environ.get("GITHUB_OUTPUT", "")
-          if output_path:
-              with Path(output_path).open("a", encoding="utf-8") as handle:
-                  handle.write(f"count={count}\n")
-                  handle.write(f"has_reports={'true' if count > 0 else 'false'}\n")
-          print(f"Collected {count} CTRF report(s)")
-          PY
+        env:
+          RESULTS_DIR: ci-plugin-results
+          OUTPUT_DIR: ctrf-plugin-reports
+        run: python3 .github/scripts/collect_ctrf_reports.py
 
       - name: Merge CTRF reports
         id: merge_ctrf
@@ -377,7 +345,7 @@ jobs:
           upload-artifact: true
           artifact-name: ctrf-processed-report
           write-ctrf-to-file: ctrf-plugin-reports/ctrf-processed.json
-          summary: true
+          summary: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
