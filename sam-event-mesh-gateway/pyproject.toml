@@ -41,7 +41,9 @@ markers = [
   "basic: marks tests as basic functionality tests",
   "event_mesh: marks tests as event mesh related",
   "integration: marks tests as integration tests",
-  "declarative: marks tests as declarative scenario tests"
+  "declarative: marks tests as declarative scenario tests",
+  "structured: marks tests as structured invocation tests",
+  "workflow: marks tests as workflow-related tests"
 ]
 
 [tool.hatch.envs.hatch-test]
