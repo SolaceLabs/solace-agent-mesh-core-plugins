@@ -219,6 +219,7 @@ jobs:
           plugins_json: ${{ needs.label-pr.outputs.all_plugins }}
           results_dir: ci-plugin-results
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          pr_number: ${{ github.event.pull_request.number }}
           sonarqube_host_url: ${{ secrets.SONARQUBE_HOST_URL }}
           check_name: SonarQube Quality Gate
           comment_on_pr: "true"
@@ -238,6 +239,7 @@ jobs:
           plugins_json: ${{ needs.label-pr.outputs.all_plugins }}
           results_dir: ci-plugin-results
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          pr_number: ${{ github.event.pull_request.number }}
           check_name: Unit Tests
           comment_on_pr: "false"
           update_check_details: "true"
@@ -287,20 +289,21 @@ jobs:
       - name: Merge CTRF reports
         if: always() && steps.collect_ctrf.outputs.has_reports == 'true'
         shell: bash
-        run: npx ctrf-cli@0.0.5-next-1 merge ctrf-plugin-reports --output ctrf-merged.json
+        run: npx ctrf-cli@0.0.5-next-1 merge ctrf-plugin-reports --output ctrf-plugin-reports/ctrf-merged.json
 
       - name: Publish CTRF Test Report
         if: always() && steps.collect_ctrf.outputs.has_reports == 'true'
         uses: ctrf-io/github-test-reporter@024bc4b64d997ca9da86833c6b9548c55c620e40 # v1.0.26
         with:
-          report-path: "ctrf-merged.json"
+          report-path: "ctrf-plugin-reports/ctrf-merged.json"
           summary-report: true
           github-report: true
           failed-folded-report: true
           flaky-report: true
           annotate: true
           commit-report: false
-          status-check: false
+          status-check: true
+          status-check-name: "Unit Tests (CTRF)"
           summary: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
