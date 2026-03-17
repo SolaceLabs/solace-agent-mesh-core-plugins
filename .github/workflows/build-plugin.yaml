@@ -56,6 +56,8 @@ permissions:
   checks: write
   repository-projects: read
 
+env:
+  PYTHON_VERSION: "3.13"
 jobs:
   build-plugin:
     runs-on: ubuntu-latest
@@ -82,14 +84,14 @@ jobs:
         id: setup-python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
-          python-version: "3.13"
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Resolve test runtime variables
         id: test-runtime
         shell: bash
         run: |
-          echo "python_version=${{ steps.setup-python.outputs.python-version }}" >> "$GITHUB_OUTPUT"
-          echo "hatch_test_env=hatch-test" >> "$GITHUB_OUTPUT"
+          echo "python_version=${{ env.PYTHON_VERSION }}" >> "$GITHUB_OUTPUT"
+          echo "hatch_test_env=hatch-test.py${{ env.PYTHON_VERSION }}" >> "$GITHUB_OUTPUT"
 
       - name: Install uv
         id: setup-uv
