@@ -7,12 +7,13 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
   issues: write
   checks: write
   statuses: write
-  actions: read
+  actions: write
+  repository-projects: read
 
 jobs:
   detect-plugins:
@@ -63,6 +64,13 @@ jobs:
   builds:
     needs: detect-plugins
     if: needs.detect-plugins.outputs.all_plugins != '[]'
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+      statuses: write
+      checks: write
+      repository-projects: read
     strategy:
       fail-fast: false
       matrix:
