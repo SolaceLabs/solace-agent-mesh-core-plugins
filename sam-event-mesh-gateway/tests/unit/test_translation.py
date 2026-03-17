@@ -48,10 +48,11 @@ class TestStructuredInvocationDetection:
         component.gateway_id = "TestGateway"
         component.shared_artifact_service = mock_artifact_service
 
-        # Bind real methods
+        # Bind real methods and class attributes
         component._resolve_target_name = EventMeshGatewayComponent._resolve_target_name.__get__(
             component, EventMeshGatewayComponent
         )
+        component._FORMAT_MAP = EventMeshGatewayComponent._FORMAT_MAP
         component._get_format_info = EventMeshGatewayComponent._get_format_info.__get__(
             component, EventMeshGatewayComponent
         )
@@ -311,6 +312,7 @@ class TestPayloadFormatHandling:
     def mock_gateway_component(self):
         """Create a mock gateway component with format methods."""
         component = MagicMock(spec=EventMeshGatewayComponent)
+        component._FORMAT_MAP = EventMeshGatewayComponent._FORMAT_MAP
         component._get_format_info = EventMeshGatewayComponent._get_format_info.__get__(
             component, EventMeshGatewayComponent
         )
