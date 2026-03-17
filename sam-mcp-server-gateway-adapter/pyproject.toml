@@ -32,3 +32,16 @@ src-path = "src"
 "config.yaml" = "sam_mcp_server_gateway_adapter/config.yaml"
 "README.md" = "sam_mcp_server_gateway_adapter/README.md"
 "pyproject.toml" = "sam_mcp_server_gateway_adapter/pyproject.toml"
+
+
+[tool.hatch.envs.hatch-test]
+dependencies = [
+  # "a2a-sdk[http-server]>=0.3.1",
+  # "pytest-asyncio",
+  "pytest>=8.0.0",
+  "pytest-mock>=3.0.0",
+  "pytest-cov>=4.0.0",
+  # "pytest-xdist>=3.5.0",
+  # "solace_agent_mesh>=1.1.0,<2.0.0",
+  # "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure"
+]
