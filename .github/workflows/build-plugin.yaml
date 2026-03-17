@@ -68,7 +68,6 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
           fetch-depth: 0
-          sparse-checkout: ${{ inputs.plugin_directory }}
 
       - name: get Sha
         id: get-sha
@@ -133,9 +132,12 @@ jobs:
             hatch -v run hatch-test.py3.13:pip install pytest "pytest-cov>=4.0.0" "pytest-json-ctrf>=0.1.0"
           fi
 
+          # Keep file paths relative so Sonar running in a container can parse coverage.xml.
+          printf "[run]\nrelative_files = True\n" > .coveragerc
+
           echo "Running tests with coverage and CTRF output..."
           set +e
-          hatch -v run hatch-test.py3.13:pytest tests/ --cov --cov-report=xml:coverage.xml --cov-report=term --junitxml=junit.xml --ctrf report.json
+          hatch -v run hatch-test.py3.13:pytest tests/ --cov --cov-config=.coveragerc --cov-report=xml:coverage.xml --cov-report=term --junitxml=junit.xml --ctrf report.json
           TEST_RC=$?
           set -e
 
@@ -177,6 +179,7 @@ jobs:
             -Dsonar.exclusions=**/__pycache__/**,**/dist/**,**/.hatch/**,**/build/**,**/*.egg-info/**,**/tests/**
             -Dsonar.cpd.exclusions=**/tests/**
             -Dsonar.pullrequest.github.summary_comment=false
+            -Dsonar.scm.disabled=true
             -Dsonar.qualitygate.wait=true
 
       - name: Record SonarQube Result
