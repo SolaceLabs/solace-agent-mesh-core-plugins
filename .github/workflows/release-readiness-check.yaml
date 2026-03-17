@@ -1,35 +1,10 @@
 name: Release Readiness Check
 
 on:
-  workflow_call:
-    inputs:
-      pr_number:
-        description: "PR number to comment on"
-        required: false
-        type: number
-      ref:
-        description: "Git ref to checkout (branch or SHA)"
-        required: false
-        type: string
-        default: "release-please--branches--main"
-    secrets:
-      FOSSA_API_KEY:
-        required: true
-      SONARQUBE_TOKEN:
-        required: true
-      SONARQUBE_HOST_URL:
-        required: true
-  workflow_dispatch:
-    inputs:
-      pr_number:
-        description: "PR number to comment on (optional)"
-        required: false
-        type: number
-      ref:
-        description: "Git ref to checkout (branch or SHA)"
-        required: false
-        type: string
-        default: "release-please--branches--main"
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -43,21 +18,23 @@ jobs:
   detect-plugins:
     name: Detect Plugins
     runs-on: ubuntu-latest
+    if: contains(github.head_ref, 'release-please')
     outputs:
       all_plugins: ${{ steps.detect.outputs.all_plugins }}
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Detect changed plugins from base branch
         id: detect
         shell: bash
         run: |
-          git fetch origin main
-          CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
           PLUGINS=$(echo "$CHANGED_FILES" | grep -E '^sam-[^/]+/' | cut -d'/' -f1 | sort -u | tr '\n' ',' | sed 's/,$//')
 
           if [ -z "$PLUGINS" ]; then
@@ -94,7 +71,7 @@ jobs:
     uses: ./.github/workflows/build-plugin.yaml
     with:
       plugin_directory: ${{ matrix.plugin_directory }}
-      ref: ${{ inputs.ref || github.ref }}
+      ref: ${{ github.event.pull_request.head.sha }}
     secrets:
       FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
       SONARQUBE_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
@@ -123,7 +100,7 @@ jobs:
       - name: Run reusable release readiness aggregation
         uses: SolaceDev/solace-public-workflows/.github/actions/pr-release-readiness-check@aggregation
         with:
-          pr_number: ${{ inputs.pr_number }}
+          pr_number: ${{ github.event.pull_request.number }}
           github_token: ${{ github.token }}
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
           sonarqube_token: ${{ secrets.SONARQUBE_TOKEN }}
