@@ -12,5 +12,5 @@ DEPRECATED_PLUGINS = {
     "sam-slack",
     "sam-sql-database",
     "sam-webhook-gateway",
+    "sam-mermaid",
 }
-
