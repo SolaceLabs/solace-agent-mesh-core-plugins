@@ -24,6 +24,20 @@ concurrency:
   cancel-in-progress: ${{ github.ref_name != github.event.repository.default_branch }}
 
 jobs:
+  pr-size-check:
+    if: ${{  !contains(github.head_ref, 'release-please') }}
+    name: PR Size Check
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+      pull-requests: read
+    steps:
+      - name: Validate PR Size
+        uses: SolaceDev/solace-public-workflows/.github/actions/pr-size-check@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          max-lines: 1500
+
   # Validate conventional commits for PRs
   validate-conventional-commit:
     name: "Validate Conventional Commit"
@@ -65,7 +79,6 @@ jobs:
   # Label PR based on changed files and determine which plugins to build
   label-pr:
     runs-on: ubuntu-24.04
-    if: github.event_name != 'pull_request' || !contains(github.head_ref, 'release-please')
     outputs:
       all_plugins: ${{ steps.format-labels.outputs.all-plugins }}
       pr_number: ${{ steps.resolve-pr-number.outputs.pr_number }}
@@ -103,8 +116,22 @@ jobs:
 
           # Extract plugin directories (top-level directories starting with sam-)
           PLUGINS=$(echo "$CHANGED_FILES" | grep -E '^sam-[^/]+/' | cut -d'/' -f1 | sort -u | tr '\n' ',' | sed 's/,$//')
+          FILTERED_PLUGINS="$(PLUGINS="$PLUGINS" python3 - <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, str((Path(".github") / "scripts").resolve()))
+          from plugin_exceptions import DEPRECATED_PLUGINS  # noqa: E402
+
+          plugins = [p.strip() for p in os.environ.get("PLUGINS", "").split(",") if p.strip()]
+          filtered = [p for p in plugins if p not in DEPRECATED_PLUGINS]
+          print(",".join(filtered))
+          PY
+          )"
           echo "Changed plugins: $PLUGINS"
-          echo "plugins=$PLUGINS" >> $GITHUB_OUTPUT
+          echo "Filtered plugins (excluding deprecated): $FILTERED_PLUGINS"
+          echo "plugins=$FILTERED_PLUGINS" >> $GITHUB_OUTPUT
 
       - name: Get changed plugins on push
         id: changed-push
@@ -116,8 +143,22 @@ jobs:
 
           # Extract plugin directories (top-level directories starting with sam-)
           PLUGINS=$(echo "$CHANGED_FILES" | grep -E '^sam-[^/]+/' | cut -d'/' -f1 | sort -u | tr '\n' ',' | sed 's/,$//')
+          FILTERED_PLUGINS="$(PLUGINS="$PLUGINS" python3 - <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, str((Path(".github") / "scripts").resolve()))
+          from plugin_exceptions import DEPRECATED_PLUGINS  # noqa: E402
+
+          plugins = [p.strip() for p in os.environ.get("PLUGINS", "").split(",") if p.strip()]
+          filtered = [p for p in plugins if p not in DEPRECATED_PLUGINS]
+          print(",".join(filtered))
+          PY
+          )"
           echo "Changed plugins: $PLUGINS"
-          echo "plugins=$PLUGINS" >> $GITHUB_OUTPUT
+          echo "Filtered plugins (excluding deprecated): $FILTERED_PLUGINS"
+          echo "plugins=$FILTERED_PLUGINS" >> $GITHUB_OUTPUT
 
       - name: Resolve PR number
         id: resolve-pr-number
@@ -207,6 +248,25 @@ jobs:
           merge-multiple: true
           path: ci-plugin-results
 
+      - name: Run reusable release readiness aggregation
+        id: release_readiness_gate
+        if: always() && github.event_name == 'pull_request' && contains(github.head_ref, 'release-please') && needs.label-pr.outputs.all_plugins != '[]' && (needs.builds.result == 'success' || needs.builds.result == 'skipped')
+        continue-on-error: true
+        uses: SolaceDev/solace-public-workflows/.github/actions/pr-release-readiness-check@aggregation
+        with:
+          pr_number: ${{ github.event.pull_request.number }}
+          github_token: ${{ github.token }}
+          fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
+          sonarqube_token: ${{ secrets.SONARQUBE_TOKEN }}
+          sonarqube_host_url: ${{ secrets.SONARQUBE_HOST_URL }}
+          repo_owner: ${{ github.repository_owner }}
+          base_branch: main
+          check_name: Release Readiness Check
+          comment_marker: Release Readiness Check Results
+          update_pr_comment: "true"
+          update_check_details: "true"
+          fail_on_issues: "true"
+
       - name: Publish SonarQube Quality Gate check
         id: sonar_gate
         if: always() && github.event_name == 'pull_request' && !contains(github.head_ref, 'release-please') && needs.label-pr.outputs.all_plugins != '[]' && (needs.builds.result == 'success' || needs.builds.result == 'skipped')
@@ -219,6 +279,7 @@ jobs:
           plugins_json: ${{ needs.label-pr.outputs.all_plugins }}
           results_dir: ci-plugin-results
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          pr_number: ${{ github.event.pull_request.number }}
           sonarqube_host_url: ${{ secrets.SONARQUBE_HOST_URL }}
           check_name: SonarQube Quality Gate
           comment_on_pr: "true"
@@ -238,6 +299,7 @@ jobs:
           plugins_json: ${{ needs.label-pr.outputs.all_plugins }}
           results_dir: ci-plugin-results
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          pr_number: ${{ github.event.pull_request.number }}
           check_name: Unit Tests
           comment_on_pr: "false"
           update_check_details: "true"
@@ -287,20 +349,21 @@ jobs:
       - name: Merge CTRF reports
         if: always() && steps.collect_ctrf.outputs.has_reports == 'true'
         shell: bash
-        run: npx ctrf-cli@0.0.5-next-1 merge ctrf-plugin-reports --output ctrf-merged.json
+        run: npx ctrf-cli@0.0.5 merge ctrf-plugin-reports --output ctrf-merged.json
 
       - name: Publish CTRF Test Report
         if: always() && steps.collect_ctrf.outputs.has_reports == 'true'
         uses: ctrf-io/github-test-reporter@024bc4b64d997ca9da86833c6b9548c55c620e40 # v1.0.26
         with:
-          report-path: "ctrf-merged.json"
+          report-path: "ctrf-plugin-reports/ctrf-merged.json"
           summary-report: true
           github-report: true
           failed-folded-report: true
           flaky-report: true
           annotate: true
           commit-report: false
-          status-check: false
+          status-check: true
+          status-check-name: "Unit Tests (CTRF)"
           summary: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -334,28 +397,34 @@ jobs:
 
             # Check SonarQube quality gate for PRs
             if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-              if [[ "${{ steps.sonar_gate.outcome }}" == "success" || "${{ steps.sonar_gate.outcome }}" == "skipped" ]]; then
-                echo "SonarQube quality gate passed or was skipped"
-              else
-                echo "SonarQube quality gate failed"
-                exit 1
-              fi
-
-              if [[ "${{ steps.unit_tests_gate.outcome }}" == "success" || "${{ steps.unit_tests_gate.outcome }}" == "skipped" ]]; then
-                echo "Unit tests gate passed or was skipped"
-              else
-                echo "Unit tests gate failed"
-                exit 1
-              fi
-
-              # Check aggregated FOSSA guard for non-release-please PRs
               if [[ "${{ github.head_ref }}" == *"release-please"* ]]; then
-                echo "Release-please PR detected - skipping FOSSA report gate"
-              elif [[ "${{ steps.fossa_guard_gate.outcome }}" == "success" || "${{ steps.fossa_guard_gate.outcome }}" == "skipped" ]]; then
-                echo "FOSSA guard passed or was skipped"
+                if [[ "${{ steps.release_readiness_gate.outcome }}" == "success" || "${{ steps.release_readiness_gate.outcome }}" == "skipped" ]]; then
+                  echo "Release readiness check passed or was skipped"
+                else
+                  echo "Release readiness check failed"
+                  exit 1
+                fi
               else
-                echo "FOSSA guard failed"
-                exit 1
+                if [[ "${{ steps.sonar_gate.outcome }}" == "success" || "${{ steps.sonar_gate.outcome }}" == "skipped" ]]; then
+                  echo "SonarQube quality gate passed or was skipped"
+                else
+                  echo "SonarQube quality gate failed"
+                  exit 1
+                fi
+
+                if [[ "${{ steps.unit_tests_gate.outcome }}" == "success" || "${{ steps.unit_tests_gate.outcome }}" == "skipped" ]]; then
+                  echo "Unit tests gate passed or was skipped"
+                else
+                  echo "Unit tests gate failed"
+                  exit 1
+                fi
+
+                if [[ "${{ steps.fossa_guard_gate.outcome }}" == "success" || "${{ steps.fossa_guard_gate.outcome }}" == "skipped" ]]; then
+                  echo "FOSSA guard passed or was skipped"
+                else
+                  echo "FOSSA guard failed"
+                  exit 1
+                fi
               fi
             fi
           else
@@ -364,4 +433,3 @@ jobs:
           fi
 
           echo "All CI checks passed!"
-
