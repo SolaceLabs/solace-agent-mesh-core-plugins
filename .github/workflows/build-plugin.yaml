@@ -30,20 +30,16 @@ on:
         type: choice
         options:
           - sam-bedrock-agent
-          - sam-event-mesh-agent
           - sam-event-mesh-gateway
           - sam-event-mesh-tool
           - sam-geo-information
-          - sam-mermaid
           - sam-mongodb
           - sam-nuclia-tool
           - sam-rag
           - sam-rest-gateway
           - sam-ruleset-lookup-tool
-          - sam-slack
           - sam-mcp-server-gateway-adapter
           - sam-slack-gateway-adapter
-          - sam-sql-database
           - sam-sql-database-tool
           - sam-webhook-gateway
       ref:
@@ -77,7 +73,11 @@ jobs:
       - name: get Sha
         id: get-sha
         run: |
-          echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          SHA="$(git rev-parse HEAD)"
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+          echo "Checked out SHA: $SHA"
+          echo "Base SHA: ${{ github.event.pull_request.base.sha }}"
+          echo "Head SHA: ${{ github.event.pull_request.head.sha }}"
 
       - name: Install uv
         id: setup-uv
@@ -114,19 +114,30 @@ jobs:
             echo "tests_present=false" >> $GITHUB_OUTPUT
             echo "junit_exists=false" >> $GITHUB_OUTPUT
             echo "coverage_exists=false" >> $GITHUB_OUTPUT
+            echo "ctrf_exists=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
           echo "tests_present=true" >> $GITHUB_OUTPUT
 
-          # Run tests with coverage if pytest-cov is available, otherwise without
-          if hatch -v run hatch-test.py3.13:pip show pytest-cov > /dev/null 2>&1; then
-            echo "Running tests with coverage..."
-            hatch -v run hatch-test.py3.13:pytest tests/ --cov --cov-report=xml:coverage.xml --cov-report=term --junitxml=junit.xml
-          else
-            echo "Running tests without coverage (pytest-cov not available)..."
-            hatch -v run hatch-test.py3.13:pytest tests/ --junitxml=junit.xml
+          # Ensure required test tooling is available in the hatch test env.
+          MISSING=()
+          for pkg in pytest pytest-cov pytest-json-ctrf; do
+            if ! hatch -v run hatch-test.py3.13:pip show "$pkg" > /dev/null 2>&1; then
+              MISSING+=("$pkg")
+            fi
+          done
+
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo "Installing missing test dependencies: ${MISSING[*]}"
+            hatch -v run hatch-test.py3.13:pip install pytest "pytest-cov>=4.0.0" "pytest-json-ctrf>=0.1.0"
           fi
+
+          echo "Running tests with coverage and CTRF output..."
+          set +e
+          hatch -v run hatch-test.py3.13:pytest tests/ --cov --cov-report=xml:coverage.xml --cov-report=term --junitxml=junit.xml --ctrf report.json
+          TEST_RC=$?
+          set -e
 
           # Check if result files exist
           if [ -f coverage.xml ]; then
@@ -139,6 +150,13 @@ jobs:
           else
             echo "junit_exists=false" >> $GITHUB_OUTPUT
           fi
+          if [ -f report.json ]; then
+            echo "ctrf_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "ctrf_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+          exit "$TEST_RC"
 
       - name: SonarQube Scan
         id: sonarqube-scan
@@ -188,31 +206,69 @@ jobs:
       - name: Resolve FOSSA scan target
         id: fossa_target
         shell: bash
-        working-directory: ${{ inputs.plugin_directory }}
         run: |
           REF_HINT="${{ inputs.ref || github.ref_name }}"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            IS_RELEASE_PLEASE_PR=$([[ "${{ github.head_ref }}" == *"release-please"* ]] && echo "true" || echo "false")
+          EVENT_NAME="${{ github.event_name }}"
+          HEAD_REF="${{ github.head_ref }}"
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+          CURRENT_REF_NAME="${{ github.ref_name }}"
+          BEFORE_SHA="${{ github.event.before }}"
+          CURRENT_SHA="${{ steps.get-sha.outputs.sha }}"
+          PLUGIN="${{ inputs.plugin_directory }}"
+
+          MANIFEST_FILE="${GITHUB_WORKSPACE}/.release-please-manifest.json"
+          MANIFEST_VERSION=""
+          if [[ -f "$MANIFEST_FILE" ]]; then
+            MANIFEST_VERSION="$(MANIFEST_FILE="$MANIFEST_FILE" PLUGIN="$PLUGIN" python3 -c "import json,os;from pathlib import Path;manifest=Path(os.environ['MANIFEST_FILE']);data=json.loads(manifest.read_text(encoding='utf-8')) if manifest.exists() else {};print(str(data.get(os.environ['PLUGIN'], '')).strip())")"
+          fi
+
+          VERSION_BUMP_ON_MAIN="false"
+          MAIN_BUMP_VERSION=""
+          if [[ "$EVENT_NAME" == "push" && "$CURRENT_REF_NAME" == "$DEFAULT_BRANCH" ]]; then
+            if [[ -n "$BEFORE_SHA" ]] && git cat-file -e "$BEFORE_SHA" 2>/dev/null; then
+              if git diff --name-only "$BEFORE_SHA" "$CURRENT_SHA" -- ".release-please-manifest.json" | grep -q ".release-please-manifest.json"; then
+                MAIN_BUMP_VERSION="$(PLUGIN="$PLUGIN" BEFORE_SHA="$BEFORE_SHA" CURRENT_SHA="$CURRENT_SHA" python3 -c "import json,os,subprocess;plugin=os.environ['PLUGIN'];before=os.environ['BEFORE_SHA'];current=os.environ['CURRENT_SHA'];getv=lambda rev:(lambda r:(json.loads(r.stdout).get(plugin,'') if r.returncode==0 and r.stdout else ''))(subprocess.run(['git','show',f'{rev}:.release-please-manifest.json'],capture_output=True,text=True));old=str(getv(before)).strip();new=str(getv(current)).strip();print(new if new and new!=old else '')")"
+                if [[ -n "$MAIN_BUMP_VERSION" ]]; then
+                  VERSION_BUMP_ON_MAIN="true"
+                fi
+              fi
+            fi
+          fi
+
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            IS_RELEASE_PLEASE_PR=$([[ "$HEAD_REF" == *"release-please"* ]] && echo "true" || echo "false")
           else
             IS_RELEASE_PLEASE_PR=$([[ "$REF_HINT" == *"release-please"* ]] && echo "true" || echo "false")
           fi
 
           if [[ "$IS_RELEASE_PLEASE_PR" == "true" ]]; then
-            BRANCH="main"
-            REVISION="$(hatch version 2>/dev/null || true)"
+            BRANCH="ReleasePleasePR"
+            REVISION="$MANIFEST_VERSION"
             if [[ -z "$REVISION" ]]; then
-              REVISION="${{ steps.get-sha.outputs.sha }}"
+              REVISION="$(cd "$PLUGIN" && hatch version 2>/dev/null || true)"
+            fi
+            if [[ -z "$REVISION" ]]; then
+              REVISION="$CURRENT_SHA"
             fi
             ENABLE_DIFF_MODE="false"
             DIFF_BASE_REVISION_SHA=""
-          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
             BRANCH="PR"
-            REVISION="${{ github.head_ref }}"
+            REVISION="$HEAD_REF"
             ENABLE_DIFF_MODE="true"
             DIFF_BASE_REVISION_SHA="${{ github.event.pull_request.base.sha }}"
+          elif [[ "$EVENT_NAME" == "push" && "$CURRENT_REF_NAME" == "$DEFAULT_BRANCH" ]]; then
+            BRANCH="main"
+            if [[ "$VERSION_BUMP_ON_MAIN" == "true" ]]; then
+              REVISION="$MAIN_BUMP_VERSION"
+            else
+              REVISION="$CURRENT_SHA"
+            fi
+            ENABLE_DIFF_MODE="false"
+            DIFF_BASE_REVISION_SHA=""
           else
-            BRANCH="${{ github.event.repository.default_branch }}"
-            REVISION="${{ steps.get-sha.outputs.sha }}"
+            BRANCH="$DEFAULT_BRANCH"
+            REVISION="$CURRENT_SHA"
             ENABLE_DIFF_MODE="false"
             DIFF_BASE_REVISION_SHA=""
           fi
@@ -297,92 +353,44 @@ jobs:
             echo '{"metadata":{"category":"vulnerability"},"summary":{"total_issues":0,"blocking_issues":0},"issues":[]}' > "$DEST"
           fi
 
-      - name: Build CI plugin result payload
+      - name: Resolve unit-test status
+        id: unit_test_status
         if: always()
         shell: bash
-        env:
-          PLUGIN: ${{ inputs.plugin_directory }}
-          REPO_OWNER: ${{ github.repository_owner }}
-          TEST_OUTCOME: ${{ steps.test.outcome }}
-          TESTS_PRESENT: ${{ steps.test.outputs.tests_present }}
-          JUNIT_EXISTS: ${{ steps.test.outputs.junit_exists }}
-          COVERAGE_EXISTS: ${{ steps.test.outputs.coverage_exists }}
-          SONAR_OUTCOME: ${{ steps.sonarqube-scan.outcome }}
-          FOSSA_BRANCH: ${{ steps.fossa_target.outputs.branch }}
-          FOSSA_REVISION: ${{ steps.fossa_target.outputs.revision }}
-          FOSSA_DIFF_MODE: ${{ steps.fossa_target.outputs.enable_diff_mode }}
-          FOSSA_LICENSING_OUTCOME: ${{ steps.fossa_guard_licensing.outcome }}
-          FOSSA_VULNERABILITY_OUTCOME: ${{ steps.fossa_guard_vulnerability.outcome }}
         run: |
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          from urllib.parse import quote
+          if [[ "${{ steps.test.outputs.tests_present }}" != "true" ]]; then
+            STATUS="skipped"
+          elif [[ "${{ steps.test.outcome }}" == "success" ]]; then
+            STATUS="passed"
+          else
+            STATUS="failed"
+          fi
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
 
-          def _load_summary(path: str) -> tuple[int, int]:
-              report_path = Path(path)
-              if not report_path.exists():
-                  return 0, 0
-              try:
-                  payload = json.loads(report_path.read_text(encoding="utf-8"))
-              except Exception:
-                  return 0, 0
-              summary = payload.get("summary", {}) if isinstance(payload, dict) else {}
-              total = int(summary.get("total_issues", 0) or 0)
-              blocking = int(summary.get("blocking_issues", 0) or 0)
-              return total, blocking
-
-          tests_present = os.environ.get("TESTS_PRESENT") == "true"
-          test_outcome = os.environ.get("TEST_OUTCOME", "missing")
-          if not tests_present:
-              tests_status = "skipped"
-          elif test_outcome == "success":
-              tests_status = "passed"
-          else:
-              tests_status = "failed"
-
-          plugin = os.environ.get("PLUGIN")
-          repo_owner = os.environ.get("REPO_OWNER")
-          branch = os.environ.get("FOSSA_BRANCH", "")
-          revision = os.environ.get("FOSSA_REVISION", "")
-          diff_mode = os.environ.get("FOSSA_DIFF_MODE", "false") == "true"
-          project_id = f"{repo_owner}_{plugin}"
-          locator = quote(f"custom+48578/{project_id}", safe="")
-          encoded_branch = quote(branch, safe="")
-          encoded_revision = quote(revision, safe="")
-          report_url = f"https://app.fossa.com/projects/{locator}/refs/branch/{encoded_branch}/{encoded_revision}"
-
-          licensing_total, licensing_blocking = _load_summary(
-              f"fossa-guard-licensing-{plugin}.json"
-          )
-          vulnerability_total, vulnerability_blocking = _load_summary(
-              f"fossa-guard-vulnerability-{plugin}.json"
-          )
-
-          payload = {
-              "plugin": plugin,
-              "tests_status": tests_status,
-              "tests_present": tests_present,
-              "test_outcome": test_outcome,
-              "junit_exists": os.environ.get("JUNIT_EXISTS") == "true",
-              "coverage_exists": os.environ.get("COVERAGE_EXISTS") == "true",
-              "sonar_outcome": os.environ.get("SONAR_OUTCOME", "missing"),
-              "fossa_project_id": project_id,
-              "fossa_branch": branch,
-              "fossa_revision": revision,
-              "fossa_diff_mode": diff_mode,
-              "fossa_report_url": report_url,
-              "fossa_licensing_outcome": os.environ.get("FOSSA_LICENSING_OUTCOME", "missing"),
-              "fossa_licensing_total_issues": licensing_total,
-              "fossa_licensing_blocking_issues": licensing_blocking,
-              "fossa_vulnerability_outcome": os.environ.get("FOSSA_VULNERABILITY_OUTCOME", "missing"),
-              "fossa_vulnerability_total_issues": vulnerability_total,
-              "fossa_vulnerability_blocking_issues": vulnerability_blocking,
-          }
-          result_file = f"ci-plugin-result-{plugin}.json"
-          Path(result_file).write_text(json.dumps(payload, indent=2), encoding="utf-8")
-          PY
+      - name: Build unified CI plugin report payload
+        if: always()
+        uses: SolaceDev/solace-public-workflows/.github/actions/plugin-ci-report@aggregation
+        with:
+          plugin_name: ${{ inputs.plugin_directory }}
+          project_path: ${{ inputs.plugin_directory }}
+          repo_owner: ${{ github.repository_owner }}
+          branch: ${{ steps.fossa_target.outputs.branch }}
+          revision: ${{ steps.fossa_target.outputs.revision }}
+          sha: ${{ steps.get-sha.outputs.sha }}
+          github_event: ${{ github.event_name }}
+          sonarqube_result: ${{ steps.sonarqube-scan.outcome }}
+          unit_test_result: ${{ steps.unit_test_status.outputs.status }}
+          unit_test_outcome: ${{ steps.test.outcome }}
+          unit_test_report_path: ${{ inputs.plugin_directory }}/report.json
+          tests_present: ${{ steps.test.outputs.tests_present }}
+          junit_exists: ${{ steps.test.outputs.junit_exists }}
+          coverage_exists: ${{ steps.test.outputs.coverage_exists }}
+          fossa_diff_mode: ${{ steps.fossa_target.outputs.enable_diff_mode }}
+          fossa_licensing_result: ${{ steps.fossa_guard_licensing.outcome }}
+          fossa_licensing_report_path: fossa-guard-licensing-${{ inputs.plugin_directory }}.json
+          fossa_vulnerability_result: ${{ steps.fossa_guard_vulnerability.outcome }}
+          fossa_vulnerability_report_path: fossa-guard-vulnerability-${{ inputs.plugin_directory }}.json
+          output_file: ci-plugin-result-${{ inputs.plugin_directory }}.json
 
       - name: Upload CI plugin result
         if: always()
