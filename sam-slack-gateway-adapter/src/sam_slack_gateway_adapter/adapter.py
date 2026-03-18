@@ -324,7 +324,7 @@ class SlackAdapter(GatewayAdapter):
         """Extract user identity from a Slack event."""
         # Skip bot messages - they will be filtered out in prepare_task anyway
         if (
-            external_input.get("bot_id")
+            (external_input.get("bot_id") and not external_input.get("user"))
             or external_input.get("subtype") == "bot_message"
         ):
             log.debug("Skipping auth claims extraction for bot message")
@@ -435,7 +435,7 @@ class SlackAdapter(GatewayAdapter):
     ) -> SamTask:
         """Convert a Slack event into a SamTask."""
         if (
-            external_input.get("bot_id")
+            (external_input.get("bot_id") and not external_input.get("user"))
             or external_input.get("subtype") == "bot_message"
         ):
             raise ValueError("Ignoring bot message")
