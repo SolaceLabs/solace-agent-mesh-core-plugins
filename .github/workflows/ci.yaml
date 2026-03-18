@@ -178,6 +178,7 @@ jobs:
         uses: SolaceDev/solace-public-workflows/monorepo-ci-report-status@aggregation
         with:
           check_type: sonarqube
+          projects_json: ${{ needs.label-pr.outputs.all_plugins }}
           results_dir: ci-plugin-results
           github_token: ${{ secrets.GITHUB_TOKEN }}
           pr_number: ${{ github.event.pull_request.number }}
@@ -197,6 +198,7 @@ jobs:
         uses: SolaceDev/solace-public-workflows/monorepo-ci-report-status@aggregation
         with:
           check_type: unit-tests
+          projects_json: ${{ needs.label-pr.outputs.all_plugins }}
           results_dir: ci-plugin-results
           github_token: ${{ secrets.GITHUB_TOKEN }}
           pr_number: ${{ github.event.pull_request.number }}
@@ -204,49 +206,6 @@ jobs:
           comment_on_pr: "false"
           update_check_details: "true"
           fail_on_issues: "true"
-
-      - name: Collect CTRF reports from plugin payloads
-        id: collect_ctrf
-        if: always() && github.event_name == 'pull_request' && !contains(github.head_ref, 'release-please') && needs.label-pr.outputs.all_plugins != '[]'
-        env:
-          RESULTS_DIR: ci-plugin-results
-          OUTPUT_DIR: ctrf-plugin-reports
-        run: python3 .github/scripts/collect_ctrf_reports.py
-
-      - name: Merge CTRF reports
-        id: merge_ctrf
-        if: always() && steps.collect_ctrf.outputs.has_reports == 'true'
-        shell: bash
-        run: npx ctrf-cli@0.0.5 merge ctrf-plugin-reports --output ctrf-merged.json
-
-      - name: Upload merged CTRF report artifact
-        if: always() && steps.collect_ctrf.outputs.has_reports == 'true' && steps.merge_ctrf.outcome == 'success'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: ctrf-merged-report
-          path: ctrf-plugin-reports/ctrf-merged.json
-          retention-days: 7
-
-      - name: Publish CTRF Test Report
-        if: always() && steps.collect_ctrf.outputs.has_reports == 'true' && steps.merge_ctrf.outcome == 'success'
-        uses: ctrf-io/github-test-reporter@024bc4b64d997ca9da86833c6b9548c55c620e40 # v1.0.26
-        with:
-          report-path: "ctrf-plugin-reports/ctrf-merged.json"
-          summary-report: true
-          github-report: true
-          failed-folded-report: true
-          flaky-report: true
-          annotate: true
-          commit-report: false
-          status-check: true
-          status-check-name: "Unit Tests (CTRF)"
-          exit-on-no-files: true
-          upload-artifact: true
-          artifact-name: ctrf-processed-report
-          write-ctrf-to-file: ctrf-plugin-reports/ctrf-processed.json
-          summary: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish FOSSA Guard check
         id: fossa_guard_gate

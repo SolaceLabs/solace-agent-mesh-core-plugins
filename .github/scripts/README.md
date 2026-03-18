@@ -44,28 +44,6 @@ Used by `ci.yaml` (`label-pr` job) to resolve changed plugins and generate matri
 - Filters deprecated plugins using `.github/scripts/plugin_exceptions.py`.
 - Emits both CSV and matrix JSON outputs for downstream jobs.
 
-## `collect_ctrf_reports.py`
-
-Used by `ci.yaml` (`ci-status` job) to collect CTRF reports from project CI payloads.
-
-### Inputs (environment variables)
-
-- `RESULTS_DIR` (default: `ci-plugin-results`)
-- `OUTPUT_DIR` (default: `ctrf-plugin-reports`)
-- `GITHUB_OUTPUT` (provided by GitHub Actions)
-
-### Outputs (written to `GITHUB_OUTPUT`)
-
-- `count`: number of collected CTRF reports
-- `has_reports`: `true` when at least one CTRF report was collected
-
-### Behavior
-
-- Reads all JSON payloads under `RESULTS_DIR`.
-- Accepts project identity from `project` (preferred) or `plugin` (backward compatibility).
-- Extracts `unit_test_report` only when it is a valid CTRF object with `results`.
-- Writes one CTRF file per project into `OUTPUT_DIR` (`<project>.json`).
-
 ## `resolve_fossa_target.py`
 
 Used by `build-plugin.yaml` to resolve FOSSA scan target values for a plugin build.
