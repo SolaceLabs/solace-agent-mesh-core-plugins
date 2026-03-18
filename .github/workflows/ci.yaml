@@ -154,7 +154,7 @@ jobs:
         id: release_readiness_gate
         if: always() && github.event_name == 'pull_request' && contains(github.head_ref, 'release-please') && needs.label-pr.outputs.all_plugins != '[]' && (needs.builds.result == 'success' || needs.builds.result == 'skipped')
         continue-on-error: true
-        uses: SolaceDev/solace-public-workflows/pr-release-readiness-check@aggregation
+        uses: SolaceDev/solace-public-workflows/pr-release-readiness-check@main
         with:
           pr_number: ${{ github.event.pull_request.number }}
           github_token: ${{ github.token }}
@@ -175,7 +175,7 @@ jobs:
         continue-on-error: true
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        uses: SolaceDev/solace-public-workflows/monorepo-ci-report-status@aggregation
+        uses: SolaceDev/solace-public-workflows/monorepo-ci-report-status@main
         with:
           check_type: sonarqube
           projects_json: ${{ needs.label-pr.outputs.all_plugins }}
@@ -195,7 +195,7 @@ jobs:
         continue-on-error: true
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        uses: SolaceDev/solace-public-workflows/monorepo-ci-report-status@aggregation
+        uses: SolaceDev/solace-public-workflows/monorepo-ci-report-status@main
         with:
           check_type: unit-tests
           projects_json: ${{ needs.label-pr.outputs.all_plugins }}
@@ -213,7 +213,7 @@ jobs:
         continue-on-error: true
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        uses: SolaceDev/solace-public-workflows/monorepo-fossa-diff-report@aggregation
+        uses: SolaceDev/solace-public-workflows/monorepo-fossa-diff-report@main
         with:
           projects_json: ${{ needs.label-pr.outputs.all_plugins }}
           repo_owner: ${{ github.repository_owner }}
