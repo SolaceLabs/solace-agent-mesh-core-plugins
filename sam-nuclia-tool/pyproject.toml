@@ -30,3 +30,10 @@ src-path = "src"
 "config.yaml" = "sam_nuclia_tool/config.yaml"
 "README.md" = "sam_nuclia_tool/README.md"
 "pyproject.toml" = "sam_nuclia_tool/pyproject.toml"
+
+[tool.hatch.envs.hatch-test]
+dependencies = [
+  "pytest>=8.0.0",
+  "pytest-cov>=4.0.0",
+  "pytest-json-ctrf>=0.1.0",
+]

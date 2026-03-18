@@ -152,6 +152,8 @@ dmypy.json
 
 # pytype static type analyzer
 .pytype/
+**/*junit*.xml
+**/*coverage*.xml
 
 # Cython debug symbols
 cython_debug/
