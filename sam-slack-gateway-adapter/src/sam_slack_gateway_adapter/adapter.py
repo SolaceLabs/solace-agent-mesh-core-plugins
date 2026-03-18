@@ -318,15 +318,24 @@ class SlackAdapter(GatewayAdapter):
                 text="Thank you for your feedback!",
             )
 
+    @staticmethod
+    def _is_bot_message(event: Dict) -> bool:
+        """Return True if the event should be treated as a bot message and ignored.
+
+        A pure bot message has bot_id but no user (e.g. xoxb- token).
+        A user message via an app has both bot_id AND user (e.g. xoxp- token) and
+        should be processed normally.
+        """
+        return (
+            (event.get("bot_id") and not event.get("user"))
+            or event.get("subtype") == "bot_message"
+        )
+
     async def extract_auth_claims(
         self, external_input: Dict, endpoint_context: Optional[Dict[str, Any]] = None
     ) -> Optional[AuthClaims]:
         """Extract user identity from a Slack event."""
-        # Skip bot messages - they will be filtered out in prepare_task anyway
-        if (
-            (external_input.get("bot_id") and not external_input.get("user"))
-            or external_input.get("subtype") == "bot_message"
-        ):
+        if self._is_bot_message(external_input):
             log.debug("Skipping auth claims extraction for bot message")
             return None
 
@@ -434,10 +443,7 @@ class SlackAdapter(GatewayAdapter):
         self, external_input: Dict, endpoint_context: Optional[Dict[str, Any]] = None
     ) -> SamTask:
         """Convert a Slack event into a SamTask."""
-        if (
-            (external_input.get("bot_id") and not external_input.get("user"))
-            or external_input.get("subtype") == "bot_message"
-        ):
+        if self._is_bot_message(external_input):
             raise ValueError("Ignoring bot message")
 
         channel_id = external_input.get("channel")
