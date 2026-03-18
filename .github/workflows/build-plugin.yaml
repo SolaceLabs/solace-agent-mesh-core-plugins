@@ -324,7 +324,7 @@ jobs:
 
       - name: Build unified CI plugin report payload
         if: always()
-        uses: SolaceDev/solace-public-workflows/.github/actions/monorepo-project-ci-report@aggregation
+        uses: SolaceDev/solace-public-workflows/monorepo-project-ci-report@aggregation
         with:
           project_name: ${{ inputs.plugin_directory}}
           project_path: ${{ inputs.plugin_directory }}
