@@ -326,7 +326,7 @@ jobs:
         if: always()
         uses: SolaceDev/solace-public-workflows/monorepo-project-ci-report@aggregation
         with:
-          project_name: ${{ inputs.plugin_directory}}
+          project_name: ${{ inputs.plugin_directory }}
           project_path: ${{ inputs.plugin_directory }}
           repo_owner: ${{ github.repository_owner }}
           branch: ${{ steps.fossa_target.outputs.branch }}
@@ -337,6 +337,7 @@ jobs:
           unit_test_result: ${{ steps.unit_test_status.outputs.status }}
           unit_test_outcome: ${{ steps.test.outcome }}
           unit_test_report_path: ${{ inputs.plugin_directory }}/report.json
+          unit_test_junit_report_path: ${{ inputs.plugin_directory }}/junit.xml
           tests_present: ${{ steps.test.outputs.tests_present }}
           junit_exists: ${{ steps.test.outputs.junit_exists }}
           coverage_exists: ${{ steps.test.outputs.coverage_exists }}
