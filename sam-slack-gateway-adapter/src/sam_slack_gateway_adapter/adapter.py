@@ -665,11 +665,22 @@ class SlackAdapter(GatewayAdapter):
             return ":page_with_curl:"
         return ":page_facing_up:"
 
-    def _format_text(self, text: str) -> str:
-        """Applies markdown correction if enabled."""
+    def _format_text(self, text: str, task_id: Optional[str] = None) -> str:
+        """Applies markdown correction and citation transformation if enabled.
+
+        Args:
+            text: The raw text to format.
+            task_id: Optional task ID to look up the citation map for this task.
+        """
         adapter_config: SlackAdapterConfig = self.context.adapter_config
         if adapter_config.correct_markdown_formatting:
-            return utils.correct_slack_markdown(text)
+            # Get citation map for this task (if available)
+            citation_map = None
+            if task_id:
+                citation_map = self.context.get_task_state(
+                    task_id, "citation_map"
+                )
+            return utils.correct_slack_markdown(text, citation_map)
         return text
 
     async def _handle_file_part_queued(
@@ -682,6 +693,44 @@ class SlackAdapter(GatewayAdapter):
             uri_text = f":link: Artifact available: {part.name} - {part.uri}"
             await queue.queue_message_post(uri_text)
 
+    def _capture_rag_sources(self, task_id: str, sources: list) -> None:
+        """
+        Capture RAG source metadata into a citation map stored in task state.
+
+        This builds a mapping of citation_id -> source info that is used by
+        _format_text() to transform [[cite:...]] markers into Slack links.
+
+        Args:
+            task_id: The task ID to store the citation map under.
+            sources: List of source dicts from RAG metadata (camelCase keys).
+        """
+        if not sources:
+            return
+
+        # Get or create the citation map for this task
+        citation_map = self.context.get_task_state(task_id, "citation_map") or {}
+
+        for source in sources:
+            citation_id = source.get("citationId")
+            if not citation_id:
+                continue
+
+            # Store the source info keyed by citation ID
+            citation_map[citation_id] = {
+                "sourceUrl": source.get("sourceUrl"),
+                "url": source.get("url"),
+                "title": source.get("title"),
+                "filename": source.get("filename"),
+                "metadata": source.get("metadata", {}),
+            }
+
+        self.context.set_task_state(task_id, "citation_map", citation_map)
+        log.debug(
+            "[SlackAdapter] Updated citation map for task %s: %d citations",
+            task_id,
+            len(citation_map),
+        )
+
     async def _handle_data_part_queued(
         self, part: SamDataPart, queue: SlackMessageQueue, context: ResponseContext
     ):
@@ -691,7 +740,12 @@ class SlackAdapter(GatewayAdapter):
         channel_id = context.platform_context["channel_id"]
         thread_ts = context.platform_context["thread_ts"]
 
-        if data_type == "agent_progress_update":
+        if data_type == "rag_info_update":
+            # Capture RAG source metadata for citation link resolution
+            sources = part.data.get("sources", [])
+            self._capture_rag_sources(task_id, sources)
+
+        elif data_type == "agent_progress_update":
             status_text = part.data.get("status_text")
             if status_text:
                 await self.handle_status_update(status_text, context)

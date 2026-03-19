@@ -682,8 +682,8 @@ class SlackMessageQueue:
                 self.task_id, len(pending_text_ops), len(self.text_buffer)
             )
         
-        # Format the FULL buffer
-        formatted_text = self.adapter._format_text(self.text_buffer)
+        # Format the FULL buffer (pass task_id for citation map lookup)
+        formatted_text = self.adapter._format_text(self.text_buffer, task_id=self.task_id)
         
         # Reset retry counter for this send attempt
         self._throttle_retry_count = 0

@@ -7,7 +7,7 @@ import json
 import logging
 import re
 import uuid
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import requests
 from slack_sdk.errors import SlackApiError
@@ -45,13 +45,129 @@ def create_slack_session_id(channel_id: str, thread_ts: Optional[str]) -> str:
     return f"slack-{channel_id}"
 
 
-def correct_slack_markdown(text: str) -> str:
+# --- Citation Patterns ---
+# Matches SAM citation markers: [[cite:s0r0]], [[cite:research0]], [[cite:idx0r0]]
+# Also handles single-bracket variants: [cite:s0r0]
+# Also handles comma-separated multi-citations: [[cite:s0r0, s0r1, s0r2]]
+CITATION_PATTERN = re.compile(
+    r"\[?\[cite:((?:s\d+r\d+|idx\d+r\d+|research\d+)"
+    r"(?:\s*,\s*(?:cite:)?(?:s\d+r\d+|idx\d+r\d+|research\d+))*)\]\]?"
+)
+# Pattern to extract individual citation IDs from a comma-separated list
+INDIVIDUAL_CITATION_PATTERN = re.compile(
+    r"(?:cite:)?(s\d+r\d+|idx\d+r\d+|research\d+)"
+)
+
+
+def _get_domain_from_url(url: str) -> str:
+    """Extract a clean domain name from a URL for display."""
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        domain = parsed.hostname or url
+        # Remove www. prefix
+        if domain.startswith("www."):
+            domain = domain[4:]
+        return domain
+    except Exception:
+        return url
+
+
+def transform_citations_for_slack(
+    text: str, citation_map: Optional[Dict[str, Dict[str, Any]]] = None
+) -> str:
+    """
+    Transform SAM citation markers into Slack mrkdwn links or clean text.
+
+    Citation formats handled:
+    - Web search: [[cite:s{turn}r{index}]] (e.g., [[cite:s0r0]], [[cite:s1r2]])
+    - Document search: [[cite:idx{turn}r{index}]] (e.g., [[cite:idx0r0]])
+    - Deep research: [[cite:research{N}]] (e.g., [[cite:research0]])
+    - Multi-citations: [[cite:s0r0, s0r1, s0r2]]
+
+    Args:
+        text: The text containing citation markers.
+        citation_map: Optional mapping of citation_id -> source info dict.
+            Each source info dict should have at least:
+            - "url" or "sourceUrl": The source URL
+            - "title" or "filename": The source title
+            Example: {"s0r0": {"sourceUrl": "https://...", "title": "..."}}
+
+    Returns:
+        Text with citations replaced by Slack mrkdwn links or stripped.
+    """
+    if not isinstance(text, str):
+        return text
+
+    citation_map = citation_map or {}
+
+    def _replace_citation_match(match: re.Match) -> str:
+        """Replace a single or multi-citation match with Slack links."""
+        content = match.group(1)
+        # Extract individual citation IDs
+        citation_ids = INDIVIDUAL_CITATION_PATTERN.findall(content)
+
+        if not citation_ids:
+            return ""  # Strip unrecognized citation markers
+
+        links = []
+        for cid in citation_ids:
+            source = citation_map.get(cid)
+            if source:
+                url = (
+                    source.get("sourceUrl")
+                    or source.get("url")
+                    or source.get("metadata", {}).get("link")
+                )
+                title = source.get("title") or source.get("filename")
+                if url:
+                    domain = _get_domain_from_url(url)
+                    display = title if title and len(title) <= 40 else domain
+                    links.append(f"<{url}|{display}>")
+                elif title:
+                    links.append(f"_{title}_")
+                else:
+                    # No URL or title — skip this citation silently
+                    pass
+            else:
+                # No source info available — strip the citation marker
+                pass
+
+        if not links:
+            return ""
+
+        # Join multiple citations with commas, wrapped in parentheses
+        if len(links) == 1:
+            return f" ({links[0]})"
+        return " (" + ", ".join(links) + ")"
+
+    try:
+        text = CITATION_PATTERN.sub(_replace_citation_match, text)
+    except Exception as e:
+        log.warning("[SlackUtil:transform_citations] Error: %s", e)
+
+    return text
+
+
+def correct_slack_markdown(
+    text: str, citation_map: Optional[Dict[str, Dict[str, Any]]] = None
+) -> str:
     """
     Converts common Markdown to Slack's mrkdwn format, avoiding changes inside code blocks.
+    Also transforms SAM citation markers into Slack-friendly links.
+
+    Args:
+        text: The markdown text to convert.
+        citation_map: Optional mapping of citation_id -> source info for link resolution.
     """
     if not isinstance(text, str):
         return text
     try:
+        # Step 0: Transform citation markers BEFORE markdown processing
+        # (citations contain brackets that could interfere with link conversion)
+        text = transform_citations_for_slack(text, citation_map)
+
         # Split text by code blocks to avoid formatting inside them
         parts = re.split(r"(```.*?```)", text, flags=re.DOTALL)
         processed_parts = []
