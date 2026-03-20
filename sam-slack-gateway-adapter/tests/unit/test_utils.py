@@ -499,9 +499,9 @@ class TestTransformCitationsForMarkdown:
             }
         }
         result = utils.transform_citations_for_markdown(text, citation_map)
-        assert "[Example Article](https://example.com/article)" in result
-        # Must NOT contain Slack mrkdwn format
-        assert "<https://" not in result
+        assert "[Example Article](<https://example.com/article>)" in result
+        # Must NOT contain Slack mrkdwn <url|text> format
+        assert "|" not in result or "&#124;" in result
         assert "[[cite:" not in result
 
     def test_domain_fallback_in_markdown(self):
@@ -511,7 +511,7 @@ class TestTransformCitationsForMarkdown:
             "s0r0": {"sourceUrl": "https://www.example.com/long/path"},
         }
         result = utils.transform_citations_for_markdown(text, citation_map)
-        assert "[example.com](https://www.example.com/long/path)" in result
+        assert "[example.com](<https://www.example.com/long/path>)" in result
 
     def test_multi_citations_in_markdown(self):
         """Test multiple citations produce markdown links."""
@@ -521,8 +521,8 @@ class TestTransformCitationsForMarkdown:
             "research1": {"sourceUrl": "https://b.com", "title": "Source B"},
         }
         result = utils.transform_citations_for_markdown(text, citation_map)
-        assert "[Source A](https://a.com)" in result
-        assert "[Source B](https://b.com)" in result
+        assert "[Source A](<https://a.com>)" in result
+        assert "[Source B](<https://b.com>)" in result
 
     def test_no_map_strips_citations(self):
         """Test that citations are stripped when no map is provided."""
@@ -563,10 +563,10 @@ class TestTransformCitationsForMarkdown:
         }
         result = utils.transform_citations_for_markdown(text, citation_map)
         assert "[[cite:" not in result
-        assert "[AI Impact Study](https://arxiv.org/paper1)" in result
-        assert "[McKinsey AI Report](https://mckinsey.com/report)" in result
-        assert "[Gartner Hype Cycle](https://gartner.com/hype)" in result
-        assert "[Nature AI Review](https://nature.com/article)" in result
+        assert "[AI Impact Study](<https://arxiv.org/paper1>)" in result
+        assert "[McKinsey AI Report](<https://mckinsey.com/report>)" in result
+        assert "[Gartner Hype Cycle](<https://gartner.com/hype>)" in result
+        assert "[Nature AI Review](<https://nature.com/article>)" in result
         # Verify markdown structure is preserved
         assert "## Executive Summary" in result
         assert "## Analysis" in result

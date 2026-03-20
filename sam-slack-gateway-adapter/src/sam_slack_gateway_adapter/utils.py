@@ -73,8 +73,12 @@ def _has_valid_url_scheme(url: str) -> bool:
 
 def _sanitize_for_slack_mrkdwn(text: str) -> str:
     """Escape characters that have special meaning in Slack mrkdwn link syntax."""
-    # Escape |, <, > which are structural in Slack mrkdwn links
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("|", "&#124;")
+    # & must be escaped first to avoid double-escaping
+    text = text.replace("&", "&amp;")
+    text = text.replace("<", "&lt;")
+    text = text.replace(">", "&gt;")
+    text = text.replace("|", "&#124;")
+    return text
 
 
 def _escape_markdown_chars(text: str) -> str:
@@ -226,7 +230,7 @@ def transform_citations_for_markdown(
     citation_map = citation_map or {}
 
     def _make_md_link(url: str, display: str) -> str:
-        return f"[{_escape_markdown_chars(display)}]({url})"
+        return f"[{_escape_markdown_chars(display)}](<{url}>)"
 
     def _make_md_title(title: str) -> str:
         return f"*{_escape_markdown_chars(title)}*"
@@ -271,7 +275,9 @@ def correct_slack_markdown(
                 processed_parts.append(cleaned_code_block)
             # If it's a non-code block part (even index), apply formatting
             else:
-                # Transform citations per-segment (only outside code blocks)
+                # Transform citations per-segment (only outside code blocks).
+                # Citation transformation produces <url|text> Slack links,
+                # which won't match the [text](url) regex on the next line.
                 part = transform_citations_for_slack(part, citation_map)
                 # Links: [Text](URL) -> <URL|Text>
                 part = re.sub(r"\[(.*?)\]\((http.*?)\)", r"<\2|\1>", part)
