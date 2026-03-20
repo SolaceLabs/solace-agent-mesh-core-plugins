@@ -707,7 +707,7 @@ class SlackAdapter(GatewayAdapter):
                 if citation_map:
                     try:
                         text_content = content_bytes.decode("utf-8")
-                        text_content = utils.transform_citations_for_slack(
+                        text_content = utils.transform_citations_for_markdown(
                             text_content, citation_map
                         )
                         content_bytes = text_content.encode("utf-8")
@@ -859,7 +859,7 @@ class SlackAdapter(GatewayAdapter):
                                 if citation_map:
                                     try:
                                         text_content = content_bytes.decode("utf-8")
-                                        text_content = utils.transform_citations_for_slack(
+                                        text_content = utils.transform_citations_for_markdown(
                                             text_content, citation_map
                                         )
                                         content_bytes = text_content.encode("utf-8")

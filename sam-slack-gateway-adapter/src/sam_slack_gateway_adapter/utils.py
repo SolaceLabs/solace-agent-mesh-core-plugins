@@ -150,6 +150,68 @@ def transform_citations_for_slack(
     return text
 
 
+def transform_citations_for_markdown(
+    text: str, citation_map: Optional[Dict[str, Dict[str, Any]]] = None
+) -> str:
+    """
+    Transform SAM citation markers into standard markdown links.
+
+    Use this for markdown artifact files (e.g., deep research reports) that
+    will be uploaded as files. Unlike transform_citations_for_slack() which
+    produces Slack mrkdwn format (<URL|text>), this produces standard markdown
+    [text](url) which renders correctly in markdown viewers.
+
+    Args:
+        text: The text containing citation markers.
+        citation_map: Optional mapping of citation_id -> source info dict.
+
+    Returns:
+        Text with citations replaced by standard markdown links or stripped.
+    """
+    if not isinstance(text, str):
+        return text
+
+    citation_map = citation_map or {}
+
+    def _replace_citation_match(match: re.Match) -> str:
+        content = match.group(1)
+        citation_ids = INDIVIDUAL_CITATION_PATTERN.findall(content)
+
+        if not citation_ids:
+            return ""
+
+        links = []
+        for cid in citation_ids:
+            source = citation_map.get(cid)
+            if source:
+                url = (
+                    source.get("sourceUrl")
+                    or source.get("url")
+                    or source.get("metadata", {}).get("link")
+                )
+                title = source.get("title") or source.get("filename")
+                if url:
+                    domain = _get_domain_from_url(url)
+                    display = title if title and len(title) <= 40 else domain
+                    links.append(f"[{display}]({url})")
+                elif title:
+                    links.append(f"*{title}*")
+
+        if not links:
+            return ""
+
+        if len(links) == 1:
+            return f" ({links[0]})"
+        return " (" + ", ".join(links) + ")"
+
+    try:
+        text = CITATION_PATTERN.sub(_replace_citation_match, text)
+    except Exception as e:
+        log.warning("[SlackUtil:transform_citations_markdown] Error: %s", e)
+
+    return text
+
+
 def correct_slack_markdown(
     text: str, citation_map: Optional[Dict[str, Dict[str, Any]]] = None
 ) -> str:
