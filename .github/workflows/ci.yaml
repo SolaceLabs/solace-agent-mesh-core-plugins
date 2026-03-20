@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   pr-size-check:
-    if: ${{  !contains(github.head_ref, 'release-please') }}
+    if: ${{ github.event_name == 'pull_request' && !contains(github.head_ref, 'release-please') }}
     name: PR Size Check
     runs-on: ubuntu-latest
     permissions:
