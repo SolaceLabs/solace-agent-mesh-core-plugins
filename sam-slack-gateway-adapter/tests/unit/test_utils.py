@@ -575,7 +575,10 @@ class TestTransformCitationsForMarkdown:
 class TestCaptureRagSourcesLogic:
     """Test suite for the citation map building logic used by _capture_rag_sources.
 
-    Tests the pure logic without importing the adapter (which requires solace_agent_mesh).
+    This is a logic-level test that replicates the _capture_rag_sources algorithm
+    without importing the adapter module (which depends on solace_agent_mesh and
+    other heavy runtime dependencies). This lets us validate the citation map
+    building logic in isolation during unit tests.
     """
 
     def _build_citation_map(self, existing_map, sources):
@@ -717,3 +720,240 @@ class TestCaptureRagSourcesLogic:
         result = utils.transform_citations_for_slack(text, citation_map)
         assert "[[cite:" not in result
         assert "<https://finance.yahoo.com/quote/NVDA/|NVIDIA Stock>" in result
+
+
+class TestCitationsInsideCodeBlocks:
+    """Test that citations inside code blocks are NOT transformed."""
+
+    def test_citation_in_fenced_code_block_preserved(self):
+        """Citations inside ``` code blocks should not be transformed."""
+        text = "Normal text.[[cite:s0r0]]\n```\nCode with [[cite:s0r1]] marker\n```\nMore text.[[cite:s0r2]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "https://a.com", "title": "A"},
+            "s0r1": {"sourceUrl": "https://b.com", "title": "B"},
+            "s0r2": {"sourceUrl": "https://c.com", "title": "C"},
+        }
+        result = utils.correct_slack_markdown(text, citation_map)
+        # Citations outside code blocks should be transformed
+        assert "[[cite:s0r0]]" not in result
+        assert "[[cite:s0r2]]" not in result
+        # Citation inside code block should be preserved
+        assert "[[cite:s0r1]]" in result
+
+    def test_citation_in_code_block_with_language(self):
+        """Citations inside ```python code blocks should not be transformed."""
+        text = "Text.[[cite:s0r0]]\n```python\n# See [[cite:s0r1]]\n```"
+        citation_map = {
+            "s0r0": {"sourceUrl": "https://a.com", "title": "A"},
+            "s0r1": {"sourceUrl": "https://b.com", "title": "B"},
+        }
+        result = utils.correct_slack_markdown(text, citation_map)
+        assert "[[cite:s0r0]]" not in result
+        assert "[[cite:s0r1]]" in result
+
+    def test_plain_transform_does_not_skip_code_blocks(self):
+        """transform_citations_for_slack (without correct_slack_markdown) transforms all citations."""
+        text = "```\n[[cite:s0r0]]\n```"
+        citation_map = {"s0r0": {"sourceUrl": "https://a.com", "title": "A"}}
+        # Direct transform doesn't know about code blocks — that's correct
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "[[cite:" not in result
+
+
+class TestTitleTruncationBoundary:
+    """Test the MAX_CITATION_TITLE_LENGTH boundary (40 chars)."""
+
+    def test_title_exactly_40_chars_is_used(self):
+        """A title of exactly 40 characters should be displayed."""
+        title_40 = "A" * 40
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {"s0r0": {"sourceUrl": "https://example.com", "title": title_40}}
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert title_40 in result
+
+    def test_title_41_chars_falls_back_to_domain(self):
+        """A title of 41 characters should fall back to domain display."""
+        title_41 = "A" * 41
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {"s0r0": {"sourceUrl": "https://example.com", "title": title_41}}
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert title_41 not in result
+        assert "example.com" in result
+
+    def test_title_39_chars_is_used(self):
+        """A title of 39 characters should be displayed."""
+        title_39 = "A" * 39
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {"s0r0": {"sourceUrl": "https://example.com", "title": title_39}}
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert title_39 in result
+
+    def test_markdown_title_truncation_boundary(self):
+        """Markdown format should also respect the 40-char boundary."""
+        title_41 = "B" * 41
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {"s0r0": {"sourceUrl": "https://example.com", "title": title_41}}
+        result = utils.transform_citations_for_markdown(text, citation_map)
+        assert title_41 not in result
+        assert "example.com" in result
+
+
+class TestUrlSchemeValidation:
+    """Test that only http:// and https:// URLs are allowed."""
+
+    def test_javascript_url_rejected(self):
+        """javascript: URLs should not create links."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "javascript:alert(1)", "title": "XSS"},
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "javascript:" not in result
+        # Should fall back to title-only display
+        assert "XSS" in result
+
+    def test_data_url_rejected(self):
+        """data: URLs should not create links."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "data:text/html,<script>alert(1)</script>", "title": "Data"},
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "data:" not in result
+        assert "Data" in result
+
+    def test_ftp_url_rejected(self):
+        """ftp:// URLs should not create links."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "ftp://files.example.com/doc.pdf", "title": "FTP Doc"},
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "ftp://" not in result
+        assert "FTP Doc" in result
+
+    def test_http_url_accepted(self):
+        """http:// URLs should create links."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "http://example.com", "title": "HTTP"},
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "<http://example.com|HTTP>" in result
+
+    def test_https_url_accepted(self):
+        """https:// URLs should create links."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "https://example.com", "title": "HTTPS"},
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "example.com" in result
+        assert "HTTPS" in result
+
+    def test_markdown_javascript_url_rejected(self):
+        """javascript: URLs should not create markdown links either."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "javascript:void(0)", "title": "Click Me"},
+        }
+        result = utils.transform_citations_for_markdown(text, citation_map)
+        assert "javascript:" not in result
+        assert "Click Me" in result
+
+
+class TestSlackMrkdwnInjection:
+    """Test that URLs and display text are sanitized for Slack mrkdwn."""
+
+    def test_url_with_pipe_is_escaped(self):
+        """Pipe characters in URLs should be escaped in Slack mrkdwn."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "https://example.com/a|b", "title": "Test"},
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        # The pipe should be escaped so it doesn't break Slack link syntax
+        assert "|b>" not in result or "&#124;" in result
+
+    def test_title_with_angle_brackets_escaped(self):
+        """Angle brackets in titles should be escaped in Slack mrkdwn."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "https://example.com", "title": "<script>"},
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "<script>" not in result
+        assert "&lt;script&gt;" in result
+
+    def test_url_with_angle_brackets_escaped(self):
+        """Angle brackets in URLs should be escaped in Slack mrkdwn."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "https://example.com/<path>", "title": "Test"},
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "&lt;path&gt;" in result
+
+
+class TestMarkdownInjection:
+    """Test that display text is sanitized for standard markdown."""
+
+    def test_title_with_brackets_escaped(self):
+        """Titles with ]() should be escaped to prevent markdown injection."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {
+                "sourceUrl": "https://example.com",
+                "title": "Click](https://evil.com)",
+            },
+        }
+        result = utils.transform_citations_for_markdown(text, citation_map)
+        # The brackets/parens in the title should be escaped
+        assert "\\]" in result
+        assert "\\(" in result
+        # Should NOT create a link to evil.com
+        assert "evil.com" not in result or "\\(" in result
+
+    def test_title_with_square_brackets_escaped(self):
+        """Square brackets in titles should be escaped in markdown."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {
+                "sourceUrl": "https://example.com",
+                "title": "[link text]",
+            },
+        }
+        result = utils.transform_citations_for_markdown(text, citation_map)
+        assert "\\[link text\\]" in result
+
+
+class TestHasValidUrlScheme:
+    """Test the _has_valid_url_scheme helper directly."""
+
+    def test_http_valid(self):
+        assert utils._has_valid_url_scheme("http://example.com") is True
+
+    def test_https_valid(self):
+        assert utils._has_valid_url_scheme("https://example.com") is True
+
+    def test_javascript_invalid(self):
+        assert utils._has_valid_url_scheme("javascript:alert(1)") is False
+
+    def test_data_invalid(self):
+        assert utils._has_valid_url_scheme("data:text/html,test") is False
+
+    def test_ftp_invalid(self):
+        assert utils._has_valid_url_scheme("ftp://files.example.com") is False
+
+    def test_empty_string_invalid(self):
+        assert utils._has_valid_url_scheme("") is False
+
+    def test_no_scheme_invalid(self):
+        assert utils._has_valid_url_scheme("example.com") is False
+
+
+class TestMaxCitationTitleLengthConstant:
+    """Test that the MAX_CITATION_TITLE_LENGTH constant is accessible."""
+
+    def test_constant_value(self):
+        assert utils.MAX_CITATION_TITLE_LENGTH == 40

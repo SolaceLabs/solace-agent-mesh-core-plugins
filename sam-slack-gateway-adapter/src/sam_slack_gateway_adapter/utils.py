@@ -7,7 +7,8 @@ import json
 import logging
 import re
 import uuid
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from urllib.parse import urlparse
 
 import requests
 from slack_sdk.errors import SlackApiError
@@ -19,6 +20,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+# Maximum length for citation titles before falling back to domain display
+MAX_CITATION_TITLE_LENGTH = 40
 
 # Block and Action IDs
 SLACK_STATUS_BLOCK_ID = "slack_status_block"
@@ -59,11 +62,30 @@ INDIVIDUAL_CITATION_PATTERN = re.compile(
 )
 
 
+def _has_valid_url_scheme(url: str) -> bool:
+    """Validate that a URL uses http:// or https:// scheme."""
+    try:
+        parsed = urlparse(url)
+        return parsed.scheme in ("http", "https")
+    except Exception:
+        return False
+
+
+def _sanitize_for_slack_mrkdwn(text: str) -> str:
+    """Escape characters that have special meaning in Slack mrkdwn link syntax."""
+    # Escape |, <, > which are structural in Slack mrkdwn links
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("|", "&#124;")
+
+
+def _escape_markdown_chars(text: str) -> str:
+    """Escape characters that have special meaning in standard markdown link syntax."""
+    # Escape ], [, (, ) which are structural in markdown links
+    return text.replace("[", "\\[").replace("]", "\\]").replace("(", "\\(").replace(")", "\\)")
+
+
 def _get_domain_from_url(url: str) -> str:
     """Extract a clean domain name from a URL for display."""
     try:
-        from urllib.parse import urlparse
-
         parsed = urlparse(url)
         domain = parsed.hostname or url
         # Remove www. prefix
@@ -74,17 +96,79 @@ def _get_domain_from_url(url: str) -> str:
         return url
 
 
-def transform_citations_for_slack(
-    text: str, citation_map: Optional[Dict[str, Dict[str, Any]]] = None
+def _transform_citations(
+    text: str,
+    citation_map: Dict[str, Dict[str, Any]],
+    make_link: Callable[[str, str], str],
+    make_title_only: Callable[[str], str],
 ) -> str:
     """
-    Transform SAM citation markers into Slack mrkdwn links or clean text.
+    Shared citation transformation logic.
+
+    Replaces SAM citation markers with formatted links or title-only references
+    using the provided formatter callbacks.
 
     Citation formats handled:
     - Web search: [[cite:s{turn}r{index}]] (e.g., [[cite:s0r0]], [[cite:s1r2]])
     - Document search: [[cite:idx{turn}r{index}]] (e.g., [[cite:idx0r0]])
     - Deep research: [[cite:research{N}]] (e.g., [[cite:research0]])
     - Multi-citations: [[cite:s0r0, s0r1, s0r2]]
+
+    Args:
+        text: The text containing citation markers.
+        citation_map: Mapping of citation_id -> source info dict.
+        make_link: Callable(url, display_text) -> formatted link string.
+        make_title_only: Callable(title) -> formatted title-only string.
+
+    Returns:
+        Text with citations replaced by formatted links or stripped.
+    """
+
+    def _replace_citation_match(match: re.Match) -> str:
+        content = match.group(1)
+        citation_ids = INDIVIDUAL_CITATION_PATTERN.findall(content)
+
+        if not citation_ids:
+            return ""  # Strip unrecognized citation markers
+
+        links = []
+        for cid in citation_ids:
+            source = citation_map.get(cid)
+            if source:
+                url = (
+                    source.get("sourceUrl")
+                    or source.get("url")
+                    or source.get("metadata", {}).get("link")
+                )
+                title = source.get("title") or source.get("filename")
+                if url and _has_valid_url_scheme(url):
+                    domain = _get_domain_from_url(url)
+                    display = (
+                        title
+                        if title and len(title) <= MAX_CITATION_TITLE_LENGTH
+                        else domain
+                    )
+                    links.append(make_link(url, display))
+                elif title:
+                    links.append(make_title_only(title))
+                # else: No URL or title — skip this citation silently
+
+        if not links:
+            return ""
+
+        # Join multiple citations with commas, wrapped in parentheses
+        if len(links) == 1:
+            return f" ({links[0]})"
+        return " (" + ", ".join(links) + ")"
+
+    return CITATION_PATTERN.sub(_replace_citation_match, text)
+
+
+def transform_citations_for_slack(
+    text: str, citation_map: Optional[Dict[str, Dict[str, Any]]] = None
+) -> str:
+    """
+    Transform SAM citation markers into Slack mrkdwn links or clean text.
 
     Args:
         text: The text containing citation markers.
@@ -102,48 +186,16 @@ def transform_citations_for_slack(
 
     citation_map = citation_map or {}
 
-    def _replace_citation_match(match: re.Match) -> str:
-        """Replace a single or multi-citation match with Slack links."""
-        content = match.group(1)
-        # Extract individual citation IDs
-        citation_ids = INDIVIDUAL_CITATION_PATTERN.findall(content)
+    def _make_slack_link(url: str, display: str) -> str:
+        return f"<{_sanitize_for_slack_mrkdwn(url)}|{_sanitize_for_slack_mrkdwn(display)}>"
 
-        if not citation_ids:
-            return ""  # Strip unrecognized citation markers
-
-        links = []
-        for cid in citation_ids:
-            source = citation_map.get(cid)
-            if source:
-                url = (
-                    source.get("sourceUrl")
-                    or source.get("url")
-                    or source.get("metadata", {}).get("link")
-                )
-                title = source.get("title") or source.get("filename")
-                if url:
-                    domain = _get_domain_from_url(url)
-                    display = title if title and len(title) <= 40 else domain
-                    links.append(f"<{url}|{display}>")
-                elif title:
-                    links.append(f"_{title}_")
-                else:
-                    # No URL or title — skip this citation silently
-                    pass
-            else:
-                # No source info available — strip the citation marker
-                pass
-
-        if not links:
-            return ""
-
-        # Join multiple citations with commas, wrapped in parentheses
-        if len(links) == 1:
-            return f" ({links[0]})"
-        return " (" + ", ".join(links) + ")"
+    def _make_slack_title(title: str) -> str:
+        return f"_{_sanitize_for_slack_mrkdwn(title)}_"
 
     try:
-        text = CITATION_PATTERN.sub(_replace_citation_match, text)
+        text = _transform_citations(
+            text, citation_map, _make_slack_link, _make_slack_title
+        )
     except Exception as e:
         log.warning("[SlackUtil:transform_citations] Error: %s", e)
 
@@ -173,39 +225,16 @@ def transform_citations_for_markdown(
 
     citation_map = citation_map or {}
 
-    def _replace_citation_match(match: re.Match) -> str:
-        content = match.group(1)
-        citation_ids = INDIVIDUAL_CITATION_PATTERN.findall(content)
+    def _make_md_link(url: str, display: str) -> str:
+        return f"[{_escape_markdown_chars(display)}]({url})"
 
-        if not citation_ids:
-            return ""
-
-        links = []
-        for cid in citation_ids:
-            source = citation_map.get(cid)
-            if source:
-                url = (
-                    source.get("sourceUrl")
-                    or source.get("url")
-                    or source.get("metadata", {}).get("link")
-                )
-                title = source.get("title") or source.get("filename")
-                if url:
-                    domain = _get_domain_from_url(url)
-                    display = title if title and len(title) <= 40 else domain
-                    links.append(f"[{display}]({url})")
-                elif title:
-                    links.append(f"*{title}*")
-
-        if not links:
-            return ""
-
-        if len(links) == 1:
-            return f" ({links[0]})"
-        return " (" + ", ".join(links) + ")"
+    def _make_md_title(title: str) -> str:
+        return f"*{_escape_markdown_chars(title)}*"
 
     try:
-        text = CITATION_PATTERN.sub(_replace_citation_match, text)
+        text = _transform_citations(
+            text, citation_map, _make_md_link, _make_md_title
+        )
     except Exception as e:
         log.warning("[SlackUtil:transform_citations_markdown] Error: %s", e)
 
@@ -226,10 +255,6 @@ def correct_slack_markdown(
     if not isinstance(text, str):
         return text
     try:
-        # Step 0: Transform citation markers BEFORE markdown processing
-        # (citations contain brackets that could interfere with link conversion)
-        text = transform_citations_for_slack(text, citation_map)
-
         # Split text by code blocks to avoid formatting inside them
         parts = re.split(r"(```.*?```)", text, flags=re.DOTALL)
         processed_parts = []
@@ -246,6 +271,8 @@ def correct_slack_markdown(
                 processed_parts.append(cleaned_code_block)
             # If it's a non-code block part (even index), apply formatting
             else:
+                # Transform citations per-segment (only outside code blocks)
+                part = transform_citations_for_slack(part, citation_map)
                 # Links: [Text](URL) -> <URL|Text>
                 part = re.sub(r"\[(.*?)\]\((http.*?)\)", r"<\2|\1>", part)
                 # Bold: **Text** -> *Text*

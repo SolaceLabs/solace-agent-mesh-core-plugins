@@ -671,22 +671,66 @@ class SlackAdapter(GatewayAdapter):
         return ":page_facing_up:"
 
     def _format_text(self, text: str, task_id: Optional[str] = None) -> str:
-        """Applies markdown correction and citation transformation if enabled.
+        """Applies citation transformation (always) and markdown correction (if enabled).
+
+        Citation transformation is always applied so that [[cite:...]] markers
+        are resolved to Slack links regardless of the markdown formatting config.
+        The markdown-to-mrkdwn conversion (bold, headings, links) is only applied
+        when correct_markdown_formatting is enabled.
 
         Args:
             text: The raw text to format.
             task_id: Optional task ID to look up the citation map for this task.
         """
+        # Get citation map for this task (if available)
+        citation_map = None
+        if task_id:
+            citation_map = self.context.get_task_state(task_id, "citation_map")
+
         adapter_config: SlackAdapterConfig = self.context.adapter_config
         if adapter_config.correct_markdown_formatting:
-            # Get citation map for this task (if available)
-            citation_map = None
-            if task_id:
-                citation_map = self.context.get_task_state(
-                    task_id, "citation_map"
-                )
+            # correct_slack_markdown handles both citations and markdown conversion
             return utils.correct_slack_markdown(text, citation_map)
-        return text
+
+        # Even without markdown formatting, always transform citations
+        return utils.transform_citations_for_slack(text, citation_map)
+
+    def _transform_markdown_content(
+        self, content_bytes: bytes, filename: str, task_id: str
+    ) -> bytes:
+        """Transform citations in markdown file content.
+
+        Decodes the bytes as UTF-8, applies citation transformation for standard
+        markdown format, and re-encodes. Returns the original bytes on failure.
+
+        Args:
+            content_bytes: The raw file content.
+            filename: The filename (for logging).
+            task_id: The task ID to look up the citation map.
+
+        Returns:
+            Transformed content bytes, or original bytes if transformation fails.
+        """
+        citation_map = self.context.get_task_state(task_id, "citation_map")
+        if not citation_map:
+            return content_bytes
+        try:
+            text_content = content_bytes.decode("utf-8")
+            text_content = utils.transform_citations_for_markdown(
+                text_content, citation_map
+            )
+            log.debug(
+                "[SlackAdapter] Applied citation transformation to markdown file '%s'",
+                filename,
+            )
+            return text_content.encode("utf-8")
+        except Exception as e:
+            log.warning(
+                "[SlackAdapter] Failed to transform citations in markdown file '%s': %s",
+                filename,
+                e,
+            )
+            return content_bytes
 
     async def _handle_file_part_queued(
         self, part: SamFilePart, queue: SlackMessageQueue
@@ -701,26 +745,9 @@ class SlackAdapter(GatewayAdapter):
             content_bytes = part.content_bytes
             # Transform citations in markdown files (e.g., deep research reports)
             if part.name and part.name.lower().endswith(".md"):
-                citation_map = self.context.get_task_state(
-                    queue.task_id, "citation_map"
+                content_bytes = self._transform_markdown_content(
+                    content_bytes, part.name, queue.task_id
                 )
-                if citation_map:
-                    try:
-                        text_content = content_bytes.decode("utf-8")
-                        text_content = utils.transform_citations_for_markdown(
-                            text_content, citation_map
-                        )
-                        content_bytes = text_content.encode("utf-8")
-                        log.debug(
-                            "[SlackAdapter] Applied citation transformation to markdown file '%s'",
-                            part.name,
-                        )
-                    except Exception as e:
-                        log.warning(
-                            "[SlackAdapter] Failed to transform citations in markdown file '%s': %s",
-                            part.name,
-                            e,
-                        )
             await queue.queue_file_upload(part.name, content_bytes)
         elif part.uri:
             uri_text = f":link: Artifact available: {part.name} - {part.uri}"
@@ -853,26 +880,9 @@ class SlackAdapter(GatewayAdapter):
                         if content_bytes:
                             # Transform citations in markdown artifact files
                             if filename.lower().endswith(".md"):
-                                citation_map = self.context.get_task_state(
-                                    task_id, "citation_map"
+                                content_bytes = self._transform_markdown_content(
+                                    content_bytes, filename, task_id
                                 )
-                                if citation_map:
-                                    try:
-                                        text_content = content_bytes.decode("utf-8")
-                                        text_content = utils.transform_citations_for_markdown(
-                                            text_content, citation_map
-                                        )
-                                        content_bytes = text_content.encode("utf-8")
-                                        log.debug(
-                                            "[SlackAdapter] Applied citation transformation to artifact '%s'",
-                                            filename,
-                                        )
-                                    except Exception as e:
-                                        log.warning(
-                                            "[SlackAdapter] Failed to transform citations in artifact '%s': %s",
-                                            filename,
-                                            e,
-                                        )
 
                             # Queue the file upload (with polling)
                             await queue.queue_file_upload(
