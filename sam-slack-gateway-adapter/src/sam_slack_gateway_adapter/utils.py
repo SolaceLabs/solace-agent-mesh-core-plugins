@@ -7,7 +7,8 @@ import json
 import logging
 import re
 import uuid
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from urllib.parse import urlparse
 
 import requests
 from slack_sdk.errors import SlackApiError
@@ -19,6 +20,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+# Maximum length for citation titles before falling back to domain display
+MAX_CITATION_TITLE_LENGTH = 40
 
 # Block and Action IDs
 SLACK_STATUS_BLOCK_ID = "slack_status_block"
@@ -45,9 +48,277 @@ def create_slack_session_id(channel_id: str, thread_ts: Optional[str]) -> str:
     return f"slack-{channel_id}"
 
 
-def correct_slack_markdown(text: str) -> str:
+# --- Citation Patterns ---
+# Matches SAM citation markers: [[cite:s0r0]], [[cite:research0]], [[cite:idx0r0]]
+# Also handles single-bracket variants: [cite:s0r0]
+# Also handles comma-separated multi-citations: [[cite:s0r0, s0r1, s0r2]]
+# Uses conditional backreference (?(1)\]) to ensure balanced brackets:
+# if a second opening bracket was matched, require a second closing bracket.
+CITATION_PATTERN = re.compile(
+    r"\[(\[?)cite:((?:s\d+r\d+|idx\d+r\d+|research\d+)"
+    r"(?:\s*,\s*(?:cite:)?(?:s\d+r\d+|idx\d+r\d+|research\d+))*)\](?(1)\])"
+)
+# Pattern to extract individual citation IDs from a comma-separated list
+INDIVIDUAL_CITATION_PATTERN = re.compile(
+    r"(?:cite:)?(s\d+r\d+|idx\d+r\d+|research\d+)"
+)
+
+
+def _has_valid_url_scheme(url: str) -> bool:
+    """Validate that a URL uses http:// or https:// scheme."""
+    try:
+        parsed = urlparse(url)
+        return parsed.scheme in ("http", "https")
+    except Exception:
+        return False
+
+
+def _sanitize_for_slack_mrkdwn(text: str) -> str:
+    """Escape characters that have special meaning in Slack mrkdwn link syntax.
+
+    Handles structural characters (<, >, |, &) that break the ``<url|label>``
+    link syntax, and mrkdwn formatting characters (*, _, ~, `) that Slack
+    interprets even inside link labels.  Formatting chars are neutralised by
+    inserting a zero-width space (U+200B) after each occurrence so that
+    paired delimiters (e.g. ``**bold**``) no longer form valid mrkdwn spans.
+    """
+    # & must be escaped first to avoid double-escaping
+    text = text.replace("&", "&amp;")
+    text = text.replace("<", "&lt;")
+    text = text.replace(">", "&gt;")
+    text = text.replace("|", "&#124;")
+    # Break mrkdwn formatting patterns so titles with e.g. **bold** or
+    # _italic_ don't produce unintended formatting inside Slack links.
+    text = text.replace("*", "*\u200b")
+    text = text.replace("_", "_\u200b")
+    text = text.replace("~", "~\u200b")
+    text = text.replace("`", "`\u200b")
+    return text
+
+
+def _escape_markdown_chars(text: str) -> str:
+    """Escape characters that have special meaning in standard markdown link syntax."""
+    # Escape ], [, (, ) which are structural in markdown links
+    return text.replace("[", "\\[").replace("]", "\\]").replace("(", "\\(").replace(")", "\\)")
+
+
+def _get_domain_from_url(url: str) -> str:
+    """Extract a clean domain name from a URL for display."""
+    try:
+        parsed = urlparse(url)
+        domain = parsed.hostname or url
+        # Remove www. prefix
+        if domain.startswith("www."):
+            domain = domain[4:]
+        return domain
+    except Exception:
+        return url
+
+
+def _transform_citations(
+    text: str,
+    citation_map: Dict[str, Dict[str, Any]],
+    make_link: Callable[[str, str], str],
+    make_title_only: Callable[[str], str],
+) -> str:
+    """
+    Shared citation transformation logic.
+
+    Replaces SAM citation markers with formatted links or title-only references
+    using the provided formatter callbacks.
+
+    Citation formats handled:
+    - Web search: [[cite:s{turn}r{index}]] (e.g., [[cite:s0r0]], [[cite:s1r2]])
+    - Document search: [[cite:idx{turn}r{index}]] (e.g., [[cite:idx0r0]])
+    - Deep research: [[cite:research{N}]] (e.g., [[cite:research0]])
+    - Multi-citations: [[cite:s0r0, s0r1, s0r2]]
+
+    Args:
+        text: The text containing citation markers.
+        citation_map: Mapping of citation_id -> source info dict.
+        make_link: Callable(url, display_text) -> formatted link string.
+        make_title_only: Callable(title) -> formatted title-only string.
+
+    Returns:
+        Text with citations replaced by formatted links or stripped.
+    """
+
+    if not citation_map:
+        # No sources available — strip all citation markers to keep output clean.
+        # The caller is responsible for preserving raw text (with markers) if a
+        # later re-resolution pass is needed (see _resolve_citations_final_pass).
+        # Collapse runs of spaces left behind (e.g. "text [[cite:s0r0]] more"
+        # becomes "text more", not "text  more").
+        stripped = CITATION_PATTERN.sub("", text)
+        return re.sub(r" {2,}", " ", stripped)
+
+    def _replace_citation_match(match: re.Match) -> str:
+        content = match.group(2)
+        citation_ids = INDIVIDUAL_CITATION_PATTERN.findall(content)
+
+        if not citation_ids:
+            return ""  # Strip unrecognized citation markers
+
+        links = []
+        for cid in citation_ids:
+            source = citation_map.get(cid)
+            if source:
+                url = (
+                    source.get("sourceUrl")
+                    or source.get("url")
+                    or source.get("metadata", {}).get("link")
+                )
+                title = source.get("title") or source.get("filename")
+                if url and _has_valid_url_scheme(url):
+                    domain = _get_domain_from_url(url)
+                    display = (
+                        title
+                        if title and len(title) <= MAX_CITATION_TITLE_LENGTH
+                        else domain
+                    )
+                    links.append(make_link(url, display))
+                elif title:
+                    links.append(make_title_only(title))
+                # else: No URL or title — skip this citation silently
+            else:
+                # Source not found in citation map — show a generic placeholder
+                # so the user knows a source was referenced but couldn't be resolved.
+                links.append(make_title_only("source"))
+
+        if not links:
+            return ""
+
+        # Join multiple citations with commas, wrapped in parentheses
+        if len(links) == 1:
+            return f" ({links[0]})"
+        return " (" + ", ".join(links) + ")"
+
+    result = CITATION_PATTERN.sub(_replace_citation_match, text)
+    # Collapse double-spaces left by stripped citations
+    # (e.g. "text [[cite:unknown]] more" → "text more")
+    return re.sub(r" {2,}", " ", result)
+
+
+def transform_citations_for_slack(
+    text: str,
+    citation_map: Optional[Dict[str, Dict[str, Any]]] = None,
+    skip_code_blocks: bool = False,
+) -> str:
+    """
+    Transform SAM citation markers into Slack mrkdwn links or clean text.
+
+    Args:
+        text: The text containing citation markers.
+        citation_map: Optional mapping of citation_id -> source info dict.
+            Each source info dict should have at least:
+            - "url" or "sourceUrl": The source URL
+            - "title" or "filename": The source title
+            Example: {"s0r0": {"sourceUrl": "https://...", "title": "..."}}
+        skip_code_blocks: If True, preserve citation markers inside fenced
+            code blocks (```...```) and only transform citations in
+            surrounding text.  ``correct_slack_markdown`` already handles
+            this internally; set this flag when calling the function
+            directly (e.g. when markdown correction is disabled).
+
+    Returns:
+        Text with citations replaced by Slack mrkdwn links or stripped.
+    """
+    if not isinstance(text, str):
+        return text
+
+    citation_map = citation_map or {}
+
+    def _make_slack_link(url: str, display: str) -> str:
+        # Strip control characters (newlines, tabs, etc.) that could break
+        # Slack's message parsing when placed inside <url|text> links.
+        safe_url = re.sub(r"[\x00-\x1f\x7f]", "", url)
+        # Sanitize structural Slack mrkdwn characters (<, >, |) but NOT & —
+        # Slack auto-parses URLs inside <> angle brackets, and escaping &
+        # to &amp; would break query parameters.
+        safe_url = safe_url.replace("<", "%3C").replace(">", "%3E").replace("|", "%7C")
+        return f"<{safe_url}|{_sanitize_for_slack_mrkdwn(display)}>"
+
+    def _make_slack_title(title: str) -> str:
+        return f"_{_sanitize_for_slack_mrkdwn(title)}_"
+
+    try:
+        if skip_code_blocks:
+            parts = re.split(r"(```.*?```)", text, flags=re.DOTALL)
+            processed = []
+            for i, part in enumerate(parts):
+                if i % 2 == 1:
+                    # Code block — leave untouched
+                    processed.append(part)
+                else:
+                    processed.append(
+                        _transform_citations(
+                            part, citation_map, _make_slack_link, _make_slack_title
+                        )
+                    )
+            text = "".join(processed)
+        else:
+            text = _transform_citations(
+                text, citation_map, _make_slack_link, _make_slack_title
+            )
+    except Exception as e:
+        log.warning("[SlackUtil:transform_citations] Error: %s", e)
+
+    return text
+
+
+def transform_citations_for_markdown(
+    text: str, citation_map: Optional[Dict[str, Dict[str, Any]]] = None
+) -> str:
+    """
+    Transform SAM citation markers into standard markdown links.
+
+    Use this for markdown artifact files (e.g., deep research reports) that
+    will be uploaded as files. Unlike transform_citations_for_slack() which
+    produces Slack mrkdwn format (<URL|text>), this produces standard markdown
+    [text](url) which renders correctly in markdown viewers.
+
+    Args:
+        text: The text containing citation markers.
+        citation_map: Optional mapping of citation_id -> source info dict.
+
+    Returns:
+        Text with citations replaced by standard markdown links or stripped.
+    """
+    if not isinstance(text, str):
+        return text
+
+    citation_map = citation_map or {}
+
+    def _make_md_link(url: str, display: str) -> str:
+        # Escape characters that would break markdown link syntax [text](<url>)
+        # - ) would close the parenthesized URL
+        # - > would close the angle-bracket wrapper
+        safe_url = url.replace(")", "%29").replace(">", "%3E")
+        return f"[{_escape_markdown_chars(display)}](<{safe_url}>)"
+
+    def _make_md_title(title: str) -> str:
+        return f"*{_escape_markdown_chars(title)}*"
+
+    try:
+        text = _transform_citations(
+            text, citation_map, _make_md_link, _make_md_title
+        )
+    except Exception as e:
+        log.warning("[SlackUtil:transform_citations_markdown] Error: %s", e)
+
+    return text
+
+
+def correct_slack_markdown(
+    text: str, citation_map: Optional[Dict[str, Dict[str, Any]]] = None
+) -> str:
     """
     Converts common Markdown to Slack's mrkdwn format, avoiding changes inside code blocks.
+    Also transforms SAM citation markers into Slack-friendly links.
+
+    Args:
+        text: The markdown text to convert.
+        citation_map: Optional mapping of citation_id -> source info for link resolution.
     """
     if not isinstance(text, str):
         return text
@@ -68,14 +339,25 @@ def correct_slack_markdown(text: str) -> str:
                 processed_parts.append(cleaned_code_block)
             # If it's a non-code block part (even index), apply formatting
             else:
-                # Links: [Text](URL) -> <URL|Text>
-                part = re.sub(r"\[(.*?)\]\((http.*?)\)", r"<\2|\1>", part)
+                # Bold and headings run BEFORE link conversion so that
+                # the bold regex (**...**) cannot match inside the
+                # <url|text> Slack link syntax produced by link conversion.
                 # Bold: **Text** -> *Text*
                 part = re.sub(r"\*\*(.*?)\*\*", r"*\1*", part)
                 # Headings: ### Title -> *Title* with underline
                 part = re.sub(
                     r"^\s*#{1,6}\s+(.*)", heading_replacer, part, flags=re.MULTILINE
                 )
+                # Links: [Text](URL) -> <URL|Text>
+                part = re.sub(r"\[(.*?)\]\((http.*?)\)", r"<\2|\1>", part)
+                # Citation transformation MUST run LAST — after all markdown
+                # regex conversions (bold, headings, links) are complete — so
+                # that its output (<url|text> Slack links, _title_ italics)
+                # is never fed back through bold/heading/link regexes, which
+                # would corrupt the Slack link syntax.  Display text inside
+                # citation links is additionally protected by
+                # _sanitize_for_slack_mrkdwn which neutralises *, _, ~, `.
+                part = transform_citations_for_slack(part, citation_map)
                 processed_parts.append(part)
 
         text = "".join(processed_parts)
