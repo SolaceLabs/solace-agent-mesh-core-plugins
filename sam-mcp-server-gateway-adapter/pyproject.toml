@@ -32,3 +32,12 @@ src-path = "src"
 "config.yaml" = "sam_mcp_server_gateway_adapter/config.yaml"
 "README.md" = "sam_mcp_server_gateway_adapter/README.md"
 "pyproject.toml" = "sam_mcp_server_gateway_adapter/pyproject.toml"
+
+
+[tool.hatch.envs.hatch-test]
+dependencies = [
+  "pytest>=8.0.0",
+  "pytest-mock>=3.0.0",
+  "pytest-cov>=4.0.0",
+  "pytest-json-ctrf>=0.1.0"
+]

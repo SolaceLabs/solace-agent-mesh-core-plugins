@@ -36,3 +36,16 @@ src-path = "src"
 "config.yaml" = "sam_event_mesh_tool/config.yaml"
 "README.md" = "sam_event_mesh_tool/README.md"
 "pyproject.toml" = "sam_event_mesh_tool/pyproject.toml"
+
+[tool.hatch.envs.hatch-test]
+dependencies = [
+  "pytest-asyncio",
+  "pytest>=8.0.0",
+  "pytest-mock>=3.0.0",
+  "pytest-cov>=4.0.0",
+  "pytest-json-ctrf>=0.1.0",
+  "pytest-xdist>=3.5.0",
+  "PyYAML>=6.0.2",
+  "solace-agent-mesh>=1.0.6",
+  "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure",
+]

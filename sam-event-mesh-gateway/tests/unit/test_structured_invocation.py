@@ -161,7 +161,8 @@ class TestFormatHelpers:
     def mock_gateway_component(self):
         """Create a mock gateway component with format helper methods."""
         component = MagicMock(spec=EventMeshGatewayComponent)
-        # Bind the real methods to our mock
+        # Bind the real methods and class attributes to our mock
+        component._FORMAT_MAP = EventMeshGatewayComponent._FORMAT_MAP
         component._get_format_info = EventMeshGatewayComponent._get_format_info.__get__(
             component, EventMeshGatewayComponent
         )
@@ -274,6 +275,7 @@ class TestStructuredInvocationConfiguration:
         component._resolve_target_name = EventMeshGatewayComponent._resolve_target_name.__get__(
             component, EventMeshGatewayComponent
         )
+        component._FORMAT_MAP = EventMeshGatewayComponent._FORMAT_MAP
         component._get_format_info = EventMeshGatewayComponent._get_format_info.__get__(
             component, EventMeshGatewayComponent
         )
