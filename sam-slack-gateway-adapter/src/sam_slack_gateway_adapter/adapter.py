@@ -774,9 +774,25 @@ class SlackAdapter(GatewayAdapter):
         thread_ts = context.platform_context["thread_ts"]
 
         if data_type == "rag_info_update":
-            # Capture RAG source metadata for citation link resolution
+            # Capture RAG source metadata for citation link resolution (deep research)
             sources = part.data.get("sources", [])
             self._capture_rag_sources(task_id, sources)
+
+        elif data_type == "tool_result":
+            # Capture RAG source metadata from tool results (web search, index search)
+            # Structure: data.result_data.rag_metadata.sources[]
+            result_data = part.data.get("result_data")
+            if isinstance(result_data, dict):
+                rag_metadata = result_data.get("rag_metadata")
+                if isinstance(rag_metadata, dict):
+                    sources = rag_metadata.get("sources", [])
+                    if sources:
+                        self._capture_rag_sources(task_id, sources)
+                        log.debug(
+                            "[SlackAdapter] Captured %d RAG sources from tool_result for task %s",
+                            len(sources),
+                            task_id,
+                        )
 
         elif data_type == "agent_progress_update":
             status_text = part.data.get("status_text")
