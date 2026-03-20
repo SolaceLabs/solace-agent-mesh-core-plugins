@@ -27,7 +27,7 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.SAM_PLUGINS_PR_CREATE_TOKEN }}
 
       - name: Get PR number
         id: get_pr
@@ -44,4 +44,3 @@ jobs:
           echo "releases_created: ${{ steps.release.outputs.releases_created }}"
           echo "prs_created: ${{ steps.release.outputs.prs_created }}"
           echo "pr_number: ${{ steps.get_pr.outputs.pr_number }}"
-

@@ -2,21 +2,25 @@ name: Publish Package
 
 # This workflow triggers when a GitHub Release is published.
 # Release-please creates releases when the Release PR is merged.
-# Each plugin in the monorepo gets its own release with tag format: <plugin-name>-v<version>
+# Each plugin in the monorepo gets its own release tag as:
+# <component>-<version> or <component>-v<version>
+# where component can come from package-name (underscores) or plugin path (hyphens).
 on:
   release:
     types: [published]
 
 permissions:
-  contents: read
+  contents: write
   id-token: write # Required for PyPI Trusted Publishing
   checks: write # For FOSSA status checks
 
 jobs:
   publish:
-    name: Publish to PyPI
+    name: Build and update release artifacts
     runs-on: ubuntu-latest
-    environment: pypi # Environment with PyPI trusted publisher configured
+    outputs:
+      project_name: ${{ steps.extract.outputs.project_name }}
+      version: ${{ steps.extract.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -24,19 +28,32 @@ jobs:
       - name: Extract package path from release tag
         id: extract
         run: |
-          # Release tag format: <package-name>-v<version>
-          # Example: sam-slack-v0.3.0
           TAG="${{ github.event.release.tag_name }}"
           echo "Tag: $TAG"
 
-          # Extract package name (everything before -v followed by version number)
-          PACKAGE_PATH=$(echo "$TAG" | sed 's/-v[0-9].*//')
-          VERSION=$(echo "$TAG" | sed 's/.*-v//')
+          # Supported release tag formats:
+          #   <component>-<version>   (example: sam_sql_database_tool-0.1.2)
+          #   <component>-v<version>  (example: sam-rag-v0.1.0)
+          if [[ "$TAG" =~ ^(.+)-v([0-9].*)$ ]]; then
+            TAG_COMPONENT="${BASH_REMATCH[1]}"
+            VERSION="${BASH_REMATCH[2]}"
+          elif [[ "$TAG" =~ ^(.+)-([0-9].*)$ ]]; then
+            TAG_COMPONENT="${BASH_REMATCH[1]}"
+            VERSION="${BASH_REMATCH[2]}"
+          else
+            echo "Error: release tag '$TAG' does not match supported formats"
+            exit 1
+          fi
 
+          # Normalize package-name style components (underscores) to plugin paths.
+          PACKAGE_PATH="${TAG_COMPONENT//_/-}"
+
+          echo "Tag component: $TAG_COMPONENT"
           echo "Package path: $PACKAGE_PATH"
           echo "Version: $VERSION"
 
           echo "path=$PACKAGE_PATH" >> $GITHUB_OUTPUT
+          echo "project_name=$PACKAGE_PATH" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Verify package exists
@@ -81,14 +98,6 @@ jobs:
             echo "Warning: Version mismatch - built=$BUILT_VERSION, expected=$EXPECTED_VERSION"
           fi
 
-      # Publish using PyPI Trusted Publishing
-      # See: https://docs.pypi.org/trusted-publishers/using-a-publisher/
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # release/v1
-        with:
-          packages-dir: ${{ steps.extract.outputs.path }}/dist/
-          verbose: true
-
       - name: Update Release with build artifacts
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
         with:
@@ -112,7 +121,7 @@ jobs:
 
       - name: Create summary
         run: |
-          echo "## 📦 Package Published Successfully" >> $GITHUB_STEP_SUMMARY
+          echo "## Release Artifacts Updated" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Package:** ${{ steps.extract.outputs.path }}" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** ${{ steps.extract.outputs.version }}" >> $GITHUB_STEP_SUMMARY
@@ -127,3 +136,12 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           ls -la ${{ steps.extract.outputs.path }}/dist/ >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+
+  publish-to-pypi:
+    name: Publish release assets to PyPI
+    needs: publish
+    uses: ./.github/workflows/release.yaml
+    with:
+      project-name: ${{ needs.publish.outputs.project_name }}
+      version: ${{ needs.publish.outputs.version }}
+    secrets: inherit
