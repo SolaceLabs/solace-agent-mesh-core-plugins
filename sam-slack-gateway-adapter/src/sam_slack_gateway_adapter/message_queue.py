@@ -410,6 +410,10 @@ class SlackMessageQueue:
         # State for text message buffering
         self.current_text_message_ts: Optional[str] = None
         self.text_buffer: str = ""
+        # Raw (unformatted) text buffer preserved for final citation resolution.
+        # This retains the original [[cite:...]] markers even after formatting
+        # strips them (when citation map was empty at format time).
+        self.raw_text_buffer: str = ""
 
         # For update coalescing - holds non-text ops found during drain
         self._deferred_operation: Optional[QueueOperation] = None
@@ -646,8 +650,9 @@ class SlackMessageQueue:
             self.task_id, is_final, op.text[:50] if op.text else ""
         )
 
-        # Append text to buffer
+        # Append text to buffer (both raw and working buffers)
         self.text_buffer += op.text
+        self.raw_text_buffer += op.text
         
         current_time = time.monotonic()
         
@@ -677,6 +682,7 @@ class SlackMessageQueue:
         if pending_text_ops:
             for pending_op in pending_text_ops:
                 self.text_buffer += pending_op.text
+                self.raw_text_buffer += pending_op.text
             log.debug(
                 "[Queue:%s] Coalesced %d additional text updates (%d chars total)",
                 self.task_id, len(pending_text_ops), len(self.text_buffer)

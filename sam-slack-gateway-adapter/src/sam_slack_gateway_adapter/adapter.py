@@ -539,6 +539,11 @@ class SlackAdapter(GatewayAdapter):
             queue = self.message_queues[task_id]
             await queue.wait_until_complete()
 
+        # Final citation resolution pass: RAG data signals may have arrived after
+        # the text was already formatted and posted. Re-apply citation transformation
+        # with the now-populated citation map and update the message in Slack.
+        await self._resolve_citations_final_pass(task_id, channel_id)
+
         # First, update the status message to show completion.
         final_status_text = "✅ Task complete."
         status_blocks = utils.build_slack_blocks(status_text=final_status_text)
@@ -686,9 +691,37 @@ class SlackAdapter(GatewayAdapter):
     async def _handle_file_part_queued(
         self, part: SamFilePart, queue: SlackMessageQueue
     ):
-        """Handles queueing a file upload to Slack."""
+        """Handles queueing a file upload to Slack.
+
+        For markdown files (.md), applies citation transformation to the file
+        content before uploading, so that deep research reports with
+        [[cite:researchN]] markers get proper Slack links.
+        """
         if part.content_bytes:
-            await queue.queue_file_upload(part.name, part.content_bytes)
+            content_bytes = part.content_bytes
+            # Transform citations in markdown files (e.g., deep research reports)
+            if part.name and part.name.lower().endswith(".md"):
+                citation_map = self.context.get_task_state(
+                    queue.task_id, "citation_map"
+                )
+                if citation_map:
+                    try:
+                        text_content = content_bytes.decode("utf-8")
+                        text_content = utils.transform_citations_for_slack(
+                            text_content, citation_map
+                        )
+                        content_bytes = text_content.encode("utf-8")
+                        log.debug(
+                            "[SlackAdapter] Applied citation transformation to markdown file '%s'",
+                            part.name,
+                        )
+                    except Exception as e:
+                        log.warning(
+                            "[SlackAdapter] Failed to transform citations in markdown file '%s': %s",
+                            part.name,
+                            e,
+                        )
+            await queue.queue_file_upload(part.name, content_bytes)
         elif part.uri:
             uri_text = f":link: Artifact available: {part.name} - {part.uri}"
             await queue.queue_message_post(uri_text)
@@ -802,6 +835,29 @@ class SlackAdapter(GatewayAdapter):
                         )
 
                         if content_bytes:
+                            # Transform citations in markdown artifact files
+                            if filename.lower().endswith(".md"):
+                                citation_map = self.context.get_task_state(
+                                    task_id, "citation_map"
+                                )
+                                if citation_map:
+                                    try:
+                                        text_content = content_bytes.decode("utf-8")
+                                        text_content = utils.transform_citations_for_slack(
+                                            text_content, citation_map
+                                        )
+                                        content_bytes = text_content.encode("utf-8")
+                                        log.debug(
+                                            "[SlackAdapter] Applied citation transformation to artifact '%s'",
+                                            filename,
+                                        )
+                                    except Exception as e:
+                                        log.warning(
+                                            "[SlackAdapter] Failed to transform citations in artifact '%s': %s",
+                                            filename,
+                                            e,
+                                        )
+
                             # Queue the file upload (with polling)
                             await queue.queue_file_upload(
                                 filename=filename,
@@ -920,6 +976,72 @@ class SlackAdapter(GatewayAdapter):
             if team_id := body.get("team_id"):
                 event["team"] = team_id
                 log.debug("Extracted team_id from body: %s", team_id)
+
+    async def _resolve_citations_final_pass(
+        self, task_id: str, channel_id: str
+    ) -> None:
+        """
+        Final citation resolution pass after all queue operations are complete.
+
+        When web search citations arrive via rag_info_update data signals AFTER
+        the text has already been formatted and posted, the citation map was empty
+        during _format_text(). The markers were stripped (replaced with empty
+        string) because no URL mapping was available.
+
+        This method uses the raw_text_buffer (which preserves the original
+        [[cite:...]] markers) to re-format the text with the now-populated
+        citation map and update the Slack message.
+
+        Only runs if:
+        1. A citation map exists for this task (RAG sources were received)
+        2. A text message was posted by the queue (current_text_message_ts exists)
+        3. The raw buffer contains unresolved citation markers
+
+        Args:
+            task_id: The task ID to resolve citations for.
+            channel_id: The Slack channel ID where the message was posted.
+        """
+        citation_map = self.context.get_task_state(task_id, "citation_map")
+        if not citation_map:
+            return  # No RAG sources received, nothing to resolve
+
+        # Get the message queue to find the last posted text message TS
+        # and the raw (unformatted) text buffer
+        queue = self.message_queues.get(task_id)
+        if not queue or not queue.current_text_message_ts:
+            return  # No text message was posted
+
+        raw_text = queue.raw_text_buffer
+        if not raw_text:
+            return  # No raw text to resolve
+
+        # Check if the raw text contains any citation markers
+        if not utils.CITATION_PATTERN.search(raw_text):
+            return  # No citation markers to resolve
+
+        message_ts = queue.current_text_message_ts
+
+        try:
+            # Re-format the raw text with the now-populated citation map
+            resolved_text = self._format_text(raw_text, task_id=task_id)
+
+            # Update the message with resolved citations
+            await utils.update_slack_message(
+                self, channel_id, message_ts, resolved_text
+            )
+            log.info(
+                "[SlackAdapter] Final citation pass resolved citations in message %s "
+                "(task %s, %d sources in map)",
+                message_ts,
+                task_id,
+                len(citation_map),
+            )
+        except Exception as e:
+            log.warning(
+                "[SlackAdapter] Failed to resolve citations in final pass for task %s: %s",
+                task_id,
+                e,
+            )
 
     async def _download_file(self, file_info: Dict) -> bytes:
         """Downloads a file from Slack given its private URL."""
