@@ -407,13 +407,31 @@ class SlackMessageQueue:
         self.queue: asyncio.Queue[QueueOperation] = asyncio.Queue()
         self.processor_task: Optional[asyncio.Task] = None
 
-        # State for text message buffering
+        # State for text message buffering.
+        #
+        # text_buffer is the SOLE raw text accumulator — there is no separate
+        # "raw_text_buffer".  It always holds the original text with
+        # [[cite:...]] markers intact.  _format_text() is applied at
+        # read-time to produce formatted output for Slack; text_buffer itself
+        # is never overwritten with the formatted result.  This lets
+        # _resolve_citations_final_pass re-format from the raw source when a
+        # later citation map becomes available.
+        #
+        # Lifecycle: text_buffer is reset to "" when a file upload is
+        # processed (_handle_file_upload), which starts a new message
+        # segment.  last_posted_formatted_text tracks the latest formatted
+        # string actually sent to Slack so the final citation pass can skip
+        # a no-op update.
+        #
+        # Note: text_buffer grows for the lifetime of the current text
+        # segment.  For very long-running tasks this could be significant,
+        # but it is bounded by Slack's ~40K message limit in practice.
+        # A hard cap (_text_buffer_max_size) is enforced in
+        # _handle_text_update to prevent runaway growth.
         self.current_text_message_ts: Optional[str] = None
         self.text_buffer: str = ""
-        # Raw (unformatted) text buffer preserved for final citation resolution.
-        # This retains the original [[cite:...]] markers even after formatting
-        # strips them (when citation map was empty at format time).
-        self.raw_text_buffer: str = ""
+        self.last_posted_formatted_text: str = ""
+        self._text_buffer_max_size: int = 100_000  # chars — well above Slack's 40K limit
 
         # For update coalescing - holds non-text ops found during drain
         self._deferred_operation: Optional[QueueOperation] = None
@@ -650,10 +668,16 @@ class SlackMessageQueue:
             self.task_id, is_final, op.text[:50] if op.text else ""
         )
 
-        # Append text to buffer (both raw and working buffers)
         self.text_buffer += op.text
-        self.raw_text_buffer += op.text
-        
+
+        # Cap buffer size to prevent unbounded memory growth on long-running tasks
+        if len(self.text_buffer) > self._text_buffer_max_size:
+            log.warning(
+                "[Queue:%s] text_buffer exceeded %d chars, truncating to limit",
+                self.task_id, self._text_buffer_max_size,
+            )
+            self.text_buffer = self.text_buffer[-self._text_buffer_max_size:]
+
         current_time = time.monotonic()
         
         # Check if we're still in throttle period (429 backoff)
@@ -682,7 +706,6 @@ class SlackMessageQueue:
         if pending_text_ops:
             for pending_op in pending_text_ops:
                 self.text_buffer += pending_op.text
-                self.raw_text_buffer += pending_op.text
             log.debug(
                 "[Queue:%s] Coalesced %d additional text updates (%d chars total)",
                 self.task_id, len(pending_text_ops), len(self.text_buffer)
@@ -783,6 +806,8 @@ class SlackMessageQueue:
                             self.task_id, len(self.text_buffer)
                         )
                         return
+            # If we reach here, the text was successfully posted or updated
+            self.last_posted_formatted_text = formatted_text
         except Exception as e:
             log.error("[Queue:%s] Error sending text update: %s", self.task_id, e)
             # For non-final updates, preserve the buffer so it can be retried

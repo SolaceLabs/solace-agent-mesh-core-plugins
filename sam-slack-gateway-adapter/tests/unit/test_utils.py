@@ -373,8 +373,8 @@ class TestTransformCitationsForSlack:
         assert "<https://example.com/a|Source A>" in result
         assert "<https://example.com/b|Source B>" in result
 
-    def test_single_bracket_citation(self):
-        """Test that single-bracket variant [cite:s0r0] is also handled."""
+    def test_single_bracket_citation_not_transformed(self):
+        """Single-bracket [cite:s0r0] is not a valid citation format; only [[cite:...]] is."""
         text = "A fact.[cite:s0r0]"
         citation_map = {
             "s0r0": {
@@ -383,8 +383,8 @@ class TestTransformCitationsForSlack:
             }
         }
         result = utils.transform_citations_for_slack(text, citation_map)
-        assert "[cite:" not in result
-        assert "<https://example.com|Example>" in result
+        # Single-bracket citations are left as-is (not recognized)
+        assert result == text
 
     def test_citation_url_without_title_shows_domain(self):
         """Test that URL without title falls back to domain display."""
@@ -581,21 +581,82 @@ class TestCaptureRagSourcesLogic:
     building logic in isolation during unit tests.
     """
 
+    # Keys and defaults must match adapter.py _capture_rag_sources exactly.
+    # If _capture_rag_sources changes its field set or defaults, update this
+    # helper AND add/adjust the test_structural_equivalence_with_adapter test.
+    _CITATION_MAP_KEYS = {
+        "sourceUrl": None,
+        "url": None,
+        "title": None,
+        "filename": None,
+        "metadata": {},
+    }
+
     def _build_citation_map(self, existing_map, sources):
-        """Replicate the _capture_rag_sources logic for testing."""
+        """Replicate the _capture_rag_sources logic for testing.
+
+        IMPORTANT: This duplicates the algorithm from
+        adapter.py:_capture_rag_sources because the adapter module cannot be
+        imported in unit tests (heavy runtime dependencies).  If the real
+        method's key names, defaults, or iteration logic change, this helper
+        must be updated in lockstep — see _CITATION_MAP_KEYS and
+        test_structural_equivalence_with_adapter.
+        """
         citation_map = existing_map or {}
         for source in sources:
             citation_id = source.get("citationId")
             if not citation_id:
                 continue
             citation_map[citation_id] = {
-                "sourceUrl": source.get("sourceUrl"),
-                "url": source.get("url"),
-                "title": source.get("title"),
-                "filename": source.get("filename"),
-                "metadata": source.get("metadata", {}),
+                k: source.get(k, default)
+                for k, default in self._CITATION_MAP_KEYS.items()
             }
         return citation_map
+
+    def test_structural_equivalence_with_adapter(self):
+        """Verify _build_citation_map produces the same keys/defaults as the real code.
+
+        This is a canary: if adapter.py _capture_rag_sources changes its
+        dict literal, a developer should update _CITATION_MAP_KEYS to match.
+        We parse the real source to extract the key set so divergence is caught.
+        """
+        import ast
+        import inspect
+        import importlib.util
+        from pathlib import Path
+
+        # Locate adapter.py relative to the utils module
+        utils_path = Path(inspect.getfile(utils))
+        adapter_path = utils_path.parent / "adapter.py"
+        if not adapter_path.exists():
+            pytest.skip("adapter.py not found next to utils.py")
+
+        source = adapter_path.read_text()
+        tree = ast.parse(source)
+
+        # Find _capture_rag_sources method and extract the dict keys it writes
+        found_keys = None
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "_capture_rag_sources":
+                for child in ast.walk(node):
+                    if isinstance(child, ast.Dict):
+                        keys = []
+                        for k in child.keys:
+                            if isinstance(k, ast.Constant) and isinstance(k.value, str):
+                                keys.append(k.value)
+                        if "sourceUrl" in keys:
+                            found_keys = set(keys)
+                            break
+                break
+
+        assert found_keys is not None, (
+            "_capture_rag_sources dict literal not found in adapter.py — "
+            "has the method been refactored?"
+        )
+        assert found_keys == set(self._CITATION_MAP_KEYS.keys()), (
+            f"Key mismatch between test helper and adapter.py: "
+            f"test={set(self._CITATION_MAP_KEYS.keys())}, adapter={found_keys}"
+        )
 
     def test_builds_citation_map_from_sources(self):
         """Test building a citation map from RAG sources."""
@@ -752,12 +813,29 @@ class TestCitationsInsideCodeBlocks:
         assert "[[cite:s0r1]]" in result
 
     def test_plain_transform_does_not_skip_code_blocks(self):
-        """transform_citations_for_slack (without correct_slack_markdown) transforms all citations."""
+        """transform_citations_for_slack (without skip_code_blocks) transforms all citations."""
         text = "```\n[[cite:s0r0]]\n```"
         citation_map = {"s0r0": {"sourceUrl": "https://a.com", "title": "A"}}
-        # Direct transform doesn't know about code blocks — that's correct
+        # Default behavior: code blocks are not special
         result = utils.transform_citations_for_slack(text, citation_map)
         assert "[[cite:" not in result
+
+    def test_skip_code_blocks_preserves_citations_in_code(self):
+        """With skip_code_blocks=True, citations inside code blocks are preserved."""
+        text = "Normal.[[cite:s0r0]]\n```\nCode [[cite:s0r1]]\n```\nAfter.[[cite:s0r2]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "https://a.com", "title": "A"},
+            "s0r1": {"sourceUrl": "https://b.com", "title": "B"},
+            "s0r2": {"sourceUrl": "https://c.com", "title": "C"},
+        }
+        result = utils.transform_citations_for_slack(
+            text, citation_map, skip_code_blocks=True
+        )
+        # Outside code blocks: transformed
+        assert "[[cite:s0r0]]" not in result
+        assert "[[cite:s0r2]]" not in result
+        # Inside code block: preserved
+        assert "[[cite:s0r1]]" in result
 
 
 class TestTitleTruncationBoundary:
@@ -886,13 +964,13 @@ class TestSlackMrkdwnInjection:
         assert "&lt;script&gt;" in result
 
     def test_url_with_angle_brackets_escaped(self):
-        """Angle brackets in URLs should be escaped in Slack mrkdwn."""
+        """Angle brackets in URLs should be percent-encoded for Slack mrkdwn."""
         text = "Fact.[[cite:s0r0]]"
         citation_map = {
             "s0r0": {"sourceUrl": "https://example.com/<path>", "title": "Test"},
         }
         result = utils.transform_citations_for_slack(text, citation_map)
-        assert "&lt;path&gt;" in result
+        assert "%3Cpath%3E" in result
 
 
 class TestMarkdownInjection:
@@ -925,6 +1003,20 @@ class TestMarkdownInjection:
         }
         result = utils.transform_citations_for_markdown(text, citation_map)
         assert "\\[link text\\]" in result
+
+    def test_url_with_angle_bracket_escaped(self):
+        """URLs containing > should have it percent-encoded in markdown links."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {
+                "sourceUrl": "https://example.com/q?a>b",
+                "title": "Test",
+            },
+        }
+        result = utils.transform_citations_for_markdown(text, citation_map)
+        # > must be escaped to %3E so it doesn't break [text](<url>) syntax
+        assert "%3E" in result
+        assert "a>b" not in result
 
 
 class TestHasValidUrlScheme:
