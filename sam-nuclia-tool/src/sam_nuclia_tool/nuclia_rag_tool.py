@@ -397,6 +397,7 @@ class NucliaRagTool(DynamicTool):
         kb_url = f"{self.tool_config.base_url}/kb/{self.tool_config.kb_id}"
         token = self.tool_config.token
         top_k = self.tool_config.top_k
+        user_prompt = self.tool_config.user_prompt if self.tool_config.user_prompt else None
 
         try:
             log.info(
@@ -415,6 +416,7 @@ class NucliaRagTool(DynamicTool):
             ask_query = AskRequest(
                 query=rephrased_query,
                 citations=True,
+                prompt=user_prompt,
                 top_k=top_k,
                 prefer_markdown=True,
                 rephrase=True,
