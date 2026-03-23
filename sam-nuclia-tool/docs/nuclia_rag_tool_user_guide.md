@@ -91,7 +91,7 @@ When the user asks a question, use the `NucliaRagTool` tool:
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `tool_name` | String | "NucliaRagTool" | Tool name, required if using multiple instance of the tool in the same agent |
-| `prompt` | String | None | User prompt to pass into Nuclia. Supports variables: `{context}`, `{question}`  |
+| `user_prompt` | String | None | User prompt to pass into Nuclia. Supports variables: `{context}`, `{question}`  |
 | `top_k` | Integer | `5` | Maximum paragraphs to retrieve (1-200) |
 | `output_filename_base` | String | `"nuclia_answer"` | Base name for output artifacts |
 | `artifact_description_query_max_length` | Integer | `150` | Max query length in artifact description |
