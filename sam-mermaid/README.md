@@ -1,5 +1,15 @@
 # Solace Agent Mesh - Mermaid Plugin
 
+> **⚠️ DEPRECATED**: This plugin is deprecated and may be removed in a future release.
+>
+> The mermaid diagram generator is now built into the core **solace-agent-mesh**. No plugin installation is required — simply add the built-in tool to your agent configuration:
+>
+> ```yaml
+> tools:
+>   - tool_type: builtin
+>     tool_name: "mermaid_diagram_generator"
+> ```
+
 A plugin for the Solace Agent Mesh that generates diagrams from Mermaid.js syntax.
 
 ## Overview
