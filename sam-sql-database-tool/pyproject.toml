@@ -10,7 +10,7 @@ type = "tool"
 
 [project]
 name = "sam_sql_database_tool"
-version = "0.3.3"
+version = "0.1.2"
 description = "A reusable SQL database tool for Solace Agent Mesh."
 readme = "README.md"
 authors = [
