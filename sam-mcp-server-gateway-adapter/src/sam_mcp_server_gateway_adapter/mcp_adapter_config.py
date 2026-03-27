@@ -105,3 +105,19 @@ class McpAdapterConfig(BaseModel):
         "Examples: ['.*_debug', 'test_tool']",
     )
 
+    # Agent discovery wait configuration
+    init_wait_for_agents: bool = Field(
+        default=False,
+        description="Wait for agents to register before completing initialization. "
+        "Useful for MCP clients (like Claude Code) that don't support tools/list_changed notifications.",
+    )
+    init_wait_timeout_seconds: float = Field(
+        default=10.0,
+        description="Maximum time in seconds to wait for agents to register during initialization.",
+    )
+    init_min_agents: int = Field(
+        default=1,
+        description="Minimum number of agents that must register before initialization completes. "
+        "Only used when init_wait_for_agents is True.",
+    )
+
