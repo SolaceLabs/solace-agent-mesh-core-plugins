@@ -30,7 +30,7 @@ dependencies = [
     "qdrant-client==1.13.3",  # For Qdrant vector database access
     "watchdog==6.0.0",  # Fixed syntax for watchdog dependency
     "scikit-learn==1.7.2",  # For TF-IDF and other machine learning utilities
-    "nltk>=3.9.3,<4",
+    "nltk==3.9.4",  # CVE-2025-14009, CVE-2026-33236, CVE-2026-33231 fixed in 3.9.4
 ]
 
 [project.optional-dependencies]
