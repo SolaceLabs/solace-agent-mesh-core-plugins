@@ -1,7 +1,7 @@
 """Unit tests for Slack event handlers."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from sam_slack_gateway_adapter import handlers
 
@@ -15,6 +15,7 @@ def mock_adapter():
     adapter.extract_auth_claims = AsyncMock()
     adapter.slack_app = MagicMock()
     adapter.slack_app.client = AsyncMock()
+    adapter._is_bot_message.return_value = False
     return adapter
 
 
@@ -50,6 +51,7 @@ class TestHandleSlackMessage:
     @pytest.mark.asyncio
     async def test_bot_messages_ignored(self, mock_adapter):
         """Test that bot messages are filtered out (behavior: no processing)."""
+        mock_adapter._is_bot_message.return_value = True
         event = {
             "bot_id": "B12345",
             "channel_type": "im",
@@ -61,6 +63,22 @@ class TestHandleSlackMessage:
 
         # Test actual behavior: bot messages should not trigger processing
         mock_adapter.context.handle_external_input.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_user_message_with_bot_id_processed(self, mock_adapter):
+        """User messages via an app (bot_id + user) must NOT be filtered out."""
+        event = {
+            "bot_id": "B12345",
+            "user": "U12345",
+            "channel_type": "im",
+            "text": "Hello from app user",
+            "ts": "1234567890.123456",
+        }
+        say = AsyncMock()
+
+        await handlers.handle_slack_message(mock_adapter, event, say)
+
+        mock_adapter.context.handle_external_input.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_channel_messages_without_thread_ignored(self, mock_adapter):

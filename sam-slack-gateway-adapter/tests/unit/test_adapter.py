@@ -127,10 +127,46 @@ class TestExtractAuthClaims:
         assert claims.source == "slack_fallback"
 
     @pytest.mark.asyncio
-    async def test_extract_auth_claims_bot_message(self, slack_adapter):
-        """Test that bot messages are skipped."""
+    async def test_extract_auth_claims_pure_bot_message(self, slack_adapter):
+        """Test that pure bot messages (bot_id present, no user) are skipped."""
         external_input = {
             "bot_id": "B12345",
+            "team": "T67890",
+        }
+
+        claims = await slack_adapter.extract_auth_claims(external_input)
+        assert claims is None
+
+    @pytest.mark.asyncio
+    async def test_extract_auth_claims_user_message_with_bot_id(self, slack_adapter):
+        """Test that user messages sent via an app (bot_id AND user both present) are processed."""
+        slack_adapter.slack_app.client.users_profile_get = AsyncMock(
+            return_value={
+                "ok": True,
+                "profile": {"email": "user@example.com"},
+            }
+        )
+
+        external_input = {
+            "bot_id": "B12345",
+            "user": "U12345",
+            "team": "T67890",
+        }
+
+        claims = await slack_adapter.extract_auth_claims(external_input)
+
+        assert claims is not None
+        assert claims.id == "user@example.com"
+        assert claims.email == "user@example.com"
+        assert claims.source == "slack_api"
+        assert claims.raw_context["slack_user_id"] == "U12345"
+        assert claims.raw_context["slack_team_id"] == "T67890"
+
+    @pytest.mark.asyncio
+    async def test_extract_auth_claims_subtype_bot_message(self, slack_adapter):
+        """Test that events with subtype=bot_message are skipped even when user is present."""
+        external_input = {
+            "subtype": "bot_message",
             "user": "U12345",
             "team": "T67890",
         }
@@ -193,7 +229,7 @@ class TestPrepareTask:
 
     @pytest.mark.asyncio
     async def test_prepare_task_bot_message_ignored(self, slack_adapter):
-        """Test that bot messages raise ValueError."""
+        """Test that pure bot messages (bot_id present, no user) raise ValueError."""
         external_input = {
             "bot_id": "B12345",
             "channel": "C12345",
@@ -202,6 +238,39 @@ class TestPrepareTask:
 
         with pytest.raises(ValueError, match="Ignoring bot message"):
             await slack_adapter.prepare_task(external_input)
+
+    @pytest.mark.asyncio
+    async def test_prepare_task_subtype_bot_message_ignored(self, slack_adapter):
+        """Test that events with subtype=bot_message raise ValueError even when user is present."""
+        external_input = {
+            "subtype": "bot_message",
+            "user": "U12345",
+            "channel": "C12345",
+            "text": "Bot message via subtype",
+        }
+
+        with pytest.raises(ValueError, match="Ignoring bot message"):
+            await slack_adapter.prepare_task(external_input)
+
+    @pytest.mark.asyncio
+    async def test_prepare_task_user_message_with_bot_id(self, slack_adapter):
+        """Test that user messages sent via an app (bot_id AND user both present) are processed."""
+        external_input = {
+            "bot_id": "B12345",
+            "user": "U12345",
+            "channel": "C12345",
+            "ts": "1234567890.123456",
+            "text": "Hello from app user",
+        }
+
+        with patch.object(slack_adapter, "_resolve_mentions_in_text", return_value="Hello from app user"):
+            task = await slack_adapter.prepare_task(external_input)
+
+        assert isinstance(task, SamTask)
+        assert len(task.parts) == 1
+        assert isinstance(task.parts[0], SamTextPart)
+        assert task.parts[0].text == "Hello from app user"
+        assert task.session_id == "slack-C12345-1234567890_123456"
 
     @pytest.mark.asyncio
     async def test_prepare_task_with_thread(self, slack_adapter):
