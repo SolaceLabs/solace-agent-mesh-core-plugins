@@ -8,6 +8,5 @@
   "sam-rag": "0.1.0",
   "sam-rest-gateway": "0.2.0",
   "sam-ruleset-lookup-tool": "0.1.0",
-  "sam-slack-gateway-adapter": "0.1.0",
-  "sam-sql-database-tool": "0.1.1"
+  "sam-slack-gateway-adapter": "0.1.0"
 }

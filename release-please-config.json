@@ -107,10 +107,6 @@
     "sam-slack-gateway-adapter": {
       "package-name": "sam_slack_gateway_adapter",
       "changelog-path": "CHANGELOG.md"
-    },
-    "sam-sql-database-tool": {
-      "package-name": "sam_sql_database_tool",
-      "changelog-path": "CHANGELOG.md"
     }
   }
 }

@@ -39,7 +39,6 @@ on:
           - sam-ruleset-lookup-tool
           - sam-mcp-server-gateway-adapter
           - sam-slack-gateway-adapter
-          - sam-sql-database-tool
           - sam-webhook-gateway
       ref:
         description: "Git ref to checkout (branch or SHA)"

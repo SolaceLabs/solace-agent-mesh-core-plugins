@@ -38,10 +38,6 @@ sam-slack-gateway-adapter:
   - changed-files:
       - any-glob-to-any-file: sam-slack-gateway-adapter/**
 
-sam-sql-database-tool:
-  - changed-files:
-      - any-glob-to-any-file: sam-sql-database-tool/**
-
 sam-mcp-server-gateway-adapter:
   - changed-files:
       - any-glob-to-any-file: sam-mcp-server-gateway-adapter/**
