@@ -7,6 +7,7 @@ name: Sync Plugin Configs
 # so this workflow doesn't trigger unnecessarily for that plugin anymore.
 # The list should match the plugins in:
 # - .github/workflows/build-plugin.yaml (workflow_dispatch options)
+# - .github/workflows/deprecate-plugins.yaml (workflow_dispatch checkbox inputs)
 # - .release-please-manifest.json
 # - release-please-config.json
 # - .github/pr_labeler.yaml
@@ -102,6 +103,7 @@ jobs:
 
           Automatically added missing plugin(s) to:
           - .github/workflows/build-plugin.yaml
+          - .github/workflows/deprecate-plugins.yaml
           - .github/workflows/sync-plugin-configs.yaml
           - .release-please-manifest.json
           - release-please-config.json
@@ -117,6 +119,7 @@ jobs:
 
             I detected new plugin directories and automatically updated the configuration files:
             - \`.github/workflows/build-plugin.yaml\`
+            - \`.github/workflows/deprecate-plugins.yaml\`
             - \`.github/workflows/sync-plugin-configs.yaml\`
             - \`.release-please-manifest.json\`
             - \`release-please-config.json\`
@@ -144,6 +147,7 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "The following files were updated:" >> $GITHUB_STEP_SUMMARY
             echo "- \`.github/workflows/build-plugin.yaml\`" >> $GITHUB_STEP_SUMMARY
+            echo "- \`.github/workflows/deprecate-plugins.yaml\`" >> $GITHUB_STEP_SUMMARY
             echo "- \`.github/workflows/sync-plugin-configs.yaml\`" >> $GITHUB_STEP_SUMMARY
             echo "- \`.release-please-manifest.json\`" >> $GITHUB_STEP_SUMMARY
             echo "- \`release-please-config.json\`" >> $GITHUB_STEP_SUMMARY

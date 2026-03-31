@@ -9,8 +9,9 @@ from __future__ import annotations
 # in release/config synchronization files.
 DEPRECATED_PLUGINS = {
     "sam-event-mesh-agent",
+    "sam-geo-information",
+    "sam-mermaid",
     "sam-slack",
     "sam-sql-database",
     "sam-webhook-gateway",
-    "sam-mermaid",
 }
