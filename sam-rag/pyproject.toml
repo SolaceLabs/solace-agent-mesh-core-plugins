@@ -58,7 +58,6 @@ onedrive = [
 ]
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/sam_rag" = "sam_rag/"
 "config.yaml" = "sam_rag/config.yaml"
 "README.md" = "sam_rag/README.md"
 "pyproject.toml" = "sam_rag/pyproject.toml"

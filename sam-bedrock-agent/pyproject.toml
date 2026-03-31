@@ -26,7 +26,6 @@ packages = ["src/sam_bedrock_agent"]
 src-path = "src"
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/sam_bedrock_agent" = "sam_bedrock_agent/"
 "config.yaml" = "sam_bedrock_agent/config.yaml"
 "README.md" = "sam_bedrock_agent/README.md"
 "pyproject.toml" = "sam_bedrock_agent/pyproject.toml"
