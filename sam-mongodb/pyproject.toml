@@ -14,14 +14,41 @@ version = "0.1.0"
 description = "A Solace Agent Mesh plugin for natural language querying of MongoDB databases."
 readme = "README.md"
 authors = [
-    { name="SolaceLabs", email="solacelabs@solace.com" }
+  { name="SolaceLabs", email="solacelabs@solace.com" },
 ]
-requires-python = ">=3.10"
+license = { text = "Apache License 2.0" }
+requires-python = ">=3.10.16,<3.14"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
 dependencies = [
     "pymongo==4.15.1",
     "pydantic==2.11.9",
     "PyYAML==6.0.2"
 ]
+
+[project.optional-dependencies]
+test = [
+    "pytest-asyncio",
+    "pytest>=8.0.0",
+    "pytest-mock>=3.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-json-ctrf>=0.1.0",
+    "pytest-xdist>=3.5.0",
+    "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure",
+]
+
+[project.urls]
+Homepage = "https://github.com/SolaceLabs/solace-agent-mesh"
+Documentation = "https://solacelabs.github.io/solace-agent-mesh/"
+Repository = "https://github.com/SolaceLabs/solace-agent-mesh-core-plugins"
+Issues = "https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sam_mongodb"]

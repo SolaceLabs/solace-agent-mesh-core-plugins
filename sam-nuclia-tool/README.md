@@ -4,6 +4,18 @@ A plugin for connecting to RAG and retrieving relevant documents from [Nuclia](h
 
 This is a plugin for Solace Agent Mesh (SAM).
 
+## About Solace Agent Mesh
+
+Solace Agent Mesh (SAM) is an open-source framework for building event-driven, multi-agent AI systems where specialized agents collaborate on complex tasks. It provides a standardized way for agents to communicate, share data, and integrate with external systems while keeping components loosely coupled and production-ready.
+
+SAM helps you:
+
+- Build event-driven multi-agent systems on Solace Event Mesh
+- Connect agents, tools, gateways, and services through a common runtime
+- Extend projects with installable plugins such as `sam-nuclia-tool`
+
+Learn more in the [Solace Agent Mesh documentation](https://solacelabs.github.io/solace-agent-mesh/) and the [main project repository](https://github.com/SolaceLabs/solace-agent-mesh).
+
 ## Features
 
 - **Generative Answers with Citations**: Generates natural language answers with verifiable, clickable citations to source documents
