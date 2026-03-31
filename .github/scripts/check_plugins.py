@@ -5,6 +5,7 @@ Check that all plugin directories are listed in the configuration files.
 This script scans the repository for plugin directories (sam-*) and verifies
 they are properly configured in:
 - .github/workflows/build-plugin.yaml
+- .github/workflows/deprecate-plugins.yaml
 - .github/workflows/sync-plugin-configs.yaml (paths exclusions)
 - .release-please-manifest.json
 - release-please-config.json
@@ -25,6 +26,9 @@ from pathlib import Path
 from typing import Set
 
 from plugin_exceptions import DEPRECATED_PLUGINS
+
+AUTO_INPUTS_START = "      # BEGIN AUTO-GENERATED PLUGIN INPUTS"
+AUTO_INPUTS_END = "      # END AUTO-GENERATED PLUGIN INPUTS"
 
 
 def get_plugin_directories(repo_root: Path) -> Set[str]:
@@ -62,6 +66,27 @@ def get_plugins_from_build_workflow(repo_root: Path) -> Set[str]:
             match = re.match(r"\s*-\s*(sam-[\w-]+)", line)
             if match:
                 plugins.add(match.group(1))
+
+    return plugins
+
+
+def get_plugins_from_deprecate_workflow(repo_root: Path) -> Set[str]:
+    """Extract plugin names from deprecate-plugins.yaml workflow inputs."""
+    workflow_path = repo_root / ".github" / "workflows" / "deprecate-plugins.yaml"
+    if not workflow_path.exists():
+        return set()
+
+    content = workflow_path.read_text()
+    match = re.search(
+        rf"{re.escape(AUTO_INPUTS_START)}\n(.*?)\n{re.escape(AUTO_INPUTS_END)}",
+        content,
+        re.DOTALL,
+    )
+    managed_block = match.group(1) if match else content
+
+    plugins = set()
+    for plugin_match in re.finditer(r"^\s{6}(sam-[\w-]+):\s*$", managed_block, re.MULTILINE):
+        plugins.add(plugin_match.group(1))
 
     return plugins
 
@@ -161,6 +186,7 @@ def main():
 
     configs = [
         ("build-plugin.yaml", get_plugins_from_build_workflow(repo_root)),
+        ("deprecate-plugins.yaml", get_plugins_from_deprecate_workflow(repo_root)),
         ("sync-plugin-configs.yaml", get_plugins_from_sync_workflow(repo_root)),
         (".release-please-manifest.json", get_plugins_from_manifest(repo_root)),
         ("release-please-config.json", get_plugins_from_release_config(repo_root)),
