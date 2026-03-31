@@ -206,7 +206,21 @@ jobs:
         shell: bash
         run: |
           cd ${{ inputs.plugin_directory }}
-          hatch build
+          BUILD_LOG="$(mktemp)"
+          set +e
+          hatch build 2>&1 | tee "$BUILD_LOG"
+          BUILD_RC=${PIPESTATUS[0]}
+          set -e
+
+          if [[ "$BUILD_RC" -ne 0 ]]; then
+            exit "$BUILD_RC"
+          fi
+
+          if rg -q "UserWarning: Duplicate name:|Duplicate name:" "$BUILD_LOG"; then
+            echo "hatch build produced duplicate archive entry warnings; failing build."
+            exit 1
+          fi
+
           # Use uv to run twine for package verification
           uv tool run twine check dist/*.tar.gz
           uv tool run twine check dist/*.whl
