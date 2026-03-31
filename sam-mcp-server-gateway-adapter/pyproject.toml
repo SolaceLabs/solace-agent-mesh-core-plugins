@@ -16,12 +16,36 @@ authors = [
 ]
 description = "A gateway adapter to make SAM accessible as a MCP server"
 readme = "README.md"
-requires-python = ">=3.10"
+license = { text = "Apache License 2.0" }
+requires-python = ">=3.10.16,<3.14"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
 dependencies = [
     "fastmcp>=2.14.2",
     "starlette~=0.49.1",
     "httpx>=0.27.0",
 ]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-json-ctrf>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/SolaceLabs/solace-agent-mesh"
+Documentation = "https://solacelabs.github.io/solace-agent-mesh/"
+Repository = "https://github.com/SolaceLabs/solace-agent-mesh-core-plugins"
+Issues = "https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sam_mcp_server_gateway_adapter"]
