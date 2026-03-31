@@ -19,7 +19,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "pdfplumber>=0.11.7,<1",  # For high-quality PDF processing (MIT License)
-    "pypdf>=6.9.2,<7",  # For PDF processing fallback (BSD License)
+    "pypdf>=6.9.1,<7",  # For PDF processing fallback (BSD License)
     "python-docx==1.2.0",  # For DOCX processing
     "beautifulsoup4==4.13.5",  # For HTML processing
     "pandas==2.3.2",  # For Excel processing
