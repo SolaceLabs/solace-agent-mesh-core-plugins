@@ -69,6 +69,7 @@ permissions:
 jobs:
   deprecate-plugins:
     runs-on: ubuntu-latest
+    environment: pypi
     outputs:
       pr_url: ${{ steps.create-pr.outputs.pr_url }}
       pr_number: ${{ steps.create-pr.outputs.pr_number }}

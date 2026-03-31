@@ -11,7 +11,6 @@ on:
 
 permissions:
   contents: write
-  id-token: write # Required for PyPI Trusted Publishing
   checks: write # For FOSSA status checks
 
 jobs:
@@ -137,11 +136,27 @@ jobs:
           ls -la ${{ steps.extract.outputs.path }}/dist/ >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-  publish-to-pypi:
-    name: Publish release assets to PyPI
+  dispatch-package-index-publish:
+    name: Dispatch package index publish workflow
+    environment: pypi
     needs: publish
-    uses: ./.github/workflows/release.yaml
-    with:
-      project-name: ${{ needs.publish.outputs.project_name }}
-      version: ${{ needs.publish.outputs.version }}
-    secrets: inherit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch release workflow on main
+        id: dispatch
+        env:
+          PROJECT_NAME: ${{ needs.publish.outputs.project_name }}
+          VERSION: ${{ needs.publish.outputs.version }}
+          GH_TOKEN: ${{ secrets.SAM_PLUGINS_PR_CREATE_TOKEN }}
+        run: |
+          if [[ -z "$PROJECT_NAME" || -z "$VERSION" ]]; then
+            echo "Both project-name and version are required."
+            exit 1
+          fi
+
+          START_TIME="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          gh workflow run "release.yaml" \
+            --repo "${{ github.repository }}" \
+            --ref main \
+            --f project-name="$PROJECT_NAME" \
+            --f version="$VERSION"
