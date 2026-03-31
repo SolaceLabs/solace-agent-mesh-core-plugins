@@ -158,5 +158,5 @@ jobs:
           gh workflow run "release.yaml" \
             --repo "${{ github.repository }}" \
             --ref main \
-            --f project-name="$PROJECT_NAME" \
-            --f version="$VERSION"
+            -f project-name="$PROJECT_NAME" \
+            -f version="$VERSION"
