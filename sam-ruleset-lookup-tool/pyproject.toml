@@ -24,7 +24,6 @@ packages = ["src/sam_ruleset_lookup_tool"]
 src-path = "src"
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/sam_ruleset_lookup_tool" = "sam_ruleset_lookup_tool/"
 "config.yaml" = "sam_ruleset_lookup_tool/config.yaml"
 "README.md" = "sam_ruleset_lookup_tool/README.md"
 "pyproject.toml" = "sam_ruleset_lookup_tool/pyproject.toml"

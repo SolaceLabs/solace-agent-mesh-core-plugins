@@ -32,7 +32,6 @@ packages = ["sam_sql_database_tool"]
 src-path = "src"
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/sam_sql_database_tool" = "sam_sql_database_tool/"
 "config.yaml" = "sam_sql_database_tool/config.yaml"
 "README.md" = "sam_sql_database_tool/README.md"
 "pyproject.toml" = "sam_sql_database_tool/pyproject.toml"
