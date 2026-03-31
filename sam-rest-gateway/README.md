@@ -1,4 +1,17 @@
 # Rest Gateway SAM Plugin
+
+## About Solace Agent Mesh
+
+Solace Agent Mesh (SAM) is an open-source framework for building event-driven, multi-agent AI systems where specialized agents collaborate on complex tasks. It provides a standardized way for agents to communicate, share data, and integrate with external systems while keeping components loosely coupled and production-ready.
+
+SAM helps you:
+
+- Build event-driven multi-agent systems on Solace Event Mesh
+- Connect agents, tools, gateways, and services through a common runtime
+- Extend projects with installable plugins such as `sam-rest-gateway`
+
+Learn more in the [Solace Agent Mesh documentation](https://solacelabs.github.io/solace-agent-mesh/) and the [main project repository](https://github.com/SolaceLabs/solace-agent-mesh).
+
 ## Overview
 
 The Solace Agent Mesh (SAM) REST API Gateway provides a standard, robust, and secure HTTP-based entry point for programmatic and system-to-system integrations. It allows external clients to submit tasks to SAM agents, manage files, and discover agent capabilities using a familiar RESTful interface.

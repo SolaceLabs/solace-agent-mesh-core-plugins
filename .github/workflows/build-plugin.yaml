@@ -202,12 +202,33 @@ jobs:
           echo "SonarQube scan outcome: ${{ steps.sonarqube-scan.outcome }}"
           echo "status=${{ steps.sonarqube-scan.outcome }}" >> $GITHUB_OUTPUT
 
-      - name: Build and Verify Package
+      - name: Build package distributions
+        id: build-package
+        working-directory: ${{ inputs.plugin_directory }}
         shell: bash
         run: |
-          cd ${{ inputs.plugin_directory }}
-          hatch build
-          # Use uv to run twine for package verification
+          BUILD_LOG="$(mktemp "${RUNNER_TEMP:-/tmp}/hatch-build-XXXX.log")"
+          echo "build_log=$BUILD_LOG" >> "$GITHUB_OUTPUT"
+
+          set +e
+          hatch build 2>&1 | tee "$BUILD_LOG"
+          BUILD_RC=${PIPESTATUS[0]}
+          set -e
+
+          if [[ "$BUILD_RC" -ne 0 ]]; then
+            exit "$BUILD_RC"
+          fi
+
+      - name: Fail on build warnings
+        run: >
+          python3 .github/scripts/fail_on_warnings.py
+          "${{ steps.build-package.outputs.build_log }}"
+          --command "hatch build"
+
+      - name: Verify built distributions
+        working-directory: ${{ inputs.plugin_directory }}
+        shell: bash
+        run: |
           uv tool run twine check dist/*.tar.gz
           uv tool run twine check dist/*.whl
 

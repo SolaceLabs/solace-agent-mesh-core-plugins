@@ -16,16 +16,44 @@ authors = [
 ]
 description = "The Solace Agent Mesh (SAM) REST API Gateway provides a standard, robust, and secure HTTP-based entry point for programmatic and system-to-system integrations. It allows external clients to submit tasks to SAM agents, manage files, and discover agent capabilities using a familiar RESTful interface."
 readme = "README.md"
-requires-python = ">=3.10"
+license = { text = "Apache License 2.0" }
+requires-python = ">=3.10.16,<3.14"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
 dependencies = [
 ]
+
+[project.optional-dependencies]
+test = [
+    "a2a-sdk[http-server]>=0.3.1",
+    "pytest-asyncio",
+    "pytest>=8.0.0",
+    "pytest-mock>=3.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-json-ctrf>=0.1.0",
+    "pytest-xdist>=3.5.0",
+    "solace-agent-mesh>=1.0.6",
+    "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure",
+]
+
+[project.urls]
+Homepage = "https://github.com/SolaceLabs/solace-agent-mesh"
+Documentation = "https://solacelabs.github.io/solace-agent-mesh/"
+Repository = "https://github.com/SolaceLabs/solace-agent-mesh-core-plugins"
+Issues = "https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sam_rest_gateway"]
 src-path = "src"
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/sam_rest_gateway" = "sam_rest_gateway/"
 "config.yaml" = "sam_rest_gateway/config.yaml"
 "README.md" = "sam_rest_gateway/README.md"
 "pyproject.toml" = "sam_rest_gateway/pyproject.toml"
