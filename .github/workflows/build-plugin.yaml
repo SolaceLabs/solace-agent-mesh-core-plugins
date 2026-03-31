@@ -32,7 +32,6 @@ on:
           - sam-bedrock-agent
           - sam-event-mesh-gateway
           - sam-event-mesh-tool
-          - sam-geo-information
           - sam-mongodb
           - sam-nuclia-tool
           - sam-rag

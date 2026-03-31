@@ -14,10 +14,6 @@ sam-event-mesh-tool:
   - changed-files:
       - any-glob-to-any-file: sam-event-mesh-tool/**
 
-sam-geo-information:
-  - changed-files:
-      - any-glob-to-any-file: sam-geo-information/**
-
 sam-mongodb:
   - changed-files:
       - any-glob-to-any-file: sam-mongodb/**
