@@ -37,22 +37,6 @@ dependencies = [
   "PyYAML==6.0.2"
 ]
 
-[project.optional-dependencies]
-test = [
-  "a2a-sdk[http-server]>=0.3.1",
-  "pytest-asyncio",
-  "pytest>=8.0.0",
-  "pytest-mock>=3.0.0",
-  "pytest-cov>=4.0.0",
-  "pytest-json-ctrf>=0.1.0",
-  "pytest-xdist>=3.5.0",
-  "solace-agent-mesh>=1.4.9,<2.0.0",
-  "testing.postgresql",
-  "psycopg2-binary",
-  "testcontainers[mysql,postgres,mssql,oracle]>=4.4.0",
-  "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure",
-]
-
 [project.urls]
 Homepage = "https://github.com/SolaceLabs/solace-agent-mesh"
 Documentation = "https://solacelabs.github.io/solace-agent-mesh/"
@@ -84,5 +68,7 @@ dependencies = [
   "solace-agent-mesh>=1.4.9,<2.0.0",
   "testing.postgresql",
   "psycopg2-binary",
-  "testcontainers[mysql,postgres,mssql,oracle]>=4.4.0"
+  "testcontainers[mysql,postgres,mssql,oracle]>=4.4.0",
+  "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure",
+
 ]
