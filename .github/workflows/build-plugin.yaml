@@ -220,6 +220,7 @@ jobs:
           fi
 
       - name: Fail on build warnings
+        if: ${{ hashFiles('.github/scripts/fail_on_warnings.py') != '' && steps.build-package.outputs.build_log != '' }}
         run: >
           python3 .github/scripts/fail_on_warnings.py
           "${{ steps.build-package.outputs.build_log }}"

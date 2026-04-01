@@ -60,7 +60,7 @@ Repository = "https://github.com/SolaceLabs/solace-agent-mesh-core-plugins"
 Issues = "https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["sam_sql_database_tool"]
+packages = ["src/sam_sql_database_tool"]
 src-path = "src"
 
 [tool.hatch.build.targets.wheel.force-include]
