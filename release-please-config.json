@@ -63,6 +63,7 @@
     }
   ],
   "group-pull-request-title-pattern": "chore: release ${branch}",
+  "extra-label": "skip_jira_status_check",
   "pull-request-header": ":robot: I have created a release *beep* *boop*",
   "packages": {
     "sam-bedrock-agent": {

@@ -30,18 +30,6 @@ classifiers = [
 dependencies = [
 ]
 
-[project.optional-dependencies]
-test = [
-    "a2a-sdk[http-server]>=0.3.1",
-    "pytest-asyncio",
-    "pytest>=8.0.0",
-    "pytest-mock>=3.0.0",
-    "pytest-cov>=4.0.0",
-    "pytest-json-ctrf>=0.1.0",
-    "pytest-xdist>=3.5.0",
-    "solace-agent-mesh>=1.0.6",
-    "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure",
-]
 
 [project.urls]
 Homepage = "https://github.com/SolaceLabs/solace-agent-mesh"

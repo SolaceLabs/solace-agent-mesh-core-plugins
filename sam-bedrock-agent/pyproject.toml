@@ -31,16 +31,6 @@ dependencies = [
     "boto3==1.40.37",
 ]
 
-[project.optional-dependencies]
-test = [
-    "pytest-asyncio",
-    "pytest>=8.0.0",
-    "pytest-mock>=3.0.0",
-    "pytest-cov>=4.0.0",
-    "pytest-json-ctrf>=0.1.0",
-    "pytest-xdist>=3.5.0",
-    "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure",
-]
 
 [project.urls]
 Homepage = "https://github.com/SolaceLabs/solace-agent-mesh"
