@@ -45,6 +45,7 @@ sam_event_mesh_gateway = "sam_event_mesh_gateway.app:info"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sam_event_mesh_gateway"]
+src-path = "src"
 
 [tool.hatch.build.targets.wheel.force-include]
 "config.yaml" = "sam_event_mesh_gateway/config.yaml"
