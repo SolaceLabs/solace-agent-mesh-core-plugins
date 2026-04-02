@@ -79,7 +79,7 @@ Issues = "https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues"
 "pyproject.toml" = "sam_rag/pyproject.toml"
 
 [tool.hatch.build.targets.wheel]
-packages = ["sam_rag"]
+packages = ["src/sam_rag"]
 src-path = "src"
 
 [tool.hatch.version]

@@ -26,7 +26,7 @@ dependencies = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["sam_sql_database"]
+packages = ["src/sam_sql_database"]
 src-path = "src"
 
 [tool.hatch.build.targets.wheel.force-include]
