@@ -67,16 +67,6 @@ onedrive = [
     "requests>=2.31.0",  # For HTTP requests to Microsoft Graph API
 ]
 
-test = [
-    "pytest-asyncio",
-    "pytest>=8.0.0",
-    "pytest-mock>=3.0.0",
-    "pytest-cov>=4.0.0",
-    "pytest-json-ctrf>=0.1.0",
-    "pytest-xdist>=3.5.0",
-    "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure",
-]
-
 [project.urls]
 Homepage = "https://github.com/SolaceLabs/solace-agent-mesh"
 Documentation = "https://solacelabs.github.io/solace-agent-mesh/"
@@ -89,7 +79,7 @@ Issues = "https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues"
 "pyproject.toml" = "sam_rag/pyproject.toml"
 
 [tool.hatch.build.targets.wheel]
-packages = ["sam_rag"]
+packages = ["src/sam_rag"]
 src-path = "src"
 
 [tool.hatch.version]
