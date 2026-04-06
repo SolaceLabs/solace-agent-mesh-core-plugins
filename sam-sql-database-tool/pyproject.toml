@@ -10,13 +10,23 @@ type = "tool"
 
 [project]
 name = "sam_sql_database_tool"
-version = "0.3.3"
+version = "0.3.4"
 description = "A reusable SQL database tool for Solace Agent Mesh."
 readme = "README.md"
 authors = [
-  { name = "Hugo Pare", email = "hugo.pare@solace.com" },
+  { name="SolaceLabs", email="solacelabs@solace.com" },
 ]
-requires-python = ">=3.10"
+license = { text = "Apache License 2.0" }
+requires-python = ">=3.10.16,<3.14"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
 dependencies = [
   "SQLAlchemy==2.0.40",
   "PyMySQL==1.1.2",
@@ -27,12 +37,17 @@ dependencies = [
   "PyYAML==6.0.2"
 ]
 
+[project.urls]
+Homepage = "https://github.com/SolaceLabs/solace-agent-mesh"
+Documentation = "https://solacelabs.github.io/solace-agent-mesh/"
+Repository = "https://github.com/SolaceLabs/solace-agent-mesh-core-plugins"
+Issues = "https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues"
+
 [tool.hatch.build.targets.wheel]
-packages = ["sam_sql_database_tool"]
+packages = ["src/sam_sql_database_tool"]
 src-path = "src"
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/sam_sql_database_tool" = "sam_sql_database_tool/"
 "config.yaml" = "sam_sql_database_tool/config.yaml"
 "README.md" = "sam_sql_database_tool/README.md"
 "pyproject.toml" = "sam_sql_database_tool/pyproject.toml"
@@ -53,5 +68,7 @@ dependencies = [
   "solace-agent-mesh>=1.4.9,<2.0.0",
   "testing.postgresql",
   "psycopg2-binary",
-  "testcontainers[mysql,postgres,mssql,oracle]>=4.4.0"
+  "testcontainers[mysql,postgres,mssql,oracle]>=4.4.0",
+  "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure",
+
 ]

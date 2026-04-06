@@ -4,6 +4,18 @@ This plugin for Solace Agent Mesh (SAM) provides a powerful and dynamic tool for
 
 Unlike the `sam-sql-database` agent, which provides a complete Natural-Language-to-SQL agent, this plugin provides a **tool** that can be added to any existing or new agent. This allows you to create multi-faceted agents that can interact directly with databases for specific, targeted tasks.
 
+## About Solace Agent Mesh
+
+Solace Agent Mesh (SAM) is an open-source framework for building event-driven, multi-agent AI systems where specialized agents collaborate on complex tasks. It provides a standardized way for agents to communicate, share data, and integrate with external systems while keeping components loosely coupled and production-ready.
+
+SAM helps you:
+
+- Build event-driven multi-agent systems on Solace Event Mesh
+- Connect agents, tools, gateways, and services through a common runtime
+- Extend projects with installable plugins such as `sam-sql-database-tool`
+
+Learn more in the [Solace Agent Mesh documentation](https://solacelabs.github.io/solace-agent-mesh/) and the [main project repository](https://github.com/SolaceLabs/solace-agent-mesh).
+
 ## Key Features
 
 - **Dynamic Tool Creation**: Define custom SQL query tools directly in your agent's YAML configuration. Each tool instance is completely independent.

@@ -16,10 +16,20 @@ authors = [
 ]
 description = "A document-ingesting agent that monitors specified directories, keeping stored documents up to date in a vector database for Retrieval-Augmented Generation (RAG) queries."
 readme = "README.md"
-requires-python = ">=3.10"
+license = { text = "Apache License 2.0" }
+requires-python = ">=3.10.16,<3.14"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
 dependencies = [
     "pdfplumber>=0.11.7,<1",  # For high-quality PDF processing (MIT License)
-    "pypdf>=6.9.2,<7",  # For PDF processing fallback (BSD License)
+    "pypdf>=6.9.1,<7",  # For PDF processing fallback (BSD License)
     "python-docx==1.2.0",  # For DOCX processing
     "beautifulsoup4==4.13.5",  # For HTML processing
     "pandas==2.3.2",  # For Excel processing
@@ -57,14 +67,19 @@ onedrive = [
     "requests>=2.31.0",  # For HTTP requests to Microsoft Graph API
 ]
 
+[project.urls]
+Homepage = "https://github.com/SolaceLabs/solace-agent-mesh"
+Documentation = "https://solacelabs.github.io/solace-agent-mesh/"
+Repository = "https://github.com/SolaceLabs/solace-agent-mesh-core-plugins"
+Issues = "https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues"
+
 [tool.hatch.build.targets.wheel.force-include]
-"src/sam_rag" = "sam_rag/"
 "config.yaml" = "sam_rag/config.yaml"
 "README.md" = "sam_rag/README.md"
 "pyproject.toml" = "sam_rag/pyproject.toml"
 
 [tool.hatch.build.targets.wheel]
-packages = ["sam_rag"]
+packages = ["src/sam_rag"]
 src-path = "src"
 
 [tool.hatch.version]

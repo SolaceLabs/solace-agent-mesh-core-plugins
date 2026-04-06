@@ -19,6 +19,7 @@ from typing import Generator, Dict, Any
 from solace_ai_connector.solace_ai_connector import SolaceAiConnector
 from solace_ai_connector.common.message import Message
 from solace_ai_connector.common.utils import get_data_value
+from solace_ai_connector.common.observability.registry import MetricRegistry
 from solace_agent_mesh.agent.sac.component import SamAgentComponent
 
 # --- Constants ---
@@ -138,6 +139,8 @@ def agent_with_event_mesh_tool(
     This is the System Under Test (SUT).
     """
     # The responder_service fixture is included to ensure it starts first.
+    # Reset the MetricRegistry singleton so this second SolaceAiConnector can initialize it.
+    MetricRegistry.reset()
     with open(AGENT_CONFIG_FILE, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
     connector = SolaceAiConnector(config)
