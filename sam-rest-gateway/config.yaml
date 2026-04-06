@@ -47,6 +47,10 @@ apps:
       rest_api_server_host: ${REST_API_HOST, 0.0.0.0}
       rest_api_server_port: ${REST_API_PORT, 8080}
       sync_mode_timeout_seconds: 300 # Timeout for the legacy v1 synchronous API
+      
+      # --- Result Caching Configuration ---
+      persist_results_after_poll: ${PERSIST_RESULTS_AFTER_POLL, false} # If true, results remain cached after polling (allows multiple polls)
+      result_cache_ttl_seconds: ${RESULT_CACHE_TTL_SECONDS, 600} # How long results remain in cache (in seconds)
 
       # --- Authentication Configuration ---
       enforce_authentication: false # Set to false to disable auth checks

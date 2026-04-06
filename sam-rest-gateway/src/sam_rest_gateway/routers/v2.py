@@ -112,7 +112,11 @@ async def get_task_result(
 
     if result:
         log.info("%sFound completed task result in cache.", log_prefix)
-        component.result_cache.delete(taskId)
+        if not component.get_config("persist_results_after_poll", False):
+            component.result_cache.delete(taskId)
+            log.debug("%sDeleted task result from cache after retrieval.", log_prefix)
+        else:
+            log.debug("%sKeeping task result in cache (persist_results_after_poll=True).", log_prefix)
         return result
     else:
         log.info("%sTask not yet complete. Returning 202.", log_prefix)

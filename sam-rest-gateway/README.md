@@ -63,6 +63,10 @@ The gateway is configured within the `app_config` section of its app definition 
     rest_api_server_host: "0.0.0.0"
     rest_api_server_port: 8080
     sync_mode_timeout_seconds: 60 # Timeout for the v1 synchronous API
+    
+    # --- Result Caching Configuration ---
+    persist_results_after_poll: ${PERSIST_RESULTS_AFTER_POLL, false} # If true, results remain cached after polling (allows multiple polls)
+    result_cache_ttl_seconds: ${RESULT_CACHE_TTL_SECONDS, 600} # How long results remain in cache (in seconds)
 
     # --- Authentication Config ---
     enforce_authentication: true
@@ -74,6 +78,8 @@ The gateway is configured within the `app_config` section of its app definition 
 *   `rest_api_server_host` (string, optional, default: "127.0.0.1"): Host address for the embedded FastAPI server.
 *   `rest_api_server_port` (integer, optional, default: 8080): Port for the embedded FastAPI server.
 *   `sync_mode_timeout_seconds` (integer, optional, default: 60): Timeout in seconds for synchronous v1 API calls.
+*   `persist_results_after_poll` (boolean, optional, default: false): If true, results remain cached after being polled, allowing multiple polls of the same task result. If false, results are removed from cache after the first successful poll.
+*   `result_cache_ttl_seconds` (integer, optional, default: 600): Time-to-live in seconds for how long task results remain in the cache before being automatically evicted. This applies to both v1 and v2 API results.
 *   `enforce_authentication` (boolean, optional, default: false): If true, all API endpoints (except `/health` and `/api/health`) will require a valid bearer token.
 *   `external_auth_service_url` (string, optional): URL of the external authentication service for token validation. Required if `enforce_authentication` is true.
 
