@@ -36,7 +36,6 @@ dependencies = [
     "odfpy==1.4.1",  # For ODT processing
     "lxml==6.0.1",  # XML parser for BeautifulSoup
     "PyYAML==6.0.2",  # For YAML processing
-    "openai==1.99.9",  # For OpenAI API access
     "qdrant-client==1.13.3",  # For Qdrant vector database access
     "watchdog==6.0.0",  # Fixed syntax for watchdog dependency
     "scikit-learn==1.7.2",  # For TF-IDF and other machine learning utilities
