@@ -19,6 +19,8 @@ jobs:
     environment: pypi
     outputs:
       releases_created: ${{ steps.release.outputs.releases_created }}
+      paths_released: ${{ steps.release.outputs.paths_released }}
+      releases_json: ${{ steps.collect-releases.outputs.releases_json }}
       prs_created: ${{ steps.release.outputs.prs_created }}
       pr_number: ${{ steps.get_pr.outputs.pr_number }}
     steps:
@@ -29,6 +31,22 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.SAM_PLUGINS_PR_CREATE_TOKEN }}
+
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Collect created releases
+        id: collect-releases
+        env:
+          PATHS_RELEASED_JSON: ${{ steps.release.outputs.paths_released }}
+        run: |
+          RELEASES_JSON="$(
+            python3 .github/scripts/build_release_publish_matrix.py \
+              --paths-released-json "${PATHS_RELEASED_JSON:-[]}" \
+              --config-path release-please-config.json \
+              --manifest-path .release-please-manifest.json
+          )"
+          echo "releases_json=$RELEASES_JSON" >> "$GITHUB_OUTPUT"
 
       - name: Get PR number
         id: get_pr
@@ -43,5 +61,15 @@ jobs:
       - name: Debug outputs
         run: |
           echo "releases_created: ${{ steps.release.outputs.releases_created }}"
+          echo "paths_released: ${{ steps.release.outputs.paths_released }}"
+          echo "releases_json: ${{ steps.collect-releases.outputs.releases_json }}"
           echo "prs_created: ${{ steps.release.outputs.prs_created }}"
           echo "pr_number: ${{ steps.get_pr.outputs.pr_number }}"
+
+  publish-created-releases:
+    needs: release-please
+    if: needs.release-please.outputs.releases_created == 'true' && needs.release-please.outputs.releases_json != '[]'
+    uses: ./.github/workflows/publish.yaml
+    with:
+      releases_json: ${{ needs.release-please.outputs.releases_json }}
+    secrets: inherit

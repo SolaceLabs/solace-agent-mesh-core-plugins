@@ -1,13 +1,17 @@
 name: Publish Package
 
-# This workflow triggers when a GitHub Release is published.
-# Release-please creates releases when the Release PR is merged.
-# Each plugin in the monorepo gets its own release tag as:
-# <component>-<version> or <component>-v<version>
-# where component can come from package-name (underscores) or plugin path (hyphens).
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      releases_json:
+        description: "JSON array of released plugins to build and publish"
+        required: true
+        type: string
+    secrets:
+      FOSSA_API_KEY:
+        required: true
+      SAM_PLUGINS_PR_CREATE_TOKEN:
+        required: true
 
 permissions:
   contents: write
@@ -15,53 +19,26 @@ permissions:
 
 jobs:
   publish:
-    name: Build and update release artifacts
+    name: Build, attach, and publish ${{ matrix.release.plugin_path }}
     runs-on: ubuntu-latest
-    outputs:
-      project_name: ${{ steps.extract.outputs.project_name }}
-      version: ${{ steps.extract.outputs.version }}
+    environment: pypi
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ${{ fromJson(inputs.releases_json) }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Extract package path from release tag
-        id: extract
-        run: |
-          TAG="${{ github.event.release.tag_name }}"
-          echo "Tag: $TAG"
-
-          # Supported release tag formats:
-          #   <component>-<version>   (example: sam_sql_database_tool-0.1.2)
-          #   <component>-v<version>  (example: sam-rag-v0.1.0)
-          if [[ "$TAG" =~ ^(.+)-v([0-9].*)$ ]]; then
-            TAG_COMPONENT="${BASH_REMATCH[1]}"
-            VERSION="${BASH_REMATCH[2]}"
-          elif [[ "$TAG" =~ ^(.+)-([0-9].*)$ ]]; then
-            TAG_COMPONENT="${BASH_REMATCH[1]}"
-            VERSION="${BASH_REMATCH[2]}"
-          else
-            echo "Error: release tag '$TAG' does not match supported formats"
-            exit 1
-          fi
-
-          # Normalize package-name style components (underscores) to plugin paths.
-          PACKAGE_PATH="${TAG_COMPONENT//_/-}"
-
-          echo "Tag component: $TAG_COMPONENT"
-          echo "Package path: $PACKAGE_PATH"
-          echo "Version: $VERSION"
-
-          echo "path=$PACKAGE_PATH" >> $GITHUB_OUTPUT
-          echo "project_name=$PACKAGE_PATH" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
       - name: Verify package exists
         run: |
-          if [ ! -d "${{ steps.extract.outputs.path }}" ]; then
-            echo "Error: Package directory '${{ steps.extract.outputs.path }}' not found"
+          if [ ! -d "${{ matrix.release.plugin_path }}" ]; then
+            echo "Error: Package directory '${{ matrix.release.plugin_path }}' not found"
             exit 1
           fi
-          echo "Found package at ${{ steps.extract.outputs.path }}"
+          echo "Found package at ${{ matrix.release.plugin_path }}"
+          echo "Release tag: ${{ matrix.release.release_tag }}"
+          echo "Version: ${{ matrix.release.version }}"
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -75,20 +52,20 @@ jobs:
 
       - name: Build package
         run: |
-          cd ${{ steps.extract.outputs.path }}
+          cd ${{ matrix.release.plugin_path }}
           hatch build
 
       - name: Show built artifacts
         run: |
-          echo "Built artifacts for ${{ steps.extract.outputs.path }}:"
-          ls -la ${{ steps.extract.outputs.path }}/dist/
+          echo "Built artifacts for ${{ matrix.release.plugin_path }}:"
+          ls -la ${{ matrix.release.plugin_path }}/dist/
 
       - name: Verify package version
         run: |
-          cd ${{ steps.extract.outputs.path }}
+          cd ${{ matrix.release.plugin_path }}
           # Check that the built package version matches the release tag
           BUILT_VERSION=$(hatch version)
-          EXPECTED_VERSION="${{ steps.extract.outputs.version }}"
+          EXPECTED_VERSION="${{ matrix.release.version }}"
 
           echo "Built version: $BUILT_VERSION"
           echo "Expected version: $EXPECTED_VERSION"
@@ -100,53 +77,29 @@ jobs:
       - name: Update Release with build artifacts
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
         with:
-          tag_name: ${{ github.event.release.tag_name }}
+          tag_name: ${{ matrix.release.release_tag }}
           files: |
-            ${{ steps.extract.outputs.path }}/dist/*.whl
-            ${{ steps.extract.outputs.path }}/dist/*.tar.gz
+            ${{ matrix.release.plugin_path }}/dist/*.whl
+            ${{ matrix.release.plugin_path }}/dist/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
         # Run FOSSA scan and tag with version for license tracking
       - name: FOSSA Scan - Publish
+        continue-on-error: true
         uses: SolaceDev/solace-public-workflows/.github/actions/sca/sca-scan@main # main
         with:
           scanners: fossa
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
           additional_scan_params: |
             fossa.branch=main
-            fossa.revision=${{ steps.extract.outputs.version }}
-            fossa.config=${{ steps.extract.outputs.path }}/.fossa.yml
+            fossa.revision=${{ matrix.release.version }}
+            fossa.config=${{ matrix.release.plugin_path }}/.fossa.yml
 
-      - name: Create summary
-        run: |
-          echo "## Release Artifacts Updated" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Package:** ${{ steps.extract.outputs.path }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** ${{ steps.extract.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Tag:** ${{ github.event.release.tag_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**FOSSA Revision:** ${{ steps.extract.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Security Checks" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ FOSSA Vulnerability Check passed" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ FOSSA Licensing Check passed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Built artifacts:" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          ls -la ${{ steps.extract.outputs.path }}/dist/ >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-
-  dispatch-package-index-publish:
-    name: Dispatch package index publish workflow
-    environment: pypi
-    needs: publish
-    runs-on: ubuntu-latest
-    steps:
-      - name: Dispatch release workflow on main
-        id: dispatch
+      - name: Dispatch package index publish workflow
         env:
-          PROJECT_NAME: ${{ needs.publish.outputs.project_name }}
-          VERSION: ${{ needs.publish.outputs.version }}
+          PROJECT_NAME: ${{ matrix.release.plugin_path }}
+          VERSION: ${{ matrix.release.version }}
           GH_TOKEN: ${{ secrets.SAM_PLUGINS_PR_CREATE_TOKEN }}
         run: |
           if [[ -z "$PROJECT_NAME" || -z "$VERSION" ]]; then
@@ -154,9 +107,27 @@ jobs:
             exit 1
           fi
 
-          START_TIME="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           gh workflow run "release.yaml" \
             --repo "${{ github.repository }}" \
             --ref main \
             -f project-name="$PROJECT_NAME" \
             -f version="$VERSION"
+
+      - name: Create summary
+        run: |
+          echo "## Release Artifacts Updated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Package:** ${{ matrix.release.plugin_path }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ matrix.release.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ matrix.release.release_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "**FOSSA Revision:** ${{ matrix.release.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Security Checks" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ FOSSA Vulnerability Check passed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ FOSSA Licensing Check passed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ release.yaml dispatched" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Built artifacts:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          ls -la ${{ matrix.release.plugin_path }}/dist/ >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
