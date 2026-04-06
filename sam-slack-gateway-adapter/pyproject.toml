@@ -29,7 +29,7 @@ classifiers = [
 ]
 dependencies = [
     "slack_bolt==1.25.0",
-    "requests==2.33.0",
+    "requests==2.32.5",
 ]
 
 
