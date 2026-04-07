@@ -104,6 +104,13 @@ tools:
 -   `include_tables`: (Optional) A list of glob patterns for tables to include in schema detection. If set, only tables matching at least one pattern are included. Supports wildcards: `*`, `?`, `[seq]`. Example: `["tms_trx*", "tms_alert*"]`.
 -   `exclude_tables`: (Optional) A list of glob patterns for tables to exclude from schema detection. Applied after `include_tables`. Supports the same wildcard syntax. Example: `["bkp_*", "*_temp", "*_dev"]`. Both options can be used together and matching is case-sensitive.
 
+    **Note:** Table filtering controls which tables appear in the schema provided to the LLM, but it does not prevent the LLM from executing queries against other tables (e.g., by querying database metadata directly). To ensure the agent only queries filtered tables, add an instruction to your agent such as:
+    ```
+    Only query tables that appear in your tool's schema description.
+    Do not query database metadata tables or any tables not listed in your schema.
+    ```
+    For strict enforcement, use a database user with `SELECT` access restricted to the allowed tables.
+
 #### Connection Pool Settings
 
 -   `pool_size`: (Optional, default: `10`) Number of persistent connections to maintain in the pool. Increase for high-concurrency workloads; decrease to reduce resource usage on low-traffic deployments.
