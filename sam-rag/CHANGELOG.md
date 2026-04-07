@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.2](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_rag-0.1.1...sam_rag-0.1.2) (2026-04-07)
+
+
+### Bug Fixes
+
+* **DATAGO-130869:** bump pypdf for sam-rag ([#152](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues/152)) ([cf46f26](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/commit/cf46f264ea16bbed3099e8d14b2074eecf2e0adc))
+* **DATAGO-130869:** remove openai pin (only used transitively through litellm) ([019e8b6](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/commit/019e8b64fd2447f440d74311060201df50ba05f4))
+
 ## [0.1.1](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_rag-0.1.0...sam_rag-0.1.1) (2026-04-02)
 
 
