@@ -2,6 +2,18 @@
 
 This plugin provides a Slack gateway adapter for the Solace Agent Mesh framework using the new generic gateway framework. It allows you to interact with Slack channels and messages, enabling bi-directional communication between Slack users and SAM agents.
 
+## About Solace Agent Mesh
+
+Solace Agent Mesh (SAM) is an open-source framework for building event-driven, multi-agent AI systems where specialized agents collaborate on complex tasks. It provides a standardized way for agents to communicate, share data, and integrate with external systems while keeping components loosely coupled and production-ready.
+
+SAM helps you:
+
+- Build event-driven multi-agent systems on Solace Event Mesh
+- Connect agents, tools, gateways, and services through a common runtime
+- Extend projects with installable plugins such as `sam-slack-gateway-adapter`
+
+Learn more in the [Solace Agent Mesh documentation](https://solacelabs.github.io/solace-agent-mesh/) and the [main project repository](https://github.com/SolaceLabs/solace-agent-mesh).
+
 ## Overview
 
 The Slack Gateway Adapter is a complete replacement for the legacy `sam-slack` plugin, built on the modern SAM gateway architecture. It provides:

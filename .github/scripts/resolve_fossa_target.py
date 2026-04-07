@@ -126,7 +126,9 @@ def main() -> int:
 
     if is_release_please_pr:
         branch = "ReleasePleasePR"
-        revision = manifest_version or _hatch_version(plugin_dir) or current_sha
+        # Use commit SHA for release-please PR scans so we always query
+        # the freshly analyzed revision, not a reused semantic version key.
+        revision = current_sha or manifest_version or _hatch_version(plugin_dir)
         enable_diff_mode = "false"
         diff_base_revision_sha = ""
     elif event_name == "pull_request":

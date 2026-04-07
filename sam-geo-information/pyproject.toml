@@ -18,7 +18,7 @@ description = "A plugin that provides comprehensive geographic information servi
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "requests==2.32.5",
+    "requests==2.33.0",
     "PyYAML==6.0.2"
 ]
 
@@ -27,7 +27,6 @@ packages = ["src/sam_geo_information"]
 src-path = "src"
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/sam_geo_information" = "sam_geo_information/"
 "config.yaml" = "sam_geo_information/config.yaml"
 "README.md" = "sam_geo_information/README.md"
 "pyproject.toml" = "sam_geo_information/pyproject.toml"

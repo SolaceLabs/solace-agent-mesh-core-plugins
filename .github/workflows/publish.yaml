@@ -11,7 +11,6 @@ on:
 
 permissions:
   contents: write
-  id-token: write # Required for PyPI Trusted Publishing
   checks: write # For FOSSA status checks
 
 jobs:
@@ -23,7 +22,7 @@ jobs:
       version: ${{ steps.extract.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Extract package path from release tag
         id: extract
@@ -65,7 +64,7 @@ jobs:
           echo "Found package at ${{ steps.extract.outputs.path }}"
 
       - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.12"
 
@@ -99,7 +98,7 @@ jobs:
           fi
 
       - name: Update Release with build artifacts
-        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: |
@@ -137,11 +136,27 @@ jobs:
           ls -la ${{ steps.extract.outputs.path }}/dist/ >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-  publish-to-pypi:
-    name: Publish release assets to PyPI
+  dispatch-package-index-publish:
+    name: Dispatch package index publish workflow
+    environment: pypi
     needs: publish
-    uses: ./.github/workflows/release.yaml
-    with:
-      project-name: ${{ needs.publish.outputs.project_name }}
-      version: ${{ needs.publish.outputs.version }}
-    secrets: inherit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch release workflow on main
+        id: dispatch
+        env:
+          PROJECT_NAME: ${{ needs.publish.outputs.project_name }}
+          VERSION: ${{ needs.publish.outputs.version }}
+          GH_TOKEN: ${{ secrets.SAM_PLUGINS_PR_CREATE_TOKEN }}
+        run: |
+          if [[ -z "$PROJECT_NAME" || -z "$VERSION" ]]; then
+            echo "Both project-name and version are required."
+            exit 1
+          fi
+
+          START_TIME="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          gh workflow run "release.yaml" \
+            --repo "${{ github.repository }}" \
+            --ref main \
+            -f project-name="$PROJECT_NAME" \
+            -f version="$VERSION"

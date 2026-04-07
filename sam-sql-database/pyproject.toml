@@ -26,11 +26,10 @@ dependencies = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["sam_sql_database"]
+packages = ["src/sam_sql_database"]
 src-path = "src"
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/sam_sql_database" = "sam_sql_database/"
 "config.yaml" = "sam_sql_database/config.yaml"
 "README.md" = "sam_sql_database/README.md"
 "pyproject.toml" = "sam_sql_database/pyproject.toml"
