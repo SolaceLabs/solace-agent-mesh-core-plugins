@@ -1,6 +1,7 @@
 """Service for handling SQL database operations with parallel processing."""
 
 from contextlib import contextmanager
+from fnmatch import fnmatchcase
 from typing import List, Dict, Any, Generator, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
@@ -31,6 +32,8 @@ class DatabaseService:
         connect_args: Optional[dict] = None,
         isolation_level: Optional[str] = None,
         echo: bool = False,
+        include_tables: Optional[List[str]] = None,
+        exclude_tables: Optional[List[str]] = None,
     ):
         """Initialize the database service.
 
@@ -45,8 +48,12 @@ class DatabaseService:
             connect_args: Extra kwargs passed directly to the DBAPI connect() call (default: {}).
             isolation_level: Transaction isolation level, e.g. 'READ_COMMITTED' (default: dialect default).
             echo: Log all SQL statements to the Python logger (default: False).
+            include_tables: List of glob patterns for tables to include in schema detection (default: None = all).
+            exclude_tables: List of glob patterns for tables to exclude from schema detection (default: None = none).
         """
         self.connection_string = connection_string
+        self.include_tables = include_tables
+        self.exclude_tables = exclude_tables
         self.pool_size = pool_size
         self.max_overflow = max_overflow
         self.pool_timeout = pool_timeout
@@ -311,6 +318,14 @@ class DatabaseService:
             log.debug("Could not get row count for %s: %s", table_name, e)
             return None
 
+    def _filter_tables(self, tables: List[str]) -> List[str]:
+        """Filter table list by include/exclude glob patterns."""
+        if self.include_tables:
+            tables = [t for t in tables if any(fnmatchcase(t, p) for p in self.include_tables)]
+        if self.exclude_tables:
+            tables = [t for t in tables if not any(fnmatchcase(t, p) for p in self.exclude_tables)]
+        return tables
+
     def _looks_like_enum_column(self, column_name: str) -> bool:
         """Check if a column name suggests it might be an enum."""
         enum_patterns = [
@@ -430,7 +445,10 @@ class DatabaseService:
     def _compute_schema(self, max_enum_cardinality: int, sample_size: int) -> str:
         """Compute schema without caching logic."""
         log.info("Starting schema detection...")
-        tables = self.get_tables()
+        all_tables = self.get_tables()
+        tables = self._filter_tables(all_tables)
+        if len(tables) != len(all_tables):
+            log.info("Table filtering: %d of %d tables selected", len(tables), len(all_tables))
         log.debug("Processing %d tables in parallel with 5 workers...", len(tables))
         schema = {}
 

@@ -52,6 +52,14 @@ tools:
       # schema_sample_size: 100
       # cache_ttl_seconds: 3600
 
+      # --- Table Filtering (glob patterns supported: *, ?, [seq]) ---
+      # include_tables:            # Only include matching tables in schema detection
+      #   - "customers*"
+      #   - "orders*"
+      # exclude_tables:            # Exclude matching tables from schema detection
+      #   - "bkp_*"
+      #   - "*_temp"
+
       # --- Connection Pool (optional tuning) ---
       # pool_size: 10
       # max_overflow: 10
@@ -93,6 +101,8 @@ tools:
 -   `max_enum_cardinality`: (Optional, default: `100`) Maximum number of distinct values to consider a column as an enum. Increase for columns like countries (190+), decrease for faster init times.
 -   `schema_sample_size`: (Optional, default: `100`) Number of rows to sample per table for schema detection. Increase for better accuracy on sparse data, decrease for faster init times.
 -   `cache_ttl_seconds`: (Optional, default: `3600`) Time-to-live for schema cache in seconds. After this duration, the schema will be re-detected on the next query. Set to `0` to disable caching.
+-   `include_tables`: (Optional) A list of glob patterns for tables to include in schema detection. If set, only tables matching at least one pattern are included. Supports wildcards: `*`, `?`, `[seq]`. Example: `["tms_trx*", "tms_alert*"]`.
+-   `exclude_tables`: (Optional) A list of glob patterns for tables to exclude from schema detection. Applied after `include_tables`. Supports the same wildcard syntax. Example: `["bkp_*", "*_temp", "*_dev"]`. Both options can be used together and matching is case-sensitive.
 
 #### Connection Pool Settings
 
