@@ -94,7 +94,7 @@ apps:
 
             # --- Dynamic Prompt/Context Configuration ---
             user_prompt: |
-              You are the oﬃcial intelligent assistant for <company_name>.
+              You are an oﬃcial intelligent assistant for <company_name>.
 
               Your task is to answer the user’s question strictly and exclusively using the retrieved CONTEXT provided to you.
 
