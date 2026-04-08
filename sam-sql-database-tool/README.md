@@ -64,6 +64,14 @@ tools:
       # schema_sample_size: 100
       # cache_ttl_seconds: 3600
 
+      # --- Table Filtering (glob patterns supported: *, ?, [seq]) ---
+      # include_tables:            # Only include matching tables in schema detection
+      #   - "customers*"
+      #   - "orders*"
+      # exclude_tables:            # Exclude matching tables from schema detection
+      #   - "bkp_*"
+      #   - "*_temp"
+
       # --- Connection Pool (optional tuning) ---
       # pool_size: 10
       # max_overflow: 10
@@ -105,6 +113,18 @@ tools:
 -   `max_enum_cardinality`: (Optional, default: `100`) Maximum number of distinct values to consider a column as an enum. Increase for columns like countries (190+), decrease for faster init times.
 -   `schema_sample_size`: (Optional, default: `100`) Number of rows to sample per table for schema detection. Increase for better accuracy on sparse data, decrease for faster init times.
 -   `cache_ttl_seconds`: (Optional, default: `3600`) Time-to-live for schema cache in seconds. After this duration, the schema will be re-detected on the next query. Set to `0` to disable caching.
+-   `include_tables`: (Optional) A list of glob patterns for tables to include in schema detection. If set, only tables matching at least one pattern are included. Supports wildcards: `*`, `?`, `[seq]`. Example: `["tms_trx*", "tms_alert*"]`.
+-   `exclude_tables`: (Optional) A list of glob patterns for tables to exclude from schema detection. Applied after `include_tables`. Supports the same wildcard syntax. Example: `["bkp_*", "*_temp", "*_dev"]`. Both options can be used together and matching is case-sensitive.
+
+    **Important: Table filtering is not access control.** These options only control which tables appear in the schema provided to the LLM. They do not prevent the LLM from executing queries against other tables in the database — for example, by querying database metadata or being prompted to access tables outside the filter. The underlying database connection still has full access to all tables the database user can see.
+
+    To reduce the likelihood of the LLM querying unfiltered tables, add an instruction to your agent such as:
+    ```
+    Only query tables that appear in your tool's schema description.
+    Do not query database metadata tables or any tables not listed in your schema.
+    ```
+
+    **For actual access control, configure the database user in the connection string with `SELECT` permissions restricted to only the allowed tables.** This is the only way to guarantee that the LLM cannot access tables outside the intended scope.
 
 #### Connection Pool Settings
 

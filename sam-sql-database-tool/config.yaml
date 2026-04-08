@@ -106,6 +106,15 @@ apps:
             schema_sample_size: 50
             cache_ttl_seconds: 1800 # 30 minutes
 
+            # Optional table filtering (glob patterns supported: *, ?, [seq]):
+            # include_tables:              # Only include matching tables in schema detection
+            #   - "tms_trx*"
+            #   - "tms_alert*"
+            # exclude_tables:              # Exclude matching tables from schema detection
+            #   - "bkp_*"
+            #   - "*_temp"
+            #   - "*_dev"
+
             # Optional connection pool tuning:
             # pool_size: 10           # Persistent connections kept in pool (default: 10)
             # max_overflow: 10        # Additional connections allowed during traffic bursts (default: 10)
