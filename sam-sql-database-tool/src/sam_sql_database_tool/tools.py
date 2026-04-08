@@ -119,7 +119,7 @@ class DatabaseConfig(BaseModel):
                     self.tool_name,
                 )
         return self
-    
+
     def get(self, key: str, default: Any = None) -> Any:
         """Allows dictionary-like access to the model's attributes."""
         return getattr(self, key, default)
