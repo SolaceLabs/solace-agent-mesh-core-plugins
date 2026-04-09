@@ -54,6 +54,7 @@ permissions:
   statuses: write
   checks: write
   repository-projects: read
+  packages: read
 
 env:
   PYTHON_VERSION: "3.13"
