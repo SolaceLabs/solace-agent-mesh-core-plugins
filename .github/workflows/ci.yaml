@@ -18,6 +18,7 @@ permissions:
   checks: write
   repository-projects: read
   id-token: write
+  packages: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
