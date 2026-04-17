@@ -17,7 +17,7 @@ class McpAdapterConfig(BaseModel):
     port: int = Field(default=8000, description="Port for HTTP transport")
     host: str = Field(default="0.0.0.0", description="Host for HTTP transport")
     default_user_identity: str = Field(
-        default="mcp_user", description="Default user identity for authentication"
+        default="sam_dev_user", description="Default user identity for authentication"
     )
     stream_responses: bool = Field(
         default=True, description="Whether to stream responses back to MCP client"

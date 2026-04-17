@@ -532,7 +532,7 @@ In your output handler, use `task_response:structured_output` to access the pars
         payload_format: "json"
         payload_encoding: "utf-8"
         user_identity_expression: "input.user_properties:user_id"
-        default_user_identity: "anonymous_event_mesh_user"
+        default_user_identity: "sam_dev_user"
         target_agent_name: "OrderProcessingAgent"
         on_success: "order_success_handler"
         on_error: "order_error_handler"

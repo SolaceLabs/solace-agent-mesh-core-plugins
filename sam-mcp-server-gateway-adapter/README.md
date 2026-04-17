@@ -64,7 +64,7 @@ adapter_config:
   port: 8000
 
   # Authentication
-  default_user_identity: "mcp_user"
+  default_user_identity: "sam_dev_user"
 
   # Streaming
   stream_responses: true
