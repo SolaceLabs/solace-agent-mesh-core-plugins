@@ -1,13 +1,22 @@
+import csv
+import io
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field, model_validator, field_validator, SecretStr
 from google.genai import types as adk_types
 from solace_agent_mesh.agent.tools.dynamic_tool import DynamicTool
+from solace_agent_mesh.agent.tools.tool_result import (
+    DataDisposition,
+    DataObject,
+    ToolResult,
+)
 from solace_agent_mesh.agent.sac.component import SamAgentComponent
 from .services.database_service import DatabaseService
 from .services.connection_validator import validate_connection_string
 
 import logging
 log = logging.getLogger(__name__)
+
+INLINE_PREVIEW_ROWS = 5
 
 class DatabaseConfig(BaseModel):
     tool_name: str = Field(
@@ -260,7 +269,9 @@ class SqlDatabaseTool(DynamicTool):
         query = args.get("query")
 
         if not self.db_service:
-            return {"error": f"The database connection for '{self.tool_name}' is not available. Database service failed to initialize."}
+            return ToolResult.error(
+                f"The database connection for '{self.tool_name}' is not available. Database service failed to initialize."
+            )
 
         log.info("%s Executing query on '%s': %s", log_identifier, self.tool_name, query)
         try:
@@ -282,7 +293,7 @@ class SqlDatabaseTool(DynamicTool):
                     except Exception as schema_error:
                         log.warning("%s Schema fetch failed after recovery: %s", log_identifier, schema_error)
 
-            return {"result": results}
+            return self._build_query_result(results)
         except Exception as e:
             was_healthy = self._connection_healthy
             self._connection_healthy = False
@@ -293,4 +304,48 @@ class SqlDatabaseTool(DynamicTool):
             else:
                 log.warning("%s Query failed on degraded database '%s': %s", log_identifier, self.tool_name, e)
 
-            return {"error": str(e)}
+            return ToolResult.error(str(e))
+
+    def _build_query_result(self, results: List[Dict[str, Any]]) -> ToolResult:
+        if not results:
+            return ToolResult.ok(
+                message="Query returned 0 rows.",
+                data={"row_count": 0, "columns": [], "preview_rows": []},
+            )
+
+        first = results[0]
+        if len(results) == 1 and set(first.keys()) == {"status", "affected_rows"}:
+            return ToolResult.ok(
+                message=f"Query executed successfully. Affected rows: {first['affected_rows']}.",
+                data=first,
+            )
+
+        columns = list(first.keys())
+        row_count = len(results)
+
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=columns, extrasaction="ignore")
+        writer.writeheader()
+        for row in results:
+            writer.writerow({c: row.get(c) for c in columns})
+        csv_content = buf.getvalue()
+
+        summary = {
+            "row_count": row_count,
+            "columns": columns,
+            "preview_rows": results[:INLINE_PREVIEW_ROWS],
+        }
+
+        return ToolResult.ok(
+            message=f"Query returned {row_count} row{'s' if row_count != 1 else ''}.",
+            data=summary,
+            data_objects=[
+                DataObject(
+                    name=f"{self.tool_name}_query_result.csv",
+                    content=csv_content,
+                    mime_type="text/csv",
+                    disposition=DataDisposition.AUTO,
+                    description=f"SQL query result set ({row_count} rows)",
+                )
+            ],
+        )

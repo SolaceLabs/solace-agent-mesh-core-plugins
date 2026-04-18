@@ -1,6 +1,7 @@
 import pytest
 import sqlalchemy as sa
 from sam_sql_database_tool.tools import SqlDatabaseTool, DatabaseConfig
+from ._result_helpers import error_message, is_error
 
 
 def get_select_query(db_config, value=1, alias=None):
@@ -55,8 +56,7 @@ class TestMultiDatabaseDegradation:
             assert "✅ Database Connected" in tool.tool_description
 
             result = await tool._run_async_impl(args={"query": get_select_query(db_config)})
-            assert "result" in result
-            assert "error" not in result
+            assert not is_error(result)
 
         for tool in tools:
             await tool.cleanup(component=None, tool_config={})
@@ -98,19 +98,19 @@ class TestMultiDatabaseDegradation:
         assert tools[0]._connection_healthy is True
         assert "✅ Database Connected" in tools[0].tool_description
         result = await tools[0]._run_async_impl(args={"query": get_select_query(db_config)})
-        assert "result" in result
+        assert not is_error(result)
 
         assert tools[1]._connection_healthy is False
         assert tools[1]._connection_error is not None
         assert "❌ WARNING: This database is currently UNAVAILABLE" in tools[1].tool_description
         result = await tools[1]._run_async_impl(args={"query": get_select_query(db_config)})
-        assert "error" in result
-        assert len(result["error"]) > 0
+        assert is_error(result)
+        assert len(error_message(result)) > 0
 
         assert tools[2]._connection_healthy is True
         assert "✅ Database Connected" in tools[2].tool_description
         result = await tools[2]._run_async_impl(args={"query": get_select_query(db_config)})
-        assert "result" in result
+        assert not is_error(result)
 
         for tool in tools:
             await tool.cleanup(component=None, tool_config={})
@@ -142,8 +142,8 @@ class TestMultiDatabaseDegradation:
             assert "❌ WARNING: This database is currently UNAVAILABLE" in tool.tool_description
 
             result = await tool._run_async_impl(args={"query": "SELECT 1"})
-            assert "error" in result
-            assert len(result["error"]) > 0
+            assert is_error(result)
+            assert len(error_message(result)) > 0
 
         for tool in tools:
             await tool.cleanup(component=None, tool_config={})
@@ -183,7 +183,7 @@ class TestMultiDatabaseDegradation:
         assert tools[0].db_service is not None
 
         result = await tools[0]._run_async_impl(args={"query": get_select_query(db_config)})
-        assert "result" in result
+        assert not is_error(result)
 
         for tool in tools:
             await tool.cleanup(component=None, tool_config={})
@@ -208,8 +208,8 @@ class TestMultiDatabaseDegradation:
         assert "Test database that will fail" in description
 
         result = await tool._run_async_impl(args={"query": "SELECT * FROM users"})
-        assert "error" in result
-        assert len(result["error"]) > 0
+        assert is_error(result)
+        assert len(error_message(result)) > 0
 
         await tool.cleanup(component=None, tool_config={})
 
@@ -237,8 +237,8 @@ class TestMultiDatabaseDegradation:
         assert "❌" not in description
 
         result = await tool._run_async_impl(args={"query": get_select_query(db_config)})
-        assert "result" in result
-        assert "error" not in result
+        assert not is_error(result)
+        assert not is_error(result)
 
         await tool.cleanup(component=None, tool_config={})
 
@@ -271,8 +271,8 @@ class TestMultiDatabaseDegradation:
         result1 = await tool1._run_async_impl(args={"query": get_select_query(db_config, 1, "value")})
         result2 = await tool2._run_async_impl(args={"query": get_select_query(db_config, 2, "value")})
 
-        assert "result" in result1
-        assert "result" in result2
+        assert not is_error(result1)
+        assert not is_error(result2)
         assert result1 != result2
 
         await tool1.cleanup(component=None, tool_config={})
@@ -294,8 +294,8 @@ class TestMultiDatabaseDegradation:
         assert bad_tool._connection_error is not None
 
         result = await bad_tool._run_async_impl(args={"query": "SELECT 1"})
-        assert "error" in result
-        assert len(result["error"]) > 0
+        assert is_error(result)
+        assert len(error_message(result)) > 0
 
         await bad_tool.cleanup(component=None, tool_config={})
 
@@ -338,7 +338,7 @@ class TestMultiDatabaseDegradation:
         assert tools[1]._connection_healthy is True
         assert "Manual schema for offline DB" in tools[1].tool_description
         result = await tools[1]._run_async_impl(args={"query": "SELECT 1"})
-        assert "error" in result
+        assert is_error(result)
 
         assert tools[2]._connection_healthy is False
         assert "❌ WARNING" in tools[2].tool_description

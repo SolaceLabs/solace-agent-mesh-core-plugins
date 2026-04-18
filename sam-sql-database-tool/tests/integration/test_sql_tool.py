@@ -2,6 +2,7 @@ import pytest
 import sqlalchemy as sa
 from sam_sql_database_tool.tools import SqlDatabaseTool
 from tests.test_data import users, products, categories, orders, order_items, reviews, product_categories
+from ._result_helpers import affected_rows, error_message, get_rows, is_error, row_count
 
 @pytest.mark.asyncio
 class TestSqlDatabaseTool:
@@ -12,11 +13,11 @@ class TestSqlDatabaseTool:
         query = sa.select(users).where(users.c.id == 1)
         select_query = str(query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
         select_result = await db_tool_provider._run_async_impl(args={"query": select_query})
-        
-        assert "error" not in select_result, f"Failed to select data: {select_result.get('error')}"
-        result_data = select_result.get("result")
-        assert len(result_data) == 1
-        assert result_data[0]['name'] == 'Alice Smith'
+
+        assert not is_error(select_result), f"Failed to select data: {error_message(select_result)}"
+        rows = get_rows(select_result)
+        assert len(rows) == 1
+        assert rows[0]['name'] == 'Alice Smith'
 
     async def test_schema_detection(self, db_tool_provider: SqlDatabaseTool):
         """Test the automatic schema detection with the new relational schema."""
@@ -39,29 +40,30 @@ class TestSqlDatabaseTool:
         else:
             description = db_tool_provider.tool_description
             assert "MANUAL_SCHEMA_TEST" in description
-            
+
             # Also ensure it can still run queries
             query = sa.select(users).where(users.c.id == 1)
             select_query = str(query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
             select_result = await db_tool_provider._run_async_impl(args={"query": select_query})
-            assert "error" not in select_result
+            assert not is_error(select_result)
 
     async def test_select_with_aggregation(self, db_tool_provider: SqlDatabaseTool):
         """Test a SELECT query with an aggregation function."""
         query = sa.select(sa.func.count().label("user_count")).select_from(users)
         compiled_query = str(query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
         result = await db_tool_provider._run_async_impl(args={"query": compiled_query})
-        assert "error" not in result
+        assert not is_error(result)
+        rows = get_rows(result)
         # The exact key for the count may vary, so we check the first value.
-        assert list(result.get("result")[0].values())[0] == 9
+        assert int(list(rows[0].values())[0]) == 9
 
     async def test_select_with_order_by(self, db_tool_provider: SqlDatabaseTool):
         """Test a SELECT query with an ORDER BY clause."""
         query = sa.select(users.c.name).order_by(users.c.name.asc())
         compiled_query = str(query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
         result = await db_tool_provider._run_async_impl(args={"query": compiled_query})
-        assert "error" not in result
-        names = [row['name'] for row in result.get("result")]
+        assert not is_error(result)
+        names = [row['name'] for row in get_rows(result)]
         assert names[0] == 'Alice Smith'
         assert names[-1] == 'User With No Orders'
 
@@ -71,8 +73,8 @@ class TestSqlDatabaseTool:
         query = sa.select(non_existent_table)
         compiled_query = str(query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
         result = await db_tool_provider._run_async_impl(args={"query": compiled_query})
-        assert "error" in result
-        
+        assert is_error(result)
+
     async def test_schema_caching(self, db_tool_provider: SqlDatabaseTool):
         """Test that schema is cached in memory."""
         assert db_tool_provider._schema_context is not None
@@ -130,9 +132,9 @@ class TestSqlDatabaseTool:
         )
         compiled_query = str(query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
         result = await db_tool_provider._run_async_impl(args={"query": compiled_query})
-        assert "error" not in result, f"Query failed: {result.get('error')}"
-        
-        product_names = [row['name'] for row in result.get("result", [])]
+        assert not is_error(result), f"Query failed: {error_message(result)}"
+
+        product_names = [row['name'] for row in get_rows(result)]
         assert "Espresso Machine" in product_names
         assert "Laptop Pro 16\"" in product_names
         assert "The Galactic Saga" in product_names
@@ -155,12 +157,12 @@ class TestSqlDatabaseTool:
         )
         compiled_query = str(query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
         result = await db_tool_provider._run_async_impl(args={"query": compiled_query})
-        assert "error" not in result, f"Query failed: {result.get('error')}"
+        assert not is_error(result), f"Query failed: {error_message(result)}"
 
-        result_data = result.get("result")
-        assert len(result_data) == 1
+        rows = get_rows(result)
+        assert len(rows) == 1
         # The average rating for electronics is (5+5+5+4+5)/5 = 4.8
-        assert abs(float(result_data[0]['average_rating']) - 4.8) < 0.01
+        assert abs(float(rows[0]['average_rating']) - 4.8) < 0.01
 
     async def test_insert_and_verify_persistence(self, db_tool_provider: SqlDatabaseTool):
         """Test that INSERT operations properly persist data (DATAGO-116435)."""
@@ -175,19 +177,19 @@ class TestSqlDatabaseTool:
         compiled_insert = str(insert_query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
 
         insert_result = await db_tool_provider._run_async_impl(args={"query": compiled_insert})
-        assert "error" not in insert_result, f"Insert failed: {insert_result.get('error')}"
-        assert insert_result.get("result")[0].get("affected_rows") == 1
+        assert not is_error(insert_result), f"Insert failed: {error_message(insert_result)}"
+        assert affected_rows(insert_result) == 1
 
         verify_query = sa.select(users).where(users.c.id == 999)
         compiled_verify = str(verify_query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
 
         verify_result = await db_tool_provider._run_async_impl(args={"query": compiled_verify})
-        assert "error" not in verify_result, f"Verify query failed: {verify_result.get('error')}"
+        assert not is_error(verify_result), f"Verify query failed: {error_message(verify_result)}"
 
-        result_data = verify_result.get("result")
-        assert len(result_data) == 1, "Inserted row not found - transaction was not committed"
-        assert result_data[0]['name'] == 'Test User'
-        assert result_data[0]['email'] == 'test.user@example.com'
+        rows = get_rows(verify_result)
+        assert len(rows) == 1, "Inserted row not found - transaction was not committed"
+        assert rows[0]['name'] == 'Test User'
+        assert rows[0]['email'] == 'test.user@example.com'
 
     async def test_update_and_verify_persistence(self, db_tool_provider: SqlDatabaseTool):
         """Test that UPDATE operations properly persist data (DATAGO-116435)."""
@@ -195,18 +197,18 @@ class TestSqlDatabaseTool:
         compiled_update = str(update_query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
 
         update_result = await db_tool_provider._run_async_impl(args={"query": compiled_update})
-        assert "error" not in update_result, f"Update failed: {update_result.get('error')}"
-        assert update_result.get("result")[0].get("affected_rows") == 1
+        assert not is_error(update_result), f"Update failed: {error_message(update_result)}"
+        assert affected_rows(update_result) == 1
 
         verify_query = sa.select(users.c.name).where(users.c.id == 1)
         compiled_verify = str(verify_query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
 
         verify_result = await db_tool_provider._run_async_impl(args={"query": compiled_verify})
-        assert "error" not in verify_result, f"Verify query failed: {verify_result.get('error')}"
+        assert not is_error(verify_result), f"Verify query failed: {error_message(verify_result)}"
 
-        result_data = verify_result.get("result")
-        assert len(result_data) == 1
-        assert result_data[0]['name'] == 'Updated Name', "Update was not committed"
+        rows = get_rows(verify_result)
+        assert len(rows) == 1
+        assert rows[0]['name'] == 'Updated Name', "Update was not committed"
 
     async def test_delete_and_verify_persistence(self, db_tool_provider: SqlDatabaseTool):
         """Test that DELETE operations properly persist data (DATAGO-116435)."""
@@ -214,20 +216,20 @@ class TestSqlDatabaseTool:
         compiled_count_before = str(count_before_query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
 
         count_before_result = await db_tool_provider._run_async_impl(args={"query": compiled_count_before})
-        assert list(count_before_result.get("result")[0].values())[0] == 1
+        assert int(list(get_rows(count_before_result)[0].values())[0]) == 1
 
         delete_query = sa.delete(users).where(users.c.id == 2)
         compiled_delete = str(delete_query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
 
         delete_result = await db_tool_provider._run_async_impl(args={"query": compiled_delete})
-        assert "error" not in delete_result, f"Delete failed: {delete_result.get('error')}"
-        assert delete_result.get("result")[0].get("affected_rows") == 1
+        assert not is_error(delete_result), f"Delete failed: {error_message(delete_result)}"
+        assert affected_rows(delete_result) == 1
 
         verify_query = sa.select(sa.func.count()).select_from(users).where(users.c.id == 2)
         compiled_verify = str(verify_query.compile(db_tool_provider.db_service.engine, compile_kwargs={"literal_binds": True}))
 
         verify_result = await db_tool_provider._run_async_impl(args={"query": compiled_verify})
-        assert "error" not in verify_result, f"Verify query failed: {verify_result.get('error')}"
+        assert not is_error(verify_result), f"Verify query failed: {error_message(verify_result)}"
 
-        count_after = list(verify_result.get("result")[0].values())[0]
+        count_after = int(list(get_rows(verify_result)[0].values())[0])
         assert count_after == 0, "Delete was not committed"
