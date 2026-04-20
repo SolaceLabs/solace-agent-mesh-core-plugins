@@ -53,7 +53,7 @@ export MONGO_PORT=27017
 export MONGO_USER="your_username"
 export MONGO_PASSWORD="your_password"
 export MONGO_DB="your_database"
-export MONGO_COLLECTION="your_collection"
+export MONGO_COLLECTION="your_collection" # If not set then the LLM chooses a collection based on the prompt and available collections
 export DB_PURPOSE="Description of your database purpose"
 export DB_DESCRIPTION="Detailed description of your data"
 ```
