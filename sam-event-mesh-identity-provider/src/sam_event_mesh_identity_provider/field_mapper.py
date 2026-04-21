@@ -18,18 +18,6 @@ class FieldMapper:
     composed from firstName + lastName).
     """
 
-    CANONICAL_FIELDS = {
-        "id",
-        "displayName",
-        "workEmail",
-        "jobTitle",
-        "department",
-        "location",
-        "supervisorId",
-        "hireDate",
-        "mobilePhone",
-    }
-
     def __init__(self, config: Dict[str, Any]):
         self.field_mapping: Dict[str, str] = config.get("field_mapping", {})
         self.exclusion_list: List[str] = config.get("exclusion_list", [])

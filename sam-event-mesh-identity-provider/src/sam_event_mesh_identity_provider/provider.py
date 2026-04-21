@@ -55,15 +55,21 @@ class EventMeshIdentityProvider(BaseIdentityService, BaseEmployeeService):
             raise
 
     def __del__(self):
-        if hasattr(self, "service"):
-            self.service.cleanup()
+        try:
+            service = getattr(self, "service", None)
+            if service is not None:
+                service.cleanup()
+        except Exception:
+            # __del__ must never raise; interpreter shutdown can tear down
+            # dependencies before this runs.
+            pass
 
     # ------------------------------------------------------------------
     # BaseIdentityService
     # ------------------------------------------------------------------
 
     async def get_user_profile(
-        self, auth_claims: Dict[str, Any]
+        self, auth_claims: Any
     ) -> Optional[Dict[str, Any]]:
         """Fetch a user profile via the event mesh using an auth claim."""
         if not auth_claims or not self.lookup_key:
@@ -73,11 +79,10 @@ class EventMeshIdentityProvider(BaseIdentityService, BaseEmployeeService):
             )
             return None
 
-        # Support both attribute and dict access on auth_claims.
-        if hasattr(auth_claims, self.lookup_key):
-            lookup_value = getattr(auth_claims, self.lookup_key)
-        else:
+        if isinstance(auth_claims, dict):
             lookup_value = auth_claims.get(self.lookup_key)
+        else:
+            lookup_value = getattr(auth_claims, self.lookup_key, None)
 
         if not lookup_value:
             log.warning(
@@ -87,7 +92,8 @@ class EventMeshIdentityProvider(BaseIdentityService, BaseEmployeeService):
             )
             return None
 
-        cache_key = f"user_profile_{lookup_value.lower()}"
+        lookup_str = str(lookup_value).lower()
+        cache_key = f"user_profile_{lookup_str}"
         if self.cache:
             cached = self.cache.get(cache_key)
             if cached:
@@ -113,7 +119,7 @@ class EventMeshIdentityProvider(BaseIdentityService, BaseEmployeeService):
 
         # Ensure the id field is always present.
         if profile and "id" not in profile:
-            profile["id"] = lookup_value.lower()
+            profile["id"] = lookup_str
 
         if self.cache and profile:
             self.cache.set(cache_key, profile, ttl=self.cache_ttl)
