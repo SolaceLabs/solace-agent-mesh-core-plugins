@@ -44,6 +44,18 @@ class TestServiceInitialization:
         assert session_config["broker_config"]["broker_url"] == "tcp://localhost:55555"
         assert session_config["payload_format"] == "json"
         assert session_config["request_expiry_ms"] == 120000
+        assert session_config["user_properties_reply_topic_key"] == "replyTopic"
+        assert session_config["response_topic_insertion_expression"] == "replyTopic"
+
+    def test_init_custom_reply_topic_keys(self, base_config, mock_component):
+        """Custom reply topic keys are passed to the session config."""
+        base_config["user_properties_reply_topic_key"] = "custom.reply.key"
+        base_config["response_topic_insertion_expression"] = "customReplyTopic"
+        EventMeshService(base_config, mock_component)
+        call_kwargs = mock_component.create_request_response_session.call_args
+        session_config = call_kwargs.kwargs.get("session_config") or call_kwargs[1].get("session_config")
+        assert session_config["user_properties_reply_topic_key"] == "custom.reply.key"
+        assert session_config["response_topic_insertion_expression"] == "customReplyTopic"
 
 
 class TestRequestTopicFormats:

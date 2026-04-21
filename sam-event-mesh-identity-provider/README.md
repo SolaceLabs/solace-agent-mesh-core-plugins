@@ -123,6 +123,8 @@ people_service:
 | `cache_ttl_seconds` | Cache TTL in seconds (0 to disable) | `3600` |
 | `request_expiry_ms` | Request timeout in milliseconds | `120000` |
 | `response_topic_prefix` | Prefix for the response correlation topic | `"sam/identity-provider/response"` |
+| `user_properties_reply_topic_key` | Key in message user properties where the reply topic is stored | `"replyTopic"` |
+| `response_topic_insertion_expression` | Expression used by the broker to insert the response topic into the request | `"replyTopic"` |
 | `request_topic` | Topic template (string) or per-operation map (dict) | Required |
 | `field_mapping_config` | Field transformation configuration | `{}` (passthrough) |
 

@@ -30,6 +30,12 @@ identity_service: # Or people_service:
   # Response topic prefix for the request-response session.
   response_topic_prefix: "sam/identity-provider/response"
 
+  # Key in the message user properties where the reply topic is stored.
+  user_properties_reply_topic_key: "replyTopic"
+
+  # Expression used by the broker to insert the response topic into the request.
+  response_topic_insertion_expression: "replyTopic"
+
   # --- Request Topic ---
   # Templates support {request_id} and payload field placeholders.
   #

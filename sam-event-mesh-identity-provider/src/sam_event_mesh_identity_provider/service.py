@@ -60,6 +60,14 @@ class EventMeshService:
         # Request expiry
         self.default_request_expiry_ms = self._config.get("request_expiry_ms", 120000)
 
+        # Reply-topic routing keys
+        self.user_properties_reply_topic_key = self._config.get(
+            "user_properties_reply_topic_key", "replyTopic"
+        )
+        self.response_topic_insertion_expression = self._config.get(
+            "response_topic_insertion_expression", "replyTopic"
+        )
+
         # Build per-operation topic map from request_topic config.
         raw = self._config.get("request_topic", {})
         if isinstance(raw, str):
@@ -100,6 +108,8 @@ class EventMeshService:
             "payload_format": "json",
             "response_topic_prefix": self.response_topic_prefix,
             "response_queue_prefix": self.response_topic_prefix,
+            "user_properties_reply_topic_key": self.user_properties_reply_topic_key,
+            "response_topic_insertion_expression": self.response_topic_insertion_expression,
         }
 
         try:
