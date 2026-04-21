@@ -1,7 +1,7 @@
 {
   "sam-bedrock-agent": "0.1.1",
   "sam-event-mesh-gateway": "1.1.0",
-  "sam-event-mesh-identity-provider": "0.1.0",
+  "sam-event-mesh-identity-provider": "0.1.1",
   "sam-event-mesh-tool": "0.1.1",
   "sam-mcp-server-gateway-adapter": "0.1.1",
   "sam-mongodb": "0.1.1",
@@ -10,5 +10,5 @@
   "sam-rest-gateway": "0.2.1",
   "sam-ruleset-lookup-tool": "0.1.1",
   "sam-slack-gateway-adapter": "0.1.0",
-  "sam-sql-database-tool": "0.3.4"
+  "sam-sql-database-tool": "0.3.5"
 }

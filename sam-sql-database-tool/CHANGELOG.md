@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.5](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_sql_database_tool-0.3.4...sam_sql_database_tool-0.3.5) (2026-04-21)
+
+
+### Features
+
+* **DATAGO-131057:** Add table filtering to sam-sql-database-tool ([#153](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues/153)) ([38c708f](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/commit/38c708fe67e922b6d0ae72d0bab175e87e45d4d8))
+
 ## [0.3.4](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_sql_database_tool-0.3.3...sam_sql_database_tool-0.3.4) (2026-04-02)
 
 
