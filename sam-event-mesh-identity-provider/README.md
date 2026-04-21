@@ -148,13 +148,26 @@ Available operation keys: `user_profile`, `search_users`, `employee_data`, `empl
 
 ## Field Mapping Guide
 
-The field mapping engine transforms source data through a three-phase pipeline:
+The field mapping engine transforms source data through a four-phase pipeline:
 
 ```
-Source Data -> [1. Field Mapping] -> [2. Exclusion] -> [3. Renaming] -> Output
-                                  ^
-                      [Computed Fields]
+Source Data -> [0. Defaults] -> [1. Field Mapping] -> [2. Exclusion] -> [3. Renaming] -> Output
+                                                   ^
+                                       [Computed Fields]
 ```
+
+### Phase 0: default_values
+
+Fill in defaults on the source record before any mapping runs. A default is applied when the source field is **missing, `None`, empty string, or `0`**. Explicit `False` is preserved.
+
+```yaml
+default_values:
+  country: "unknown"
+  department: "unassigned"
+  hours: 40
+```
+
+Because defaults run first, they are visible to `field_mapping` and `computed_fields` — e.g., a default `country_code` can be remapped to `country`, or a default `middleName` can feed into a `displayName` template.
 
 ### Phase 1: field_mapping
 

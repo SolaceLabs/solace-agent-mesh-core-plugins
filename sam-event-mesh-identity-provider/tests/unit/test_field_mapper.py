@@ -179,6 +179,78 @@ class TestFieldMapperComputedFields:
         assert result == {}
 
 
+class TestFieldMapperDefaults:
+    """Tests for default_values (Phase 0)."""
+
+    def test_default_applied_when_field_missing(self):
+        """Default fills in a field absent from the source."""
+        mapper = FieldMapper({"default_values": {"country": "unknown"}})
+        result = mapper.map_record({"id": "1"})
+        assert result == {"id": "1", "country": "unknown"}
+
+    def test_default_applied_when_value_is_none(self):
+        """Default replaces a None value."""
+        mapper = FieldMapper({"default_values": {"country": "unknown"}})
+        result = mapper.map_record({"id": "1", "country": None})
+        assert result["country"] == "unknown"
+
+    def test_default_applied_when_value_is_empty_string(self):
+        """Default replaces an empty string."""
+        mapper = FieldMapper({"default_values": {"country": "unknown"}})
+        result = mapper.map_record({"id": "1", "country": ""})
+        assert result["country"] == "unknown"
+
+    def test_default_applied_when_value_is_zero(self):
+        """Default replaces a 0 value."""
+        mapper = FieldMapper({"default_values": {"hours": 40}})
+        result = mapper.map_record({"id": "1", "hours": 0})
+        assert result["hours"] == 40
+
+    def test_default_not_applied_when_value_is_false(self):
+        """Default does not replace an explicit False (distinguished from 0)."""
+        mapper = FieldMapper({"default_values": {"active": True}})
+        result = mapper.map_record({"id": "1", "active": False})
+        assert result["active"] is False
+
+    def test_default_not_applied_when_value_present(self):
+        """Default leaves a populated field alone."""
+        mapper = FieldMapper({"default_values": {"country": "unknown"}})
+        result = mapper.map_record({"id": "1", "country": "Canada"})
+        assert result["country"] == "Canada"
+
+    def test_default_feeds_into_field_mapping(self):
+        """A default applied to a source key flows through field_mapping."""
+        mapper = FieldMapper({
+            "default_values": {"country_code": "XX"},
+            "field_mapping": {"country_code": "country"},
+            "pass_through_unmapped": False,
+        })
+        result = mapper.map_record({"id": "1"})
+        assert result == {"country": "XX"}
+
+    def test_default_feeds_into_computed_fields(self):
+        """A default is visible to template-based computed fields."""
+        mapper = FieldMapper({
+            "default_values": {"middleName": "X"},
+            "computed_fields": [
+                {
+                    "target": "displayName",
+                    "source_fields": ["firstName", "middleName", "lastName"],
+                    "separator": " ",
+                }
+            ],
+        })
+        result = mapper.map_record({"firstName": "Jane", "lastName": "Doe"})
+        assert result["displayName"] == "Jane X Doe"
+
+    def test_does_not_mutate_source(self):
+        """Applying defaults does not modify the caller's dict."""
+        mapper = FieldMapper({"default_values": {"country": "unknown"}})
+        source = {"id": "1"}
+        mapper.map_record(source)
+        assert source == {"id": "1"}
+
+
 class TestFieldMapperFullPipeline:
     """Tests for the complete three-phase pipeline."""
 
