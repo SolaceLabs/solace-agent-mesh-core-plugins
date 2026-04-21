@@ -41,6 +41,7 @@ on:
           - sam-slack-gateway-adapter
           - sam-sql-database-tool
           - sam-webhook-gateway
+          - sam-event-mesh-identity-provider
       ref:
         description: "Git ref to checkout (branch or SHA)"
         required: false

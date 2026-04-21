@@ -39,6 +39,7 @@ on:
       - "!sam-sql-database/**"
       - "!sam-sql-database-tool/**"
       - "!sam-webhook-gateway/**"
+      - "!sam-event-mesh-identity-provider/**"
 
 permissions:
   contents: write
