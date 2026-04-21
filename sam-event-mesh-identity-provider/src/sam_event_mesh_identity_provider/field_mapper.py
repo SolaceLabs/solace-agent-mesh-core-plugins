@@ -8,8 +8,10 @@ log = logging.getLogger(__name__)
 
 class FieldMapper:
     """
-    Transforms source records to canonical output format using a three-phase pipeline:
+    Transforms source records to canonical output format using a four-phase pipeline:
 
+    0. default_values: fill in defaults on the source record for fields that are
+       missing, None, empty string, or 0
     1. field_mapping: rename source fields to canonical field names
     2. exclusion_list: remove unwanted fields from the output
     3. rename_mapping: rename fields to custom output names
@@ -19,6 +21,7 @@ class FieldMapper:
     """
 
     def __init__(self, config: Dict[str, Any]):
+        self.default_values: Dict[str, Any] = config.get("default_values", {})
         self.field_mapping: Dict[str, str] = config.get("field_mapping", {})
         self.exclusion_list: List[str] = config.get("exclusion_list", [])
         self.rename_mapping: Dict[str, str] = config.get("rename_mapping", {})
@@ -38,6 +41,10 @@ class FieldMapper:
         if not source:
             return None
 
+        # Phase 0: Apply defaults to the source record before anything else so
+        # that downstream mapping and computed fields see the filled-in values.
+        source = self._apply_defaults(source)
+
         # Phase 1: Apply field_mapping (source -> canonical)
         canonical = self._apply_field_mapping(source)
 
@@ -49,6 +56,25 @@ class FieldMapper:
 
         # Phase 3: Apply rename_mapping (canonical -> output)
         return self._apply_rename_mapping(canonical)
+
+    def _apply_defaults(self, source: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Return a copy of ``source`` with ``default_values`` filled in for fields
+        that are missing or whose value is ``None``, empty string, or ``0``.
+        The original ``source`` is not mutated.
+        """
+        if not self.default_values:
+            return source
+
+        enriched = dict(source)
+        for key, default in self.default_values.items():
+            current = enriched.get(key)
+            # Treat False separately so it isn't swept up by `0 == False`.
+            if current is False:
+                continue
+            if key not in enriched or current is None or current == "" or current == 0:
+                enriched[key] = default
+        return enriched
 
     def _apply_field_mapping(self, source: Dict[str, Any]) -> Dict[str, Any]:
         """

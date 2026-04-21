@@ -62,6 +62,12 @@ identity_service: # Or people_service:
   # If omitted or empty, source fields pass through unchanged.
   field_mapping_config:
 
+    # Phase 0: Default values applied to the source record before mapping.
+    # Keys are source field names; a default is applied when the source field
+    # is missing, None, empty string, or 0.
+    # Example: { "country": "unknown", "department": "unassigned" }
+    default_values: {}
+
     # Phase 1: Map source field names to canonical field names.
     # Only needed when the source system uses different field names.
     # Example: { "emp_email": "workEmail", "title": "jobTitle" }
