@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.sam_event_mesh_identity_provider.metadata]
+type = "service"
+
+[project]
+name = "sam_event_mesh_identity_provider"
+version = "0.1.0"
+authors = [
+  { name="SolaceLabs", email="solacelabs@solace.com" },
+]
+description = "A generic identity and employee service provider that communicates with backend systems via Solace Event Mesh request-response."
+readme = "README.md"
+license = { text = "Apache License 2.0" }
+requires-python = ">=3.10.16,<3.14"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "pandas",
+]
+
+[project.urls]
+Homepage = "https://github.com/SolaceLabs/solace-agent-mesh"
+Documentation = "https://solacelabs.github.io/solace-agent-mesh/"
+Repository = "https://github.com/SolaceLabs/solace-agent-mesh-core-plugins"
+Issues = "https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sam_event_mesh_identity_provider"]
+src-path = "src"
+
+[tool.hatch.build.targets.wheel.force-include]
+"config.yaml" = "sam_event_mesh_identity_provider/config.yaml"
+"README.md" = "sam_event_mesh_identity_provider/README.md"
+"pyproject.toml" = "sam_event_mesh_identity_provider/pyproject.toml"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "--tb=short --strict-markers --disable-warnings -p pytest_asyncio"
+markers = []
+
+[tool.hatch.envs.hatch-test]
+dependencies = [
+  "pytest-asyncio",
+  "pytest>=8.0.0",
+  "pytest-mock>=3.0.0",
+  "pytest-cov>=4.0.0",
+  "pytest-json-ctrf>=0.1.0",
+  "pytest-xdist>=3.5.0",
+  "solace-agent-mesh>=1.1.0,<2.0.0",
+  "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure",
+]
+
+[project.entry-points."solace_agent_mesh.plugins"]
+event-mesh-identity-provider = "sam_event_mesh_identity_provider:info"

@@ -1,0 +1,88 @@
+# Plugin Metadata:
+# Name: sam-event-mesh-identity-provider
+# Description: Generic identity and employee service via Solace Event Mesh request-response
+# Author: SolaceLabs <solacelabs@solace.com>
+
+# This plugin can be used as either an identity_service (for gateway identity enrichment)
+# or a people_service (for agent employee queries).
+identity_service: # Or people_service:
+  # The 'type' must match the entry point key in the plugin's pyproject.toml
+  type: "event-mesh-identity-provider"
+
+  # --- Solace Broker Connection ---
+  dev_mode: ${SOLACE_DEV_MODE, false}
+  broker_url: "${IDENTITY_BROKER_URL}"
+  broker_vpn: "${IDENTITY_BROKER_VPN}"
+  broker_username: "${IDENTITY_BROKER_USERNAME}"
+  broker_password: "${IDENTITY_BROKER_PASSWORD}"
+
+  # --- General Settings ---
+
+  # The key in 'auth_claims' used to look up the user (e.g., 'email', 'id', 'username')
+  lookup_key: "email"
+
+  # The key name used in the request payload sent to the backend for user_profile lookups.
+  # Defaults to the value of lookup_key.
+  # Example: lookup_key is "email" (read from auth_claims), but the backend expects {"userId": "..."}
+  payload_key: "email"
+
+  # Cache TTL in seconds. Set to 0 to disable caching.
+  cache_ttl_seconds: 3600
+
+  # Default request expiry in milliseconds for all operations.
+  request_expiry_ms: 120000
+
+  # Response topic prefix for the request-response session.
+  response_topic_prefix: "sam/identity-provider/response"
+
+  # Key in the message user properties where the reply topic is stored.
+  user_properties_reply_topic_key: "replyTopic"
+
+  # Expression used by the broker to insert the response topic into the request.
+  response_topic_insertion_expression: "replyTopic"
+
+  # --- Request Topic ---
+  # Templates support {request_id} and payload field placeholders.
+  #
+  # String form — the same topic is used for every operation:
+  #   request_topic: "company/identity/request/v1/{request_id}"
+  #
+  # Dict form — each operation gets its own topic.
+  # Operations not listed here will return None with a warning log.
+  request_topic:
+    user_profile: "company/identity/user-profile/request/v1/{request_id}"
+    search_users: "company/identity/search-users/request/v1/{request_id}"
+    employee_data: "company/identity/employee-data/request/v1/{request_id}"
+    employee_profile: "company/identity/employee-profile/request/v1/{request_id}"
+    time_off: "company/identity/time-off/request/v1/{request_id}"
+    profile_picture: "company/identity/profile-picture/request/v1/{request_id}"
+
+  # --- Field Mapping Configuration ---
+  # Controls how source data from the backend is transformed before being returned.
+  # If omitted or empty, source fields pass through unchanged.
+  field_mapping_config:
+
+    # Phase 1: Map source field names to canonical field names.
+    # Only needed when the source system uses different field names.
+    # Example: { "emp_email": "workEmail", "title": "jobTitle" }
+    field_mapping: {}
+
+    # Computed fields: derive a field value from multiple source fields.
+    # Useful when displayName must be built from firstName + lastName.
+    # Each entry: { target: "displayName", source_fields: ["firstName", "lastName"], separator: " " }
+    # Or with a template: { target: "displayName", source_fields: [...], template: "{firstName} {lastName}" }
+    computed_fields: []
+
+    # Phase 2: List of field names to exclude from the output.
+    # Example: ["mobilePhone", "hireDate"]
+    exclusion_list: []
+
+    # Phase 3: Rename fields in the final output.
+    # Applied after field_mapping and exclusion_list.
+    # Example: { "supervisorId": "managerId", "workEmail": "email" }
+    rename_mapping: {}
+
+    # Whether to pass through source fields that have no entry in field_mapping.
+    # If true (default), unmapped fields appear in the output as-is.
+    # If false, only explicitly mapped fields and computed fields appear.
+    pass_through_unmapped: true

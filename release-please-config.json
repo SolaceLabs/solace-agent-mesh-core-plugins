@@ -74,6 +74,10 @@
       "package-name": "sam_event_mesh_gateway",
       "changelog-path": "CHANGELOG.md"
     },
+    "sam-event-mesh-identity-provider": {
+      "package-name": "solace_agent_mesh_event_mesh_identity_provider",
+      "changelog-path": "CHANGELOG.md"
+    },
     "sam-event-mesh-tool": {
       "package-name": "sam_event_mesh_tool",
       "changelog-path": "CHANGELOG.md"

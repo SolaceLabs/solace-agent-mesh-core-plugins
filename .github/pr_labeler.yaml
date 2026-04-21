@@ -45,3 +45,8 @@ sam-sql-database-tool:
 sam-mcp-server-gateway-adapter:
   - changed-files:
       - any-glob-to-any-file: sam-mcp-server-gateway-adapter/**
+
+sam-event-mesh-identity-provider:
+  - changed-files:
+    - any-glob-to-any-file: sam-event-mesh-identity-provider/**
+
