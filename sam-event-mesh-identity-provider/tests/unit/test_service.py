@@ -1,7 +1,7 @@
 """Unit tests for the EventMeshService class."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from sam_event_mesh_identity_provider.service import EventMeshService, ALL_OPERATIONS
 
@@ -46,26 +46,47 @@ class TestServiceInitialization:
         assert session_config["request_expiry_ms"] == 120000
 
 
-class TestServiceBackwardCompat:
-    """Tests for flat-config backward compatibility."""
+class TestRequestTopicFormats:
+    """Tests for string vs dict request_topic config."""
 
-    def test_flat_config_creates_all_operations(self, flat_config, mock_component):
-        """When operations is absent but request_topic is present, all ops are created."""
-        service = EventMeshService(flat_config, mock_component)
+    def test_string_topic_creates_all_operations(self, string_topic_config, mock_component):
+        """A string request_topic applies to every operation."""
+        service = EventMeshService(string_topic_config, mock_component)
         for op in ALL_OPERATIONS:
-            assert op in service.operations
-            assert service.operations[op]["request_topic"] == flat_config["request_topic"]
+            assert op in service.topic_map
+            assert service.topic_map[op] == string_topic_config["request_topic"]
 
-    def test_flat_config_uses_response_topic_as_prefix(self, flat_config, mock_component):
-        """Flat response_topic becomes the response_topic_prefix."""
-        service = EventMeshService(flat_config, mock_component)
-        assert service.response_topic_prefix == "TI/AI/HRM/user/retrieved/v1/"
-
-    def test_explicit_operations_takes_precedence(self, base_config, mock_component):
-        """When operations is present, flat request_topic is ignored."""
-        base_config["request_topic"] = "should/be/ignored/{request_id}"
+    def test_dict_topic_uses_per_operation(self, base_config, mock_component):
+        """A dict request_topic maps each operation to its own topic."""
         service = EventMeshService(base_config, mock_component)
-        assert service.operations["user_profile"]["request_topic"] == "test/user-profile/{request_id}"
+        assert service.topic_map["user_profile"] == "test/user-profile/{request_id}"
+        assert service.topic_map["employee_data"] == "test/employee-data/{request_id}"
+
+    def test_dict_topic_missing_operation_returns_none(self, mock_component):
+        """Operations not listed in a dict request_topic return None."""
+        config = {
+            "broker_url": "tcp://localhost:55555",
+            "broker_vpn": "default",
+            "broker_username": "user",
+            "broker_password": "pass",
+            "request_topic": {
+                "user_profile": "test/user-profile/{request_id}",
+            },
+        }
+        service = EventMeshService(config, mock_component)
+        assert "search_users" not in service.topic_map
+
+    def test_invalid_request_topic_type_raises(self, mock_component):
+        """ValueError raised when request_topic is neither string nor dict."""
+        config = {
+            "broker_url": "tcp://localhost:55555",
+            "broker_vpn": "default",
+            "broker_username": "user",
+            "broker_password": "pass",
+            "request_topic": 12345,
+        }
+        with pytest.raises(ValueError, match="must be a string or dict"):
+            EventMeshService(config, mock_component)
 
 
 class TestServiceSendRequest:
@@ -85,10 +106,19 @@ class TestServiceSendRequest:
         mock_component.do_broker_request_response_async.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_send_request_unknown_operation(self, base_config, mock_component):
-        """Returns None for an operation not in config."""
-        service = EventMeshService(base_config, mock_component)
-        result = await service.send_request("nonexistent_op", {"foo": "bar"})
+    async def test_send_request_unconfigured_operation(self, mock_component):
+        """Returns None with warning for an operation not in the topic map."""
+        config = {
+            "broker_url": "tcp://localhost:55555",
+            "broker_vpn": "default",
+            "broker_username": "user",
+            "broker_password": "pass",
+            "request_topic": {
+                "user_profile": "test/user-profile/{request_id}",
+            },
+        }
+        service = EventMeshService(config, mock_component)
+        result = await service.send_request("search_users", {"query": "alice"})
         assert result is None
 
     @pytest.mark.asyncio

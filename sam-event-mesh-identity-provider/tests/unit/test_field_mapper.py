@@ -195,10 +195,39 @@ class TestFieldMapperFullPipeline:
         # workEmail is excluded, jobTitle renamed to title
         assert result == {"title": "Engineer"}
 
-    def test_jde_mapping(self, jde_field_mapping_config, sample_jde_employee):
-        """Verify JDE-specific mapping produces the expected canonical output."""
-        mapper = FieldMapper(jde_field_mapping_config)
-        result = mapper.map_record(sample_jde_employee)
+    def test_hr_system_mapping(self):
+        """Verify a realistic HR system mapping with computed fields and renaming."""
+        config = {
+            "field_mapping": {
+                "emp_email": "workEmail",
+                "position": "jobTitle",
+            },
+            "computed_fields": [
+                {
+                    "target": "displayName",
+                    "source_fields": ["firstName", "middleName", "lastName"],
+                    "separator": " ",
+                },
+                {
+                    "target": "id",
+                    "source_fields": ["emp_email"],
+                    "separator": "",
+                },
+            ],
+            "pass_through_unmapped": True,
+        }
+        source = {
+            "emp_email": "jane.doe@company.com",
+            "firstName": "Jane",
+            "middleName": "",
+            "lastName": "Doe",
+            "position": "Senior Engineer",
+            "department": "Engineering",
+            "location": "Toronto",
+            "managerId": "mgr@company.com",
+        }
+        mapper = FieldMapper(config)
+        result = mapper.map_record(source)
 
         assert result["displayName"] == "Jane Doe"
         assert result["id"] == "jane.doe@company.com"
@@ -206,7 +235,7 @@ class TestFieldMapperFullPipeline:
         assert result["jobTitle"] == "Senior Engineer"
         assert result["department"] == "Engineering"
         assert result["location"] == "Toronto"
-        assert result["manager"] == "mgr@company.com"
+        assert result["managerId"] == "mgr@company.com"
 
 
 class TestFieldMapperEdgeCases:
