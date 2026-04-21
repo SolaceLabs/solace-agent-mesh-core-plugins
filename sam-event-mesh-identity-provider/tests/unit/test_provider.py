@@ -7,47 +7,23 @@ import pandas as pd
 from sam_event_mesh_identity_provider.provider import EventMeshIdentityProvider
 
 
-# All operation names used by the provider.
-ALL_OPS = {"user_profile", "search_users", "employee_data", "employee_profile", "time_off", "profile_picture"}
-
-
-def _make_mock_service(configured_ops=None):
-    """Create a mock EventMeshService with configurable operation availability."""
-    if configured_ops is None:
-        configured_ops = ALL_OPS
+@pytest.fixture
+def mock_service():
+    """A mock EventMeshService."""
     service = MagicMock()
     service.send_request = AsyncMock(return_value=None)
     service.cleanup = MagicMock()
-    service.is_operation_configured = MagicMock(side_effect=lambda op: op in configured_ops)
     return service
 
 
 @pytest.fixture
-def mock_service():
-    """A mock EventMeshService with all operations configured."""
-    return _make_mock_service(ALL_OPS)
-
-
-@pytest.fixture
 def provider(base_config, mock_component, mock_service):
-    """An EventMeshIdentityProvider with mocked service layer (all ops)."""
+    """An EventMeshIdentityProvider with mocked service layer."""
     with patch(
         "sam_event_mesh_identity_provider.provider.EventMeshService",
         return_value=mock_service,
     ):
         p = EventMeshIdentityProvider(base_config, mock_component)
-    return p
-
-
-@pytest.fixture
-def partial_provider(partial_config, mock_component):
-    """Provider with only user_profile configured."""
-    svc = _make_mock_service({"user_profile"})
-    with patch(
-        "sam_event_mesh_identity_provider.provider.EventMeshService",
-        return_value=svc,
-    ):
-        p = EventMeshIdentityProvider(partial_config, mock_component)
     return p
 
 
@@ -320,50 +296,3 @@ class TestGetEmployeeProfilePicture:
         await provider.get_employee_profile_picture("emp1")
         await provider.get_employee_profile_picture("emp1")
         assert mock_service.send_request.call_count == 1
-
-
-class TestUnconfiguredOperations:
-    """Tests that unconfigured operations return None/empty with warnings."""
-
-    @pytest.mark.asyncio
-    async def test_unconfigured_user_profile(self, partial_provider):
-        """user_profile IS configured in partial_provider, so it works."""
-        partial_provider.service.send_request.return_value = {"id": "j@co.com"}
-        result = await partial_provider.get_user_profile({"email": "j@co.com"})
-        assert result is not None
-
-    @pytest.mark.asyncio
-    async def test_unconfigured_search_users(self, partial_provider):
-        """search_users not configured — returns empty list."""
-        result = await partial_provider.search_users("alice")
-        assert result == []
-        partial_provider.service.send_request.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_unconfigured_employee_dataframe(self, partial_provider):
-        """employee_data not configured — returns empty DataFrame."""
-        df = await partial_provider.get_employee_dataframe()
-        assert isinstance(df, pd.DataFrame)
-        assert df.empty
-        partial_provider.service.send_request.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_unconfigured_employee_profile(self, partial_provider):
-        """employee_profile not configured — returns None."""
-        result = await partial_provider.get_employee_profile("emp1")
-        assert result is None
-        partial_provider.service.send_request.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_unconfigured_time_off(self, partial_provider):
-        """time_off not configured — returns empty list."""
-        result = await partial_provider.get_time_off_data("emp1")
-        assert result == []
-        partial_provider.service.send_request.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_unconfigured_profile_picture(self, partial_provider):
-        """profile_picture not configured — returns None."""
-        result = await partial_provider.get_employee_profile_picture("emp1")
-        assert result is None
-        partial_provider.service.send_request.assert_not_called()

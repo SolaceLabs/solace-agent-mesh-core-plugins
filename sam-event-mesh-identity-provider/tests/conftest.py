@@ -27,7 +27,7 @@ def mock_component():
 
 @pytest.fixture
 def base_config():
-    """A minimal valid configuration dictionary with all operations."""
+    """A minimal valid configuration dictionary."""
     return {
         "type": "event-mesh-identity-provider",
         "broker_url": "tcp://localhost:55555",
@@ -42,27 +42,21 @@ def base_config():
         "operations": {
             "user_profile": {
                 "request_topic": "test/user-profile/{request_id}",
-                "response_topic": "test/user-profile/response/",
             },
             "search_users": {
                 "request_topic": "test/search-users/{request_id}",
-                "response_topic": "test/search-users/response/",
             },
             "employee_data": {
                 "request_topic": "test/employee-data/{request_id}",
-                "response_topic": "test/employee-data/response/",
             },
             "employee_profile": {
                 "request_topic": "test/employee-profile/{request_id}",
-                "response_topic": "test/employee-profile/response/",
             },
             "time_off": {
                 "request_topic": "test/time-off/{request_id}",
-                "response_topic": "test/time-off/response/",
             },
             "profile_picture": {
                 "request_topic": "test/profile-picture/{request_id}",
-                "response_topic": "test/profile-picture/response/",
             },
         },
         "field_mapping_config": {},
@@ -70,8 +64,8 @@ def base_config():
 
 
 @pytest.fixture
-def partial_config():
-    """Configuration with only user_profile operation configured."""
+def flat_config():
+    """Configuration using the legacy flat-topic format (backward compat)."""
     return {
         "type": "event-mesh-identity-provider",
         "broker_url": "tcp://localhost:55555",
@@ -81,21 +75,15 @@ def partial_config():
         "dev_mode": True,
         "lookup_key": "email",
         "cache_ttl_seconds": 3600,
-        "request_expiry_ms": 120000,
-        "response_topic_prefix": "test/response",
-        "operations": {
-            "user_profile": {
-                "request_topic": "test/user-profile/{request_id}",
-                "response_topic": "test/user-profile/response/",
-            },
-        },
+        "request_topic": "TI/AI/HRM/user/requested/v1/{request_id}",
+        "response_topic": "TI/AI/HRM/user/retrieved/v1/",
         "field_mapping_config": {},
     }
 
 
 @pytest.fixture
-def hr_field_mapping_config():
-    """Field mapping config for a typical HR system with non-canonical field names."""
+def jde_field_mapping_config():
+    """JDE-specific field mapping configuration for backward compat testing."""
     return {
         "field_mapping": {
             "email": "workEmail",
@@ -118,8 +106,8 @@ def hr_field_mapping_config():
 
 
 @pytest.fixture
-def sample_hr_employee():
-    """A sample employee record from an HR system with non-canonical field names."""
+def sample_jde_employee():
+    """A sample employee record as returned by JDE/SuccessFactor."""
     return {
         "email": "jane.doe@company.com",
         "userFirstName": "Jane",

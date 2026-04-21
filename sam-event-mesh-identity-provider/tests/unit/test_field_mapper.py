@@ -195,10 +195,10 @@ class TestFieldMapperFullPipeline:
         # workEmail is excluded, jobTitle renamed to title
         assert result == {"title": "Engineer"}
 
-    def test_hr_system_mapping(self, hr_field_mapping_config, sample_hr_employee):
-        """Verify HR system mapping produces the expected canonical output."""
-        mapper = FieldMapper(hr_field_mapping_config)
-        result = mapper.map_record(sample_hr_employee)
+    def test_jde_mapping(self, jde_field_mapping_config, sample_jde_employee):
+        """Verify JDE-specific mapping produces the expected canonical output."""
+        mapper = FieldMapper(jde_field_mapping_config)
+        result = mapper.map_record(sample_jde_employee)
 
         assert result["displayName"] == "Jane Doe"
         assert result["id"] == "jane.doe@company.com"

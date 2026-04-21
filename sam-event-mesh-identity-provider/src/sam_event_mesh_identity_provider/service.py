@@ -8,18 +8,28 @@ from solace_ai_connector.common.message import Message
 
 log = logging.getLogger(__name__)
 
+# All supported operation names.
+ALL_OPERATIONS = (
+    "user_profile",
+    "search_users",
+    "employee_data",
+    "employee_profile",
+    "time_off",
+    "profile_picture",
+)
+
 
 class EventMeshService:
     """
     Sends requests to backend systems via Solace Event Mesh and waits for
     responses.  A single request-response session is shared across all
-    operations; each operation is routed to its own configurable request
-    and response topic pair.
+    operations; each operation is routed to its own configurable topic.
 
-    Only operations explicitly listed under the ``operations`` config key are
-    available.  Calling :meth:`send_request` for an operation that is not
-    configured returns ``None`` with a warning log — this is by design so
-    that deployments can enable only the operations they need.
+    ``request_topic`` accepts two forms:
+
+    * **string** — the same topic template is used for every operation.
+    * **dict**   — maps operation names to their individual topic templates.
+      Operations missing from the dict will log a warning and return ``None``.
     """
 
     def __init__(self, config: Dict[str, Any], component):
@@ -42,7 +52,7 @@ class EventMeshService:
         self.broker_username = self._config.get("broker_username")
         self.broker_password = self._config.get("broker_password")
 
-        # Response topic prefix (used for session-level correlation)
+        # Response topic prefix
         self.response_topic_prefix = self._config.get(
             "response_topic_prefix", "sam/identity-provider/response"
         )
@@ -50,17 +60,25 @@ class EventMeshService:
         # Request expiry
         self.default_request_expiry_ms = self._config.get("request_expiry_ms", 120000)
 
-        # Operation topics — each entry must have request_topic and response_topic.
-        self.operations: Dict[str, Dict[str, str]] = self._config.get("operations", {})
+        # Build per-operation topic map from request_topic config.
+        raw = self._config.get("request_topic", {})
+        if isinstance(raw, str):
+            # Single topic string → use for every operation.
+            self.topic_map: Dict[str, str] = dict.fromkeys(ALL_OPERATIONS, raw)
+        elif isinstance(raw, dict):
+            self.topic_map = dict(raw)
+        else:
+            raise ValueError(
+                f"'request_topic' must be a string or dict, got {type(raw).__name__}."
+            )
 
         self._create_session()
 
         log.info(
-            "%s Initialized for broker '%s' with %d configured operations: %s",
+            "%s Initialized for broker '%s' with %d configured operations.",
             self.log_identifier,
             self.broker_url,
-            len(self.operations),
-            list(self.operations.keys()),
+            len(self.topic_map),
         )
 
     # ------------------------------------------------------------------
@@ -105,10 +123,6 @@ class EventMeshService:
     # Generic request / response
     # ------------------------------------------------------------------
 
-    def is_operation_configured(self, operation: str) -> bool:
-        """Check whether *operation* has been configured."""
-        return operation in self.operations
-
     async def send_request(
         self, operation: str, payload: Dict[str, Any]
     ) -> Optional[Any]:
@@ -116,32 +130,28 @@ class EventMeshService:
         Send a request for *operation* and return the response payload.
 
         Args:
-            operation: Operation name — must match a key under ``operations``
-                in the YAML configuration.
+            operation: Operation name (must match a key in ``topic_map``).
             payload: Request payload dict forwarded to the backend.
 
         Returns:
-            Parsed response payload, or ``None`` if the operation is not
-            configured or the request fails.
+            Parsed response payload, or ``None`` on failure.
         """
-        op_config = self.operations.get(operation)
-        if not op_config:
+        topic_template = self.topic_map.get(operation)
+        if not topic_template:
             log.warning(
-                "%s Operation '%s' is not configured. "
-                "Add it to the 'operations' section in your config to enable it. "
-                "Currently configured operations: %s",
+                "%s No request_topic configured for operation '%s'. "
+                "Available: %s",
                 self.log_identifier,
                 operation,
-                list(self.operations.keys()),
+                list(self.topic_map.keys()),
             )
             return None
 
-        request_topic_template = op_config.get("request_topic", "")
         request_id = str(uuid.uuid4())
 
         try:
             format_vars = {"request_id": request_id, **payload}
-            request_topic = request_topic_template.format(**format_vars)
+            request_topic = topic_template.format(**format_vars)
         except KeyError as e:
             log.error(
                 "%s Topic template for operation '%s' requires variable %s "

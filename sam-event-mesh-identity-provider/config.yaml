@@ -1,6 +1,5 @@
 # Plugin Metadata:
 # Name: sam-event-mesh-identity-provider
-# Version: 0.1.0
 # Description: Generic identity and employee service via Solace Event Mesh request-response
 # Author: SolaceLabs <solacelabs@solace.com>
 
@@ -28,34 +27,24 @@ identity_service: # Or people_service:
   # Default request expiry in milliseconds for all operations.
   request_expiry_ms: 120000
 
-  # Response topic prefix for the request-response session correlation.
+  # Response topic prefix for the request-response session.
   response_topic_prefix: "sam/identity-provider/response"
 
-  # --- Operation Topics ---
-  # Each operation requires both a request_topic and a response_topic.
+  # --- Request Topic ---
   # Templates support {request_id} and payload field placeholders.
   #
-  # Only operations listed here are active. If an operation is omitted,
-  # the corresponding method will return None with a warning log.
-  operations:
-    user_profile:
-      request_topic: "company/identity/user-profile/request/v1/{request_id}"
-      response_topic: "company/identity/user-profile/response/v1/"
-    search_users:
-      request_topic: "company/identity/search-users/request/v1/{request_id}"
-      response_topic: "company/identity/search-users/response/v1/"
-    employee_data:
-      request_topic: "company/identity/employee-data/request/v1/{request_id}"
-      response_topic: "company/identity/employee-data/response/v1/"
-    employee_profile:
-      request_topic: "company/identity/employee-profile/request/v1/{request_id}"
-      response_topic: "company/identity/employee-profile/response/v1/"
-    time_off:
-      request_topic: "company/identity/time-off/request/v1/{request_id}"
-      response_topic: "company/identity/time-off/response/v1/"
-    profile_picture:
-      request_topic: "company/identity/profile-picture/request/v1/{request_id}"
-      response_topic: "company/identity/profile-picture/response/v1/"
+  # String form — the same topic is used for every operation:
+  #   request_topic: "company/identity/request/v1/{request_id}"
+  #
+  # Dict form — each operation gets its own topic.
+  # Operations not listed here will return None with a warning log.
+  request_topic:
+    user_profile: "company/identity/user-profile/request/v1/{request_id}"
+    search_users: "company/identity/search-users/request/v1/{request_id}"
+    employee_data: "company/identity/employee-data/request/v1/{request_id}"
+    employee_profile: "company/identity/employee-profile/request/v1/{request_id}"
+    time_off: "company/identity/time-off/request/v1/{request_id}"
+    profile_picture: "company/identity/profile-picture/request/v1/{request_id}"
 
   # --- Field Mapping Configuration ---
   # Controls how source data from the backend is transformed before being returned.

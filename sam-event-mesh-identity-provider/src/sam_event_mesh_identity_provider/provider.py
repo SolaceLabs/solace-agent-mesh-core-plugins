@@ -24,11 +24,6 @@ class EventMeshIdentityProvider(BaseIdentityService, BaseEmployeeService):
     allowing it to be used for gateway identity enrichment **and** agent employee
     queries.  All data transformation is driven by the YAML ``field_mapping_config``
     section, making this provider completely vendor-agnostic.
-
-    Only operations explicitly listed under the ``operations`` config key are
-    active.  Methods whose operation is not configured return ``None`` (or an
-    empty collection) with a warning log so that deployments can enable only
-    the subset of operations they need.
     """
 
     def __init__(
@@ -63,14 +58,6 @@ class EventMeshIdentityProvider(BaseIdentityService, BaseEmployeeService):
             self.service.cleanup()
 
     # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-
-    def _is_configured(self, operation: str) -> bool:
-        """Return True if *operation* is present in the operations config."""
-        return self.service.is_operation_configured(operation)
-
-    # ------------------------------------------------------------------
     # BaseIdentityService
     # ------------------------------------------------------------------
 
@@ -78,13 +65,6 @@ class EventMeshIdentityProvider(BaseIdentityService, BaseEmployeeService):
         self, auth_claims: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """Fetch a user profile via the event mesh using an auth claim."""
-        if not self._is_configured("user_profile"):
-            log.warning(
-                "%s 'user_profile' operation is not configured — returning None.",
-                self.log_identifier,
-            )
-            return None
-
         if not auth_claims or not self.lookup_key:
             log.warning(
                 "%s No auth claims provided for user profile lookup.",
@@ -143,13 +123,6 @@ class EventMeshIdentityProvider(BaseIdentityService, BaseEmployeeService):
         self, query: str, limit: int = 10
     ) -> List[Dict[str, Any]]:
         """Search for users via the event mesh."""
-        if not self._is_configured("search_users"):
-            log.warning(
-                "%s 'search_users' operation is not configured — returning empty list.",
-                self.log_identifier,
-            )
-            return []
-
         if not query or len(query) < 2:
             return []
 
@@ -179,13 +152,6 @@ class EventMeshIdentityProvider(BaseIdentityService, BaseEmployeeService):
 
     async def get_employee_dataframe(self) -> pd.DataFrame:
         """Return the entire employee directory as a DataFrame."""
-        if not self._is_configured("employee_data"):
-            log.warning(
-                "%s 'employee_data' operation is not configured — returning empty DataFrame.",
-                self.log_identifier,
-            )
-            return pd.DataFrame()
-
         cache_key = "employee_dataframe"
         if self.cache:
             cached = self.cache.get(cache_key)
@@ -213,13 +179,6 @@ class EventMeshIdentityProvider(BaseIdentityService, BaseEmployeeService):
         self, employee_id: str
     ) -> Optional[Dict[str, Any]]:
         """Fetch a single employee profile via the event mesh."""
-        if not self._is_configured("employee_profile"):
-            log.warning(
-                "%s 'employee_profile' operation is not configured — returning None.",
-                self.log_identifier,
-            )
-            return None
-
         cache_key = f"employee_profile_{employee_id.lower()}"
         if self.cache:
             cached = self.cache.get(cache_key)
@@ -246,13 +205,6 @@ class EventMeshIdentityProvider(BaseIdentityService, BaseEmployeeService):
         end_date: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Retrieve time-off entries for an employee via the event mesh."""
-        if not self._is_configured("time_off"):
-            log.warning(
-                "%s 'time_off' operation is not configured — returning empty list.",
-                self.log_identifier,
-            )
-            return []
-
         payload: Dict[str, Any] = {"employee_id": employee_id}
         if start_date:
             payload["start_date"] = start_date
@@ -271,13 +223,6 @@ class EventMeshIdentityProvider(BaseIdentityService, BaseEmployeeService):
         self, employee_id: str
     ) -> Optional[str]:
         """Fetch an employee's profile picture (data URI) via the event mesh."""
-        if not self._is_configured("profile_picture"):
-            log.warning(
-                "%s 'profile_picture' operation is not configured — returning None.",
-                self.log_identifier,
-            )
-            return None
-
         cache_key = f"profile_picture_{employee_id.lower()}"
         if self.cache:
             cached = self.cache.get(cache_key)

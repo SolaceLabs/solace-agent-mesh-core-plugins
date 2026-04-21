@@ -10,7 +10,7 @@ A generic, vendor-agnostic identity and employee service provider for [Solace Ag
 
 Use this plugin when:
 
-- **You have an HR or identity system** (e.g., Workday, BambooHR, custom LDAP) that is accessible via a service connected to a Solace event broker.
+- **You have an HR or identity system** (e.g., SAP SuccessFactors, Workday, BambooHR, custom LDAP) that is accessible via a service connected to a Solace event broker.
 - **You need identity enrichment** in your gateway — enrich user auth claims with profile data (title, department, manager) from your HR system.
 - **You need employee directory access** in your agents — let agents look up employees, search users, fetch org structure, or retrieve profile pictures.
 - **You want a single plugin** that serves both identity and employee service roles without writing custom code.
@@ -23,8 +23,7 @@ The plugin sends requests to configurable topics on your Solace broker and expec
 - **Configurable field mapping**: Map source fields to canonical schema via YAML (no code changes)
 - **Computed fields**: Derive values from multiple source fields (e.g., displayName from first + last name)
 - **Field exclusion and renaming**: Fine-grained control over output fields
-- **Per-operation topics**: Each operation has its own request and response topic pair
-- **Selective operations**: Only configure the operations you need — unconfigured ones gracefully return None
+- **Flexible topic configuration**: Single topic string for all operations, or per-operation dict
 - **Built-in caching**: Configurable TTL caching for all operations
 - **Dual-purpose**: Use as identity service (gateways) and/or employee service (agents)
 
@@ -60,15 +59,13 @@ identity_service:
   request_expiry_ms: 120000
   response_topic_prefix: "mycompany/identity/response"
 
-  # Only configure the operations you need. Unconfigured operations
-  # will return None with a warning log.
-  operations:
-    user_profile:
-      request_topic: "mycompany/identity/user-profile/request/v1/{request_id}"
-      response_topic: "mycompany/identity/user-profile/response/v1/"
-    search_users:
-      request_topic: "mycompany/identity/search-users/request/v1/{request_id}"
-      response_topic: "mycompany/identity/search-users/response/v1/"
+  # Single topic for all operations:
+  # request_topic: "mycompany/identity/request/v1/{request_id}"
+
+  # Or per-operation topics:
+  request_topic:
+    user_profile: "mycompany/identity/user-profile/request/v1/{request_id}"
+    search_users: "mycompany/identity/search-users/request/v1/{request_id}"
 
   field_mapping_config:
     field_mapping:
@@ -99,86 +96,18 @@ people_service:
   cache_ttl_seconds: 3600
   response_topic_prefix: "mycompany/identity/response"
 
-  operations:
-    user_profile:
-      request_topic: "mycompany/identity/user-profile/request/v1/{request_id}"
-      response_topic: "mycompany/identity/user-profile/response/v1/"
-    search_users:
-      request_topic: "mycompany/identity/search-users/request/v1/{request_id}"
-      response_topic: "mycompany/identity/search-users/response/v1/"
-    employee_data:
-      request_topic: "mycompany/identity/employee-data/request/v1/{request_id}"
-      response_topic: "mycompany/identity/employee-data/response/v1/"
-    employee_profile:
-      request_topic: "mycompany/identity/employee-profile/request/v1/{request_id}"
-      response_topic: "mycompany/identity/employee-profile/response/v1/"
-    time_off:
-      request_topic: "mycompany/identity/time-off/request/v1/{request_id}"
-      response_topic: "mycompany/identity/time-off/response/v1/"
-    profile_picture:
-      request_topic: "mycompany/identity/profile-picture/request/v1/{request_id}"
-      response_topic: "mycompany/identity/profile-picture/response/v1/"
+  request_topic:
+    user_profile: "mycompany/identity/user-profile/request/v1/{request_id}"
+    search_users: "mycompany/identity/search-users/request/v1/{request_id}"
+    employee_data: "mycompany/identity/employee-data/request/v1/{request_id}"
+    employee_profile: "mycompany/identity/employee-profile/request/v1/{request_id}"
+    time_off: "mycompany/identity/time-off/request/v1/{request_id}"
+    profile_picture: "mycompany/identity/profile-picture/request/v1/{request_id}"
 
   field_mapping_config:
     field_mapping: {}
     pass_through_unmapped: true
 ```
-
-## Migration from a Custom Identity Provider
-
-If you are migrating from a vendor-specific identity provider plugin to this generic one:
-
-1. Install the new plugin: `sam plugin install sam-event-mesh-identity-provider`
-2. Change `type` to `"event-mesh-identity-provider"`
-3. Move your topics into the `operations` dict with both `request_topic` and `response_topic`
-4. Add a `field_mapping_config` section to replicate any hardcoded field mappings from your old provider
-
-**Example — before (custom provider):**
-```yaml
-identity_service:
-  type: "my-custom-provider"
-  broker_url: "${HR_BROKER_URL}"
-  broker_vpn: "${HR_BROKER_VPN}"
-  broker_username: "${HR_BROKER_USERNAME}"
-  broker_password: "${HR_BROKER_PASSWORD}"
-  request_topic: "company/hr/user/requested/v1/{request_id}"
-  response_topic: "company/hr/user/retrieved/v1/"
-  lookup_key: "email"
-  cache_ttl_seconds: 3600
-```
-
-**Example — after (event-mesh-identity-provider):**
-```yaml
-identity_service:
-  type: "event-mesh-identity-provider"
-  broker_url: "${HR_BROKER_URL}"
-  broker_vpn: "${HR_BROKER_VPN}"
-  broker_username: "${HR_BROKER_USERNAME}"
-  broker_password: "${HR_BROKER_PASSWORD}"
-  lookup_key: "email"
-  cache_ttl_seconds: 3600
-  response_topic_prefix: "company/hr/user/retrieved/v1/"
-
-  operations:
-    user_profile:
-      request_topic: "company/hr/user/requested/v1/{request_id}"
-      response_topic: "company/hr/user/retrieved/v1/"
-
-  field_mapping_config:
-    field_mapping:
-      emp_email: "workEmail"
-      position: "jobTitle"
-    computed_fields:
-      - target: "displayName"
-        source_fields: ["firstName", "middleName", "lastName"]
-        separator: " "
-      - target: "id"
-        source_fields: ["emp_email"]
-        separator: ""
-    pass_through_unmapped: true
-```
-
-Only the operations you configure are active. If your old provider only handled user profile lookups, you only need to configure `user_profile`. Add more operations as your backend integration supports them.
 
 ## Configuration Reference
 
@@ -194,17 +123,34 @@ Only the operations you configure are active. If your old provider only handled 
 | `cache_ttl_seconds` | Cache TTL in seconds (0 to disable) | `3600` |
 | `request_expiry_ms` | Request timeout in milliseconds | `120000` |
 | `response_topic_prefix` | Prefix for the response correlation topic | `"sam/identity-provider/response"` |
-| `operations` | Dict of per-operation topic configs (each with `request_topic` and `response_topic`) | `{}` |
+| `request_topic` | Topic template (string) or per-operation map (dict) | Required |
 | `field_mapping_config` | Field transformation configuration | `{}` (passthrough) |
+
+### `request_topic` Formats
+
+**String** — one topic for every operation:
+```yaml
+request_topic: "mycompany/identity/request/v1/{request_id}"
+```
+
+**Dict** — per-operation topics (operations not listed return `None` with a warning):
+```yaml
+request_topic:
+  user_profile: "mycompany/identity/user-profile/request/v1/{request_id}"
+  search_users: "mycompany/identity/search-users/request/v1/{request_id}"
+  employee_data: "mycompany/identity/employee-data/request/v1/{request_id}"
+```
+
+Available operation keys: `user_profile`, `search_users`, `employee_data`, `employee_profile`, `time_off`, `profile_picture`.
 
 ## Field Mapping Guide
 
 The field mapping engine transforms source data through a three-phase pipeline:
 
 ```
-Source Data → [1. Field Mapping] → [2. Exclusion] → [3. Renaming] → Output
-                                ↑
-                    [Computed Fields]
+Source Data -> [1. Field Mapping] -> [2. Exclusion] -> [3. Renaming] -> Output
+                                  ^
+                      [Computed Fields]
 ```
 
 ### Phase 1: field_mapping
@@ -213,8 +159,8 @@ Rename source fields to canonical names:
 
 ```yaml
 field_mapping:
-  emp_email: "workEmail"       # "emp_email" in source → "workEmail" in output
-  position: "jobTitle"         # "position" in source → "jobTitle" in output
+  emp_email: "workEmail"       # "emp_email" in source -> "workEmail" in output
+  position: "jobTitle"         # "position" in source -> "jobTitle" in output
 ```
 
 ### Computed Fields
@@ -353,3 +299,6 @@ pytest tests/ -v
 pytest tests/ --cov=sam_event_mesh_identity_provider --cov-report=term-missing
 ```
 
+## License
+
+Apache License 2.0
