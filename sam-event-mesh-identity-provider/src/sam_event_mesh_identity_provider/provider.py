@@ -36,6 +36,7 @@ class EventMeshIdentityProvider(BaseIdentityService, BaseEmployeeService):
         super().__init__(config, component)
 
         self.lookup_key: str = self.config.get("lookup_key", "email")
+        self.payload_key: str = self.config.get("payload_key", self.lookup_key)
         self.field_mapper = FieldMapper(self.config.get("field_mapping_config", {}))
 
         try:
@@ -98,7 +99,7 @@ class EventMeshIdentityProvider(BaseIdentityService, BaseEmployeeService):
                 return cached
 
         response = await self.service.send_request(
-            "user_profile", {self.lookup_key: lookup_value}
+            "user_profile", {self.payload_key: lookup_value}
         )
         if not response:
             log.warning(

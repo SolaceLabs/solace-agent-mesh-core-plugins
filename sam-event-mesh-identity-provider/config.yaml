@@ -21,6 +21,11 @@ identity_service: # Or people_service:
   # The key in 'auth_claims' used to look up the user (e.g., 'email', 'id', 'username')
   lookup_key: "email"
 
+  # The key name used in the request payload sent to the backend for user_profile lookups.
+  # Defaults to the value of lookup_key.
+  # Example: lookup_key is "email" (read from auth_claims), but the backend expects {"userId": "..."}
+  payload_key: "email"
+
   # Cache TTL in seconds. Set to 0 to disable caching.
   cache_ttl_seconds: 3600
 

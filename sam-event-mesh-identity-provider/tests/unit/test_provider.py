@@ -65,8 +65,27 @@ class TestGetUserProfile:
         }
         result = await provider.get_user_profile({"email": "jane@co.com"})
         assert result["displayName"] == "Jane Doe"
+        # payload_key defaults to lookup_key ("email")
         mock_service.send_request.assert_called_once_with(
             "user_profile", {"email": "jane@co.com"}
+        )
+
+    @pytest.mark.asyncio
+    async def test_custom_payload_key(self, base_config, mock_component):
+        """payload_key controls the key in the request payload, not lookup_key."""
+        base_config["lookup_key"] = "email"
+        base_config["payload_key"] = "userId"
+        mock_svc = MagicMock()
+        mock_svc.send_request = AsyncMock(return_value={"id": "jane@co.com"})
+        mock_svc.cleanup = MagicMock()
+        with patch(
+            "sam_event_mesh_identity_provider.provider.EventMeshService",
+            return_value=mock_svc,
+        ):
+            p = EventMeshIdentityProvider(base_config, mock_component)
+        await p.get_user_profile({"email": "jane@co.com"})
+        mock_svc.send_request.assert_called_once_with(
+            "user_profile", {"userId": "jane@co.com"}
         )
 
     @pytest.mark.asyncio

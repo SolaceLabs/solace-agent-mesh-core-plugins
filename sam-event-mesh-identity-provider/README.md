@@ -119,7 +119,8 @@ people_service:
 | `broker_username` | Broker authentication username | Required |
 | `broker_password` | Broker authentication password | Required |
 | `dev_mode` | Enable development mode (no TLS verification) | `false` |
-| `lookup_key` | Key in auth_claims used to look up the user | `"email"` |
+| `lookup_key` | Key in auth_claims used to extract the lookup value | `"email"` |
+| `payload_key` | Key name used in the request payload sent to the backend | Value of `lookup_key` |
 | `cache_ttl_seconds` | Cache TTL in seconds (0 to disable) | `3600` |
 | `request_expiry_ms` | Request timeout in milliseconds | `120000` |
 | `response_topic_prefix` | Prefix for the response correlation topic | `"sam/identity-provider/response"` |
