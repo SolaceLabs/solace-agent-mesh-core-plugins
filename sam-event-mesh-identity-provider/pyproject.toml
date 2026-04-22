@@ -10,7 +10,7 @@ type = "service"
 
 [project]
 name = "sam_event_mesh_identity_provider"
-version = "0.1.0"
+version = "0.1.1"
 authors = [
   { name="SolaceLabs", email="solacelabs@solace.com" },
 ]
