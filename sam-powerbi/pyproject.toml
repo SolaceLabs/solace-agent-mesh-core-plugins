@@ -16,11 +16,26 @@ authors = [
 ]
 description = "A PowerBI plugin for executing queries with MSAL device-code delegated auth"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10.16,<3.14"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
 dependencies = [
     "msal>=1.34",
     "httpx>=0.27",
 ]
+
+[project.urls]
+Homepage = "https://github.com/SolaceLabs/solace-agent-mesh"
+Documentation = "https://solacelabs.github.io/solace-agent-mesh/"
+Repository = "https://github.com/SolaceLabs/solace-agent-mesh-core-plugins"
+Issues = "https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sam_powerbi"]
@@ -30,3 +45,17 @@ src-path = "src"
 "config.yaml" = "sam_powerbi/config.yaml"
 "README.md" = "sam_powerbi/README.md"
 "pyproject.toml" = "sam_powerbi/pyproject.toml"
+
+[tool.hatch.envs.hatch-test]
+dependencies = [
+  "pytest>=8.0.0",
+  "pytest-asyncio>=0.23.0",
+  "pytest-mock>=3.0.0",
+  "pytest-cov>=4.0.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"
+
