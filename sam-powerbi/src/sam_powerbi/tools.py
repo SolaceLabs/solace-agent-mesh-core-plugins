@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import httpx
 from google.adk.tools import ToolContext
@@ -67,6 +67,14 @@ def _get_auth(cfg: Dict[str, Any]) -> PowerBIAuth:
         return auth
 
 
+def _format_cell_value(v: Any) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, float):
+        return f"{v:.4g}"
+    return str(v)
+
+
 def _format_results_markdown(payload: Dict[str, Any], max_rows: int = 100) -> Dict[str, Any]:
     """Render an executeQueries response as a markdown table + metadata."""
     results = payload.get("results") or []
@@ -84,23 +92,13 @@ def _format_results_markdown(payload: Dict[str, Any], max_rows: int = 100) -> Di
     headers = list(rows[0].keys())
     lines = [" | ".join(headers), " | ".join("---" for _ in headers)]
     for row in rows[:max_rows]:
-        values: List[str] = []
-        for h in headers:
-            v = row.get(h)
-            if v is None:
-                values.append("")
-            elif isinstance(v, float):
-                values.append(f"{v:.4g}")
-            else:
-                values.append(str(v))
-        lines.append(" | ".join(values))
+        lines.append(" | ".join(_format_cell_value(row.get(h)) for h in headers))
 
     truncated = len(rows) > max_rows
+    lines.append("")
     if truncated:
-        lines.append("")
         lines.append(f"(Showing {max_rows} of {len(rows)} rows)")
     else:
-        lines.append("")
         lines.append(f"({len(rows)} row{'s' if len(rows) != 1 else ''})")
 
     return {
@@ -125,8 +123,85 @@ def _auth_required_response(pending: PowerBIAuthPending) -> Dict[str, Any]:
     }
 
 
+def _get_token(
+    auth: PowerBIAuth, error_prefix: str
+) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
+    """Acquire a token; return (token, None) on success or (None, error_dict) on failure."""
+    try:
+        return auth.get_token_or_start_device_flow(), None
+    except PowerBIAuthPending as pending:
+        return None, _auth_required_response(pending)
+    except PowerBIAuthError as e:
+        return None, {"status": "error", "error_code": "AUTH_ERROR", "message": f"{error_prefix}: {e}"}
+
+
+def _handle_200_response(resp: httpx.Response) -> Dict[str, Any]:
+    """Parse and format a 200 executeQueries response."""
+    try:
+        payload = resp.json()
+    except Exception as e:
+        return {"status": "error", "error_code": "PARSE_ERROR", "message": f"Response was 200 but body was not JSON: {e}"}
+    if payload.get("error"):
+        err = payload["error"]
+        msg = err.get("message") if isinstance(err, dict) else str(err)
+        return {"status": "error", "error_code": "DAX_ERROR", "message": msg or "Unknown DAX error in payload"}
+    formatted = _format_results_markdown(payload)
+    logger.info("[sam_powerbi] Query OK — %d row(s), %d byte(s)", formatted["row_count"], len(resp.content))
+    return {
+        "status": "success",
+        "message": f"Query returned {formatted['row_count']} row(s)" + (" (truncated)" if formatted["truncated"] else ""),
+        "results_markdown": formatted["markdown"],
+        "row_count": formatted["row_count"],
+        "columns": formatted["columns"],
+        "truncated": formatted["truncated"],
+    }
+
+
+def _handle_400_response(resp: httpx.Response) -> Dict[str, Any]:
+    """Parse a 400 DAX error response."""
+    try:
+        err_body = resp.json()
+        err = err_body.get("error", {})
+        code = err.get("code", "BadRequest")
+        msg = err.get("message", resp.text[:500])
+        details = err.get("details") or []
+        detail_msg = ""
+        if details:
+            detail_msg = " | " + " | ".join(
+                f"{d.get('code', '?')}: {d.get('message', '')}" for d in details
+            )
+        return {
+            "status": "error",
+            "error_code": "DAX_ERROR",
+            "message": f"[{code}] {msg}{detail_msg}. Please correct the DAX query and retry.",
+        }
+    except Exception:
+        return {"status": "error", "error_code": "DAX_ERROR", "message": resp.text[:500]}
+
+
+def _validate_dax(dax_query: str) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
+    """Validate and normalise a DAX query. Returns (dax, None) or (None, error_dict)."""
+    if not dax_query or not dax_query.strip():
+        return None, {
+            "status": "error",
+            "error_code": "DAX_ERROR",
+            "message": "Empty query. Provide a DAX expression starting with EVALUATE.",
+        }
+    dax = dax_query.strip()
+    if not dax.upper().startswith(("EVALUATE", "DEFINE")):
+        return None, {
+            "status": "error",
+            "error_code": "DAX_ERROR",
+            "message": (
+                "DAX queries must start with EVALUATE (or DEFINE ... EVALUATE). "
+                "Example: EVALUATE ROW(\"Total\", COUNTROWS('Fact GE Losses'))"
+            ),
+        }
+    return dax, None
+
+
 async def execute_powerbi_query(
-    daxQuery: str,
+    dax_query: str,
     tool_context: Optional[ToolContext] = None,
     tool_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -135,7 +210,7 @@ async def execute_powerbi_query(
     REST executeQueries endpoint.
 
     Args:
-        daxQuery: DAX query string. Must start with EVALUATE (or DEFINE ... EVALUATE).
+        dax_query: DAX query string. Must start with EVALUATE (or DEFINE ... EVALUATE).
 
     Returns:
         On success, a dict with status="success", results_markdown, row_count,
@@ -163,43 +238,18 @@ async def execute_powerbi_query(
         dataset_id = _require(cfg, "dataset_id")
     except ValueError as e:
         logger.error("[sam_powerbi] %s", e)
-        return {
-            "status": "error",
-            "error_code": "CONFIG_ERROR",
-            "message": str(e),
-        }
+        return {"status": "error", "error_code": "CONFIG_ERROR", "message": str(e)}
 
     timeout = float(cfg.get("rest_timeout_seconds") or 30)
 
-    if not daxQuery or not daxQuery.strip():
-        return {
-            "status": "error",
-            "error_code": "DAX_ERROR",
-            "message": "Empty query. Provide a DAX expression starting with EVALUATE.",
-        }
-    dax = daxQuery.strip()
-    if not dax.upper().startswith(("EVALUATE", "DEFINE")):
-        return {
-            "status": "error",
-            "error_code": "DAX_ERROR",
-            "message": (
-                "DAX queries must start with EVALUATE (or DEFINE ... EVALUATE). "
-                "Example: EVALUATE ROW(\"Total\", COUNTROWS('Fact GE Losses'))"
-            ),
-        }
+    dax, err = _validate_dax(dax_query)
+    if err:
+        return err
 
     auth = _get_auth(cfg)
-
-    try:
-        token = auth.get_token_or_start_device_flow()
-    except PowerBIAuthPending as pending:
-        return _auth_required_response(pending)
-    except PowerBIAuthError as e:
-        return {
-            "status": "error",
-            "error_code": "AUTH_ERROR",
-            "message": f"Failed to acquire PowerBI token: {e}",
-        }
+    token, err = _get_token(auth, "Failed to acquire PowerBI token")
+    if err:
+        return err
 
     endpoint = f"{POWERBI_REST_BASE}/groups/{workspace_id}/datasets/{dataset_id}/executeQueries"
     body = {
@@ -224,90 +274,23 @@ async def execute_powerbi_query(
         if resp.status_code == 401:
             logger.info("[sam_powerbi] 401 — forcing re-authentication")
             auth.force_reauth()
-            try:
-                token = auth.get_token_or_start_device_flow()
-            except PowerBIAuthPending as pending:
-                return _auth_required_response(pending)
-            except PowerBIAuthError as e:
-                return {
-                    "status": "error",
-                    "error_code": "AUTH_ERROR",
-                    "message": f"Re-auth failed: {e}",
-                }
+            token, err = _get_token(auth, "Re-auth failed")
+            if err:
+                return err
             resp = await _post(token)
 
         if resp.status_code == 200:
-            try:
-                payload = resp.json()
-            except Exception as e:
-                return {
-                    "status": "error",
-                    "error_code": "PARSE_ERROR",
-                    "message": f"Response was 200 but body was not JSON: {e}",
-                }
-            if payload.get("error"):
-                err = payload["error"]
-                msg = err.get("message") if isinstance(err, dict) else str(err)
-                return {
-                    "status": "error",
-                    "error_code": "DAX_ERROR",
-                    "message": msg or "Unknown DAX error in payload",
-                }
-            formatted = _format_results_markdown(payload)
-            logger.info(
-                "[sam_powerbi] Query OK — %d row(s), %d byte(s)",
-                formatted["row_count"],
-                len(resp.content),
-            )
-            return {
-                "status": "success",
-                "message": (
-                    f"Query returned {formatted['row_count']} row(s)"
-                    + (" (truncated)" if formatted["truncated"] else "")
-                ),
-                "results_markdown": formatted["markdown"],
-                "row_count": formatted["row_count"],
-                "columns": formatted["columns"],
-                "truncated": formatted["truncated"],
-            }
-
+            return _handle_200_response(resp)
         if resp.status_code == 400:
-            try:
-                err_body = resp.json()
-                err = err_body.get("error", {})
-                code = err.get("code", "BadRequest")
-                msg = err.get("message", resp.text[:500])
-                details = err.get("details") or []
-                detail_msg = ""
-                if details:
-                    detail_msg = " | " + " | ".join(
-                        f"{d.get('code', '?')}: {d.get('message', '')}"
-                        for d in details
-                    )
-                return {
-                    "status": "error",
-                    "error_code": "DAX_ERROR",
-                    "message": f"[{code}] {msg}{detail_msg}. Please correct the DAX query and retry.",
-                }
-            except Exception:
-                return {
-                    "status": "error",
-                    "error_code": "DAX_ERROR",
-                    "message": resp.text[:500],
-                }
-
+            return _handle_400_response(resp)
         if resp.status_code == 429:
             retry_after = resp.headers.get("Retry-After", "unknown")
             return {
                 "status": "error",
                 "error_code": "RATE_LIMIT",
-                "message": (
-                    f"PowerBI REST API rate limit exceeded (Retry-After: {retry_after}s). "
-                    "Wait before retrying."
-                ),
+                "message": f"PowerBI REST API rate limit exceeded (Retry-After: {retry_after}s). Wait before retrying.",
                 "retry_after": retry_after,
             }
-
         return {
             "status": "error",
             "error_code": "REST_ERROR",
@@ -319,22 +302,11 @@ async def execute_powerbi_query(
         return {
             "status": "error",
             "error_code": "TIMEOUT",
-            "message": (
-                f"PowerBI query exceeded {timeout:.0f}s. "
-                "Try reducing scope, adding filters, or using TOPN to limit rows."
-            ),
+            "message": f"PowerBI query exceeded {timeout:.0f}s. Try reducing scope, adding filters, or using TOPN to limit rows.",
         }
     except httpx.RequestError as e:
         logger.error("[sam_powerbi] Request error: %s", e)
-        return {
-            "status": "error",
-            "error_code": "NETWORK_ERROR",
-            "message": str(e),
-        }
+        return {"status": "error", "error_code": "NETWORK_ERROR", "message": str(e)}
     except Exception as e:
         logger.exception("[sam_powerbi] Unexpected error")
-        return {
-            "status": "error",
-            "error_code": "UNEXPECTED_ERROR",
-            "message": f"{type(e).__name__}: {e}",
-        }
+        return {"status": "error", "error_code": "UNEXPECTED_ERROR", "message": f"{type(e).__name__}: {e}"}
