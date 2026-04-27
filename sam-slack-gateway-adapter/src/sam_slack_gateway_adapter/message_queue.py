@@ -30,6 +30,12 @@ DEFAULT_MAX_RETRIES = 5
 DEFAULT_RETRY_DELAY = 3.0  # seconds - constant delay between retries
 DEFAULT_MAX_RETRY_DELAY = 30.0  # seconds - cap for Retry-After header values
 
+# Slack's hard limit on `text` for chat.postMessage / chat.update.
+# Sending a payload over this fails server-side with `msg_too_long`.
+# Reference: https://api.slack.com/methods/chat.postMessage#truncating
+SLACK_MAX_MESSAGE_LENGTH = 40_000
+SLACK_TRUNCATION_INDICATOR = "\n[…earlier output truncated to fit Slack's 40K limit…]\n"
+
 # Slack Rate Limit Tiers
 # https://api.slack.com/docs/rate-limits
 #
@@ -308,6 +314,29 @@ async def retry_with_backoff(
         raise last_exception
 
 
+def _truncate_for_slack(text: str, task_id: Optional[str] = None) -> str:
+    """
+    Guarantee a payload fits in chat.postMessage / chat.update `text` (~40K).
+
+    Streamed buffers and citation expansion can both grow text past the
+    server-side limit; sending it raises `msg_too_long`, which has no
+    automatic recovery.  We keep the most recent content (the tail of the
+    message is what users see last) and prefix a short indicator.
+    """
+    if len(text) <= SLACK_MAX_MESSAGE_LENGTH:
+        return text
+    keep = SLACK_MAX_MESSAGE_LENGTH - len(SLACK_TRUNCATION_INDICATOR)
+    log.warning(
+        "[Queue:%s] Truncating Slack text payload from %d to %d chars to "
+        "fit Slack's per-message limit (%d)",
+        task_id or "?",
+        len(text),
+        keep + len(SLACK_TRUNCATION_INDICATOR),
+        SLACK_MAX_MESSAGE_LENGTH,
+    )
+    return SLACK_TRUNCATION_INDICATOR + text[-keep:]
+
+
 # --- Queue Operation Types ---
 
 
@@ -424,14 +453,15 @@ class SlackMessageQueue:
         # a no-op update.
         #
         # Note: text_buffer grows for the lifetime of the current text
-        # segment.  For very long-running tasks this could be significant,
-        # but it is bounded by Slack's ~40K message limit in practice.
-        # A hard cap (_text_buffer_max_size) is enforced in
-        # _handle_text_update to prevent runaway growth.
+        # segment.  A hard cap (_text_buffer_max_size) is enforced in
+        # _handle_text_update; we cap at Slack's chat.update text limit
+        # so the buffer can never produce an over-limit payload, and the
+        # formatted output is also truncated at send-time as a final guard
+        # (citation expansion can grow text past the buffer cap).
         self.current_text_message_ts: Optional[str] = None
         self.text_buffer: str = ""
         self.last_posted_formatted_text: str = ""
-        self._text_buffer_max_size: int = 100_000  # chars — well above Slack's 40K limit
+        self._text_buffer_max_size: int = SLACK_MAX_MESSAGE_LENGTH
 
         # For update coalescing - holds non-text ops found during drain
         self._deferred_operation: Optional[QueueOperation] = None
@@ -567,13 +597,26 @@ class SlackMessageQueue:
 
                 if isinstance(operation, StopSignal):
                     log.debug("[Queue:%s] Received stop signal", self.task_id)
-                    # Flush any remaining buffered text as final update
+                    # Flush any remaining buffered text as final update.
+                    # A failed flush (e.g. msg_too_long after a truncation
+                    # bug, or a transient Slack error) must not be treated
+                    # as a fatal queue error -- we still need to mark the
+                    # signal done and exit cleanly.
                     if self.text_buffer:
                         log.debug(
                             "[Queue:%s] Flushing remaining buffer (%d chars) on stop",
                             self.task_id, len(self.text_buffer)
                         )
-                        await self._handle_text_update(TextUpdateOp(text=""), is_final=True)
+                        try:
+                            await self._handle_text_update(
+                                TextUpdateOp(text=""), is_final=True
+                            )
+                        except Exception as flush_err:
+                            log.warning(
+                                "[Queue:%s] Final stop-flush failed (%s); "
+                                "exiting queue cleanly",
+                                self.task_id, flush_err,
+                            )
                     self.queue.task_done()
                     break
 
@@ -713,7 +756,8 @@ class SlackMessageQueue:
         
         # Format the FULL buffer (pass task_id for citation map lookup)
         formatted_text = self.adapter._format_text(self.text_buffer, task_id=self.task_id)
-        
+        formatted_text = _truncate_for_slack(formatted_text, self.task_id)
+
         # Reset retry counter for this send attempt
         self._throttle_retry_count = 0
         
@@ -865,16 +909,28 @@ class SlackMessageQueue:
         This is the critical operation that prevents race conditions.
         """
 
-        # Step 1: Finalize any pending text message (with retry and throttle)
+        # Step 1: Finalize any pending text message (with retry and throttle).
+        # A failure here (e.g. msg_too_long, or a transient Slack error) must
+        # NOT prevent the file from being uploaded -- otherwise users lose the
+        # primary deliverable when the streamed status text happens to be
+        # malformed/oversized.  Truncate to Slack's limit as a guard, then
+        # swallow any remaining error.
         if self.text_buffer and self.current_text_message_ts:
-            await self._throttle(is_message_update=True)
-            await retry_with_backoff(
-                self.client.chat_update,
-                channel=self.channel_id,
-                ts=self.current_text_message_ts,
-                text=self.text_buffer,
-                operation_name=f"[Queue:{self.task_id}] chat_update (finalize text)",
-            )
+            try:
+                await self._throttle(is_message_update=True)
+                await retry_with_backoff(
+                    self.client.chat_update,
+                    channel=self.channel_id,
+                    ts=self.current_text_message_ts,
+                    text=_truncate_for_slack(self.text_buffer, self.task_id),
+                    operation_name=f"[Queue:{self.task_id}] chat_update (finalize text)",
+                )
+            except Exception as flush_err:
+                log.warning(
+                    "[Queue:%s] Pre-upload text flush failed (%s); "
+                    "continuing with file upload of %s",
+                    self.task_id, flush_err, op.filename,
+                )
 
         # Step 2: Reset text state (forces next text to a new message)
         self.text_buffer = ""
