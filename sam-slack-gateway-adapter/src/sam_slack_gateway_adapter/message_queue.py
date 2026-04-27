@@ -30,6 +30,11 @@ DEFAULT_MAX_RETRIES = 5
 DEFAULT_RETRY_DELAY = 3.0  # seconds - constant delay between retries
 DEFAULT_MAX_RETRY_DELAY = 30.0  # seconds - cap for Retry-After header values
 
+# Slack message length limits
+# chat.update and chat.postMessage both have a 40,000 character limit on the `text` field.
+# We use a slightly lower threshold to leave headroom for formatting overhead.
+SLACK_MAX_MESSAGE_LENGTH = 39_000  # characters
+
 # Slack Rate Limit Tiers
 # https://api.slack.com/docs/rate-limits
 #
@@ -308,6 +313,68 @@ async def retry_with_backoff(
         raise last_exception
 
 
+# --- Custom Exceptions ---
+
+class MessageOverflowError(Exception):
+    """
+    Raised when a Slack message exceeds the maximum length and has been
+    overflowed to a new message. The caller should retry with the reset state.
+    """
+    pass
+
+
+# --- Helpers ---
+
+def _split_buffer_for_slack_payload(
+    raw_buffer: str,
+    format_fn: Callable[[str], str],
+    limit: int,
+) -> tuple[str, str]:
+    """
+    Lossless split of `raw_buffer` for a Slack `text` payload.
+
+    Returns `(head_raw, tail_raw)` such that:
+      * `head_raw + tail_raw == raw_buffer` (no chars dropped)
+      * `len(format_fn(head_raw)) <= limit`
+      * `head_raw` is the *largest* such prefix (binary-searched)
+
+    If a newline appears within ~2K chars of the cut point, the head is
+    snapped to that newline so the split lands on a clean line boundary
+    (better UX in Slack — markdown isn't cut mid-token).
+
+    The caller is responsible for sending `head_raw` and re-queuing
+    `tail_raw` as the seed of the next message.
+    """
+    if not raw_buffer:
+        return "", ""
+    if len(format_fn(raw_buffer)) <= limit:
+        return raw_buffer, ""
+
+    # Binary search the largest raw prefix whose formatted output fits.
+    lo, hi, best = 0, len(raw_buffer), 0
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if len(format_fn(raw_buffer[:mid])) <= limit:
+            best = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
+
+    if best == 0:
+        # Even an empty prefix exceeds the limit — only possible if
+        # `format_fn("")` itself is over the cap, which is degenerate.
+        return "", raw_buffer
+
+    # Snap to the last newline within the head, but only if it's close
+    # enough that we don't waste much capacity (cap the snap-back to ~2K).
+    head = raw_buffer[:best]
+    last_newline = head.rfind("\n")
+    if last_newline >= 0 and (best - last_newline) <= 2_000:
+        best = last_newline + 1
+
+    return raw_buffer[:best], raw_buffer[best:]
+
+
 # --- Queue Operation Types ---
 
 
@@ -444,6 +511,13 @@ class SlackMessageQueue:
         self._throttle_retry_count: int = 0  # Track retries for final updates
         self._max_throttle_retries: int = 10  # Maximum retries for final updates
 
+        # Bounded loop counters for overflow handling.  Without these a
+        # buggy format function could cause infinite splits or recursion.
+        # 16 covers > 600KB of buffer at Slack's 40K limit and is well
+        # above any realistic single-task buffer.
+        self._max_overflow_iterations: int = 16
+        self._max_overflow_recursions: int = 16
+
         # Global rate limiter for non-text operations
         self._rate_limiter = get_global_rate_limiter()
 
@@ -567,13 +641,25 @@ class SlackMessageQueue:
 
                 if isinstance(operation, StopSignal):
                     log.debug("[Queue:%s] Received stop signal", self.task_id)
-                    # Flush any remaining buffered text as final update
+                    # Flush any remaining buffered text as final update.
+                    # A failed flush (e.g. an unhandled Slack error) must
+                    # not propagate to the outer "Fatal error" path -- we
+                    # still need to mark the signal done and exit cleanly.
                     if self.text_buffer:
                         log.debug(
                             "[Queue:%s] Flushing remaining buffer (%d chars) on stop",
                             self.task_id, len(self.text_buffer)
                         )
-                        await self._handle_text_update(TextUpdateOp(text=""), is_final=True)
+                        try:
+                            await self._handle_text_update(
+                                TextUpdateOp(text=""), is_final=True
+                            )
+                        except Exception as flush_err:
+                            log.warning(
+                                "[Queue:%s] Final stop-flush failed (%s); "
+                                "exiting queue cleanly",
+                                self.task_id, flush_err,
+                            )
                     self.queue.task_done()
                     break
 
@@ -655,6 +741,10 @@ class SlackMessageQueue:
            - For final: wait and keep retrying until success (with max retry limit)
         3. If not throttled: send immediately
         
+        When the buffer would exceed SLACK_MAX_MESSAGE_LENGTH after formatting, the current
+        message is finalized and a new message is started with the overflow text. This prevents
+        the ``msg_too_long`` Slack API error for long responses.
+        
         Note: Text updates use local throttling (_throttled_until) rather than the global
         rate limiter because they are high-frequency and benefit from aggregation during
         throttle periods. Non-text operations continue to use the global rate limiter.
@@ -670,13 +760,44 @@ class SlackMessageQueue:
 
         self.text_buffer += op.text
 
-        # Cap buffer size to prevent unbounded memory growth on long-running tasks
+        # Cap buffer size to prevent unbounded memory growth on long-running
+        # tasks.  Drain the overflow LOSSLESSLY by finalizing Slack messages
+        # via _overflow_to_new_message rather than silently slicing the
+        # head -- otherwise a streamed response that accumulates faster
+        # than we can flush would lose its opening text.  Falls back to a
+        # head-slice (with a loud error) only if the lossless drain itself
+        # keeps failing, so memory safety is still guaranteed.
         if len(self.text_buffer) > self._text_buffer_max_size:
             log.warning(
-                "[Queue:%s] text_buffer exceeded %d chars, truncating to limit",
+                "[Queue:%s] text_buffer exceeded %d chars; draining via "
+                "lossless overflow split before continuing",
                 self.task_id, self._text_buffer_max_size,
             )
-            self.text_buffer = self.text_buffer[-self._text_buffer_max_size:]
+            cap_drain_iterations = 0
+            while len(self.text_buffer) > self._text_buffer_max_size:
+                cap_drain_iterations += 1
+                if cap_drain_iterations > self._max_overflow_iterations:
+                    log.error(
+                        "[Queue:%s] Cap-drain overflow exceeded %d iterations "
+                        "(buffer=%d); falling back to head-slice to enforce "
+                        "memory bound. Some content from the beginning of "
+                        "the streamed response will be dropped.",
+                        self.task_id, self._max_overflow_iterations,
+                        len(self.text_buffer),
+                    )
+                    self.text_buffer = self.text_buffer[-self._text_buffer_max_size:]
+                    break
+                try:
+                    await self._overflow_to_new_message()
+                except Exception as drain_err:
+                    log.error(
+                        "[Queue:%s] Cap-drain overflow failed (%s); falling "
+                        "back to head-slice. Some content from the beginning "
+                        "of the streamed response will be dropped.",
+                        self.task_id, drain_err,
+                    )
+                    self.text_buffer = self.text_buffer[-self._text_buffer_max_size:]
+                    break
 
         current_time = time.monotonic()
         
@@ -711,8 +832,34 @@ class SlackMessageQueue:
                 self.task_id, len(pending_text_ops), len(self.text_buffer)
             )
         
-        # Format the FULL buffer (pass task_id for citation map lookup)
+        # If the buffer (after formatting) is over Slack's per-message limit,
+        # split losslessly across multiple messages: each iteration sends the
+        # largest fitting prefix and leaves the unsent tail in `text_buffer`
+        # for the next message.  Iteration is bounded so a runaway format
+        # function can't loop forever; exceeding the cap drops the unsent
+        # tail with a loud error rather than silently.
         formatted_text = self.adapter._format_text(self.text_buffer, task_id=self.task_id)
+        overflow_iterations = 0
+        while len(formatted_text) > SLACK_MAX_MESSAGE_LENGTH:
+            overflow_iterations += 1
+            if overflow_iterations > self._max_overflow_iterations:
+                log.error(
+                    "[Queue:%s] Overflow split exceeded %d iterations; "
+                    "dropping remaining buffer (%d chars) to avoid an "
+                    "unbounded loop. This indicates a degenerate format_fn.",
+                    self.task_id, self._max_overflow_iterations,
+                    len(self.text_buffer),
+                )
+                self.text_buffer = ""
+                formatted_text = ""
+                break
+            await self._overflow_to_new_message()
+            formatted_text = self.adapter._format_text(self.text_buffer, task_id=self.task_id)
+            log.info(
+                "[Queue:%s] Overflowed to new message (iteration=%d, "
+                "remaining buffer=%d chars)",
+                self.task_id, overflow_iterations, len(self.text_buffer),
+            )
         
         # Reset retry counter for this send attempt
         self._throttle_retry_count = 0
@@ -808,6 +955,39 @@ class SlackMessageQueue:
                         return
             # If we reach here, the text was successfully posted or updated
             self.last_posted_formatted_text = formatted_text
+        except MessageOverflowError:
+            # _try_slack_call detected msg_too_long and already split the
+            # buffer via _overflow_to_new_message: text_buffer now holds the
+            # unsent tail and current_text_message_ts is None.  Re-enter
+            # _handle_text_update WITH AN EMPTY op so we don't double-append
+            # op.text (it was already in the buffer that just got split).
+            # A depth guard prevents an infinite loop if Slack keeps
+            # rejecting payloads.
+            self._reactive_overflow_depth = (
+                getattr(self, "_reactive_overflow_depth", 0) + 1
+            )
+            try:
+                if self._reactive_overflow_depth > self._max_overflow_recursions:
+                    log.error(
+                        "[Queue:%s] Reactive overflow recursion exceeded %d; "
+                        "dropping remaining buffer (%d chars) to avoid an "
+                        "infinite loop on repeated msg_too_long.",
+                        self.task_id, self._max_overflow_recursions,
+                        len(self.text_buffer),
+                    )
+                    self.text_buffer = ""
+                    return
+                log.info(
+                    "[Queue:%s] msg_too_long handled by overflow (depth=%d); "
+                    "retrying send with carried-over tail (%d chars)",
+                    self.task_id, self._reactive_overflow_depth,
+                    len(self.text_buffer),
+                )
+                await self._handle_text_update(
+                    TextUpdateOp(text=""), is_final=is_final
+                )
+            finally:
+                self._reactive_overflow_depth -= 1
         except Exception as e:
             log.error("[Queue:%s] Error sending text update: %s", self.task_id, e)
             # For non-final updates, preserve the buffer so it can be retried
@@ -820,17 +1000,88 @@ class SlackMessageQueue:
                 self.task_id, len(self.text_buffer)
             )
     
+    async def _overflow_to_new_message(self) -> None:
+        """
+        Lossless split of ``text_buffer`` across two Slack messages.
+
+        Picks the largest raw prefix whose *formatted* output fits in
+        ``SLACK_MAX_MESSAGE_LENGTH`` (preferring a newline boundary) and
+        finalizes the current Slack message with that prefix.  The unsent
+        remainder is left in ``text_buffer`` as the seed of the next
+        Slack message — no characters are dropped at either end.
+
+        ``current_text_message_ts`` is cleared only AFTER a successful
+        send so that a transient Slack error doesn't leave us with a
+        partially-sent split (we'd rather retry from the same buffer).
+
+        Exceptions from the underlying Slack API call propagate to the
+        caller (they MUST NOT be silently swallowed; doing so was the
+        cause of silent data loss called out on PR #108).
+        """
+        if not self.text_buffer:
+            return
+
+        head_raw, tail_raw = _split_buffer_for_slack_payload(
+            self.text_buffer,
+            lambda t: self.adapter._format_text(t, task_id=self.task_id),
+            SLACK_MAX_MESSAGE_LENGTH,
+        )
+        if not head_raw:
+            # Degenerate case: the format function produces output > limit
+            # for an empty input.  We cannot split lossless; surface it.
+            log.error(
+                "[Queue:%s] Cannot split buffer: empty prefix already formats "
+                "above SLACK_MAX_MESSAGE_LENGTH (%d). Buffer size=%d.",
+                self.task_id, SLACK_MAX_MESSAGE_LENGTH, len(self.text_buffer),
+            )
+            raise RuntimeError(
+                f"_overflow_to_new_message: cannot split buffer for task "
+                f"{self.task_id}; format function exceeds limit on empty input"
+            )
+
+        formatted_head = self.adapter._format_text(head_raw, task_id=self.task_id)
+        log.warning(
+            "[Queue:%s] Buffer (raw=%d) exceeds Slack limit; splitting "
+            "head_raw=%d formatted=%d, carrying tail_raw=%d to next message",
+            self.task_id, len(self.text_buffer),
+            len(head_raw), len(formatted_head), len(tail_raw),
+        )
+
+        if self.current_text_message_ts:
+            await retry_with_backoff(
+                self.client.chat_update,
+                channel=self.channel_id,
+                ts=self.current_text_message_ts,
+                text=formatted_head,
+                operation_name=f"[Queue:{self.task_id}] chat_update (overflow finalize)",
+            )
+        else:
+            await retry_with_backoff(
+                self.client.chat_postMessage,
+                channel=self.channel_id,
+                thread_ts=self.thread_ts,
+                text=formatted_head,
+                operation_name=f"[Queue:{self.task_id}] chat_postMessage (overflow finalize)",
+            )
+
+        # Hand the unsent tail to a fresh Slack message.
+        self.text_buffer = tail_raw
+        self.current_text_message_ts = None
+
     async def _try_slack_call(self, method, **kwargs) -> Optional[Dict]:
         """
         Try to make a Slack API call. Returns response on success, None if throttled.
         
         If throttled (429), sets _throttled_until and returns None.
+        If the message is too long (msg_too_long), triggers overflow to a new message
+        and raises MessageOverflowError so the caller can retry with the reset state.
         Other errors are raised.
         """
         try:
             response = await method(**kwargs)
             return response
         except SlackApiError as e:
+            error_code = e.response.get("error", "") if e.response else ""
             if e.response.status_code == 429:
                 # Rate limited - extract retry_after and set throttle time
                 retry_after = int(e.response.headers.get("Retry-After", 1))
@@ -840,6 +1091,19 @@ class SlackMessageQueue:
                     self.task_id, retry_after
                 )
                 return None
+            if error_code == "msg_too_long":
+                # The message text exceeded Slack's limit.  Overflow to a new
+                # message and raise so the caller can retry with the reset state.
+                log.warning(
+                    "[Queue:%s] msg_too_long from Slack - triggering overflow to new message",
+                    self.task_id,
+                )
+                await self._overflow_to_new_message()
+                # Raise MessageOverflowError so the caller knows to retry immediately
+                # with the reset state (empty buffer, no message ts).
+                raise MessageOverflowError(
+                    f"Message overflowed to new message for task {self.task_id}"
+                )
             raise
 
     async def _throttle(self, is_message_update: bool = False) -> None:
@@ -865,16 +1129,24 @@ class SlackMessageQueue:
         This is the critical operation that prevents race conditions.
         """
 
-        # Step 1: Finalize any pending text message (with retry and throttle)
+        # Step 1: Finalize any pending text message (with retry and throttle).
+        # A failure here (e.g. an unexpected msg_too_long that escaped the
+        # overflow handling, or a transient Slack error) must NOT prevent
+        # the file upload from running -- otherwise users lose the primary
+        # deliverable when streamed status text happens to be malformed.
+        # Note: we go through `_handle_text_update(is_final=True)` rather
+        # than calling chat_update directly so the overflow logic applies.
         if self.text_buffer and self.current_text_message_ts:
-            await self._throttle(is_message_update=True)
-            await retry_with_backoff(
-                self.client.chat_update,
-                channel=self.channel_id,
-                ts=self.current_text_message_ts,
-                text=self.text_buffer,
-                operation_name=f"[Queue:{self.task_id}] chat_update (finalize text)",
-            )
+            try:
+                await self._handle_text_update(
+                    TextUpdateOp(text=""), is_final=True
+                )
+            except Exception as flush_err:
+                log.warning(
+                    "[Queue:%s] Pre-upload text flush failed (%s); "
+                    "continuing with file upload of %s",
+                    self.task_id, flush_err, op.filename,
+                )
 
         # Step 2: Reset text state (forces next text to a new message)
         self.text_buffer = ""
