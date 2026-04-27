@@ -36,6 +36,7 @@ from slack_sdk.errors import SlackApiError
 from sam_slack_gateway_adapter.message_queue import (
     SLACK_MAX_MESSAGE_LENGTH,
     SlackMessageQueue,
+    _split_buffer_for_slack_payload,
 )
 
 
@@ -357,4 +358,178 @@ async def test_reactive_overflow_recursion_is_bounded() -> None:
     assert client.chat_update.await_count <= 50, (
         f"chat_update called {client.chat_update.await_count} times -- "
         "reactive overflow recursion appears unbounded"
+    )
+
+
+# --- Direct unit tests for the split helper -------------------------------
+
+
+class TestSplitBufferForSlackPayload:
+    """
+    `_split_buffer_for_slack_payload` is the single source of truth for
+    the lossless contract.  These tests pin every branch so a future
+    refactor can't regress the helper without lighting up.
+    """
+
+    def test_empty_buffer_returns_empty_split(self) -> None:
+        head, tail = _split_buffer_for_slack_payload("", lambda t: t, limit=100)
+        assert head == ""
+        assert tail == ""
+
+    def test_buffer_under_limit_returns_full_buffer_as_head(self) -> None:
+        text = "abcdef"
+        head, tail = _split_buffer_for_slack_payload(text, lambda t: t, limit=100)
+        assert head == text
+        assert tail == ""
+
+    def test_buffer_over_limit_splits_at_largest_fitting_prefix(self) -> None:
+        # No newlines -> hard cut at the binary-search boundary.
+        text = "x" * 250
+        head, tail = _split_buffer_for_slack_payload(text, lambda t: t, limit=100)
+        assert head + tail == text  # lossless
+        assert len(head) == 100  # largest prefix that fits
+        assert tail == "x" * 150
+
+    def test_split_snaps_to_newline_when_close_enough(self) -> None:
+        # Newline at index 95 (within 2K of cut at 100) -> snap to newline.
+        text = "a" * 95 + "\n" + "b" * 200
+        head, tail = _split_buffer_for_slack_payload(text, lambda t: t, limit=100)
+        assert head + tail == text  # lossless
+        assert head.endswith("\n")
+        assert head == "a" * 95 + "\n"
+        assert tail == "b" * 200
+
+    def test_split_does_not_snap_when_newline_too_far(self) -> None:
+        # Newline at index 0; cut at ~30_000.  3K snap-back would waste
+        # 30K of capacity, which is well above the ~2K cap, so the helper
+        # must NOT snap and instead hard-cut at the binary-search point.
+        text = "\n" + "x" * 60_000
+        head, tail = _split_buffer_for_slack_payload(text, lambda t: t, limit=30_000)
+        assert head + tail == text
+        # Hard cut: head is exactly the newline + first ~30K xs (length
+        # 30_000 raw); we don't snap back to index 1.
+        assert len(head) == 30_000
+        assert head[0] == "\n"
+
+    def test_split_handles_format_expansion(self) -> None:
+        # format_fn doubles every char.  The largest raw prefix whose
+        # formatted output fits in `limit` is `limit // 2`.
+        def doubling(t: str) -> str:
+            return t + t
+
+        text = "abcdefghij" * 30  # 300 chars raw
+        head, tail = _split_buffer_for_slack_payload(text, doubling, limit=100)
+        assert head + tail == text
+        # Largest prefix with formatted len ≤ 100 is raw 50 chars.
+        assert len(head) == 50
+        assert len(doubling(head)) == 100
+
+    def test_degenerate_format_fn_returns_empty_head_full_tail(self) -> None:
+        # A format_fn whose output is always over the limit (even on "")
+        # cannot produce a fitting prefix.  Helper returns ("", buffer)
+        # so the caller can decide how to surface the error rather than
+        # silently dropping content.
+        def always_huge(t: str) -> str:
+            return "X" * 200
+
+        text = "abcdef"
+        head, tail = _split_buffer_for_slack_payload(text, always_huge, limit=100)
+        assert head == ""
+        assert tail == text
+
+
+# --- Edge cases on _overflow_to_new_message and the cap-drain --------------
+
+
+@pytest.mark.asyncio
+async def test_overflow_on_empty_buffer_is_a_noop() -> None:
+    """
+    `_overflow_to_new_message` must early-return without touching Slack
+    when the buffer is empty.  This is hit during stop() if the buffer
+    was just drained.
+    """
+    client = _make_slack_client()
+    queue = _make_queue(client)
+    queue.text_buffer = ""
+    queue.current_text_message_ts = "ts-existing"
+
+    await queue._overflow_to_new_message()
+
+    assert client.chat_update.await_count == 0
+    assert client.chat_postMessage.await_count == 0
+    # State unchanged
+    assert queue.text_buffer == ""
+    assert queue.current_text_message_ts == "ts-existing"
+
+
+@pytest.mark.asyncio
+async def test_overflow_raises_runtime_error_when_format_fn_is_degenerate() -> None:
+    """
+    If the format function expands even an empty string past the Slack
+    limit, the helper returns ("", buffer) and `_overflow_to_new_message`
+    must raise RuntimeError -- silently keeping a buffer we can't send
+    would be worse than surfacing the bug.
+    """
+    client = _make_slack_client()
+    queue = _make_queue(client)
+    # format_fn always exceeds the limit -> empty head, full tail.
+    queue.adapter._format_text = MagicMock(
+        side_effect=lambda t, task_id=None: "X" * (SLACK_MAX_MESSAGE_LENGTH + 1)
+    )
+    queue.text_buffer = "anything"
+
+    with pytest.raises(RuntimeError, match="cannot split buffer"):
+        await queue._overflow_to_new_message()
+
+
+@pytest.mark.asyncio
+async def test_cap_drain_falls_back_to_head_slice_when_overflow_keeps_failing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """
+    Memory-safety cap must hold even if the lossless drain itself can't
+    succeed (e.g. Slack persistently rejecting both chat.update and
+    chat.postMessage).  After the bounded drain loop is exhausted, the
+    cap falls back to a head-slice with a loud ERROR log so memory is
+    bounded -- exactly the trade-off the comment in the source promises.
+    """
+    import logging as _logging
+
+    # Both chat APIs raise non-rate-limit Slack errors so retry_with_backoff
+    # gives up immediately and _overflow_to_new_message propagates.
+    persistent_error = SlackApiError(
+        message="boom",
+        response=MagicMock(
+            status_code=500, headers={}, get=lambda k, d=None: None
+        ),
+    )
+
+    client = _make_slack_client()
+    client.chat_update = AsyncMock(side_effect=persistent_error)
+    client.chat_postMessage = AsyncMock(side_effect=persistent_error)
+
+    queue = _make_queue(client)
+    queue._text_buffer_max_size = 1_000  # tighten so a small buffer crosses it
+    queue._max_overflow_iterations = 2
+
+    caplog.set_level(_logging.ERROR, logger="sam_slack_gateway_adapter.message_queue")
+
+    await queue.start()
+    # Push a buffer well over the cap; the cap-drain should attempt
+    # overflow, hit the SlackApiError, and fall back to head-slicing.
+    await queue.queue_text_update("z" * 5_000)
+    await queue.stop()
+
+    # Buffer must end up bounded by the cap (memory invariant) even
+    # though the lossless guarantee couldn't be honored.
+    assert len(queue.text_buffer) <= queue._text_buffer_max_size
+
+    # And the fallback should have logged loudly so an operator sees it.
+    fallback_logs = [
+        r for r in caplog.records
+        if "falling back to head-slice" in r.getMessage()
+    ]
+    assert fallback_logs, (
+        "cap-drain fallback path produced no ERROR log -- silent data "
+        "loss is exactly what we're guarding against"
     )
