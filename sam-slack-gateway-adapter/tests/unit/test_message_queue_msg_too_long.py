@@ -250,22 +250,38 @@ async def test_processor_keeps_running_after_msg_too_long_text_update(
 
 
 @pytest.mark.asyncio
-async def test_overflow_split_is_lossless_no_truncation_at_either_end() -> None:
+@pytest.mark.parametrize(
+    "buffer_size",
+    [
+        # Under the memory-safety cap (text_buffer_max_size = 100K).  Hits
+        # only the in-method overflow loop after _format_text.
+        100_000,
+        # Well above the cap.  Without a lossless cap-drain, the head-slice
+        # at the top of _handle_text_update would silently drop ~50K chars
+        # from the beginning of the stream.
+        250_000,
+    ],
+    ids=["under_cap_100k", "over_cap_250k"],
+)
+async def test_overflow_split_is_lossless_no_truncation_at_either_end(
+    buffer_size: int,
+) -> None:
     """
     A long response that doesn't fit in a single Slack message MUST be
     split across multiple messages so that no characters are dropped --
-    not at the head, not at the tail.
+    not at the head, not at the tail, AND not by the buffer-size memory
+    cap that fires when streaming outpaces the queue drain.
 
-    We feed a deterministic ~100K-char buffer (~2.5× Slack's limit) and
-    reconstruct the final state of every Slack message; the
-    concatenation must equal the original byte-for-byte.
+    We feed a deterministic buffer and reconstruct the final state of
+    every Slack message; the concatenation must equal the original
+    byte-for-byte.
     """
     client = _make_slack_client()
     queue = _make_queue(client)
     await queue.start()
 
-    original = "".join(chr(0x21 + (i % 90)) for i in range(100_000))
-    assert len(original) == 100_000
+    original = "".join(chr(0x21 + (i % 90)) for i in range(buffer_size))
+    assert len(original) == buffer_size
 
     await queue.queue_text_update(original)
     await queue.stop()

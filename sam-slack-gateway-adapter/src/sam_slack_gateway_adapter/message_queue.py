@@ -760,13 +760,44 @@ class SlackMessageQueue:
 
         self.text_buffer += op.text
 
-        # Cap buffer size to prevent unbounded memory growth on long-running tasks
+        # Cap buffer size to prevent unbounded memory growth on long-running
+        # tasks.  Drain the overflow LOSSLESSLY by finalizing Slack messages
+        # via _overflow_to_new_message rather than silently slicing the
+        # head -- otherwise a streamed response that accumulates faster
+        # than we can flush would lose its opening text.  Falls back to a
+        # head-slice (with a loud error) only if the lossless drain itself
+        # keeps failing, so memory safety is still guaranteed.
         if len(self.text_buffer) > self._text_buffer_max_size:
             log.warning(
-                "[Queue:%s] text_buffer exceeded %d chars, truncating to limit",
+                "[Queue:%s] text_buffer exceeded %d chars; draining via "
+                "lossless overflow split before continuing",
                 self.task_id, self._text_buffer_max_size,
             )
-            self.text_buffer = self.text_buffer[-self._text_buffer_max_size:]
+            cap_drain_iterations = 0
+            while len(self.text_buffer) > self._text_buffer_max_size:
+                cap_drain_iterations += 1
+                if cap_drain_iterations > self._max_overflow_iterations:
+                    log.error(
+                        "[Queue:%s] Cap-drain overflow exceeded %d iterations "
+                        "(buffer=%d); falling back to head-slice to enforce "
+                        "memory bound. Some content from the beginning of "
+                        "the streamed response will be dropped.",
+                        self.task_id, self._max_overflow_iterations,
+                        len(self.text_buffer),
+                    )
+                    self.text_buffer = self.text_buffer[-self._text_buffer_max_size:]
+                    break
+                try:
+                    await self._overflow_to_new_message()
+                except Exception as drain_err:
+                    log.error(
+                        "[Queue:%s] Cap-drain overflow failed (%s); falling "
+                        "back to head-slice. Some content from the beginning "
+                        "of the streamed response will be dropped.",
+                        self.task_id, drain_err,
+                    )
+                    self.text_buffer = self.text_buffer[-self._text_buffer_max_size:]
+                    break
 
         current_time = time.monotonic()
         
