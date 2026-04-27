@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -m py_compile:*)"
+      "Bash(python -m py_compile:*)",
+      "Bash(rtk grep *)",
+      "Read(//Users/rudraneelchakraborty/Documents/work/projects/ai/solace-agent-mesh/**)"
     ]
   }
 }
