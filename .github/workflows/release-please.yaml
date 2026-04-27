@@ -8,12 +8,15 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
   checks: write
   statuses: write
+  actions: read
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    environment: pypi
     outputs:
       releases_created: ${{ steps.release.outputs.releases_created }}
       prs_created: ${{ steps.release.outputs.prs_created }}
@@ -25,12 +28,12 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.SAM_PLUGINS_PR_CREATE_TOKEN }}
 
       - name: Get PR number
         id: get_pr
         if: steps.release.outputs.prs_created == 'true'
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
             const prJson = ${{ steps.release.outputs.pr }};
@@ -42,17 +45,3 @@ jobs:
           echo "releases_created: ${{ steps.release.outputs.releases_created }}"
           echo "prs_created: ${{ steps.release.outputs.prs_created }}"
           echo "pr_number: ${{ steps.get_pr.outputs.pr_number }}"
-
-  # Run release readiness checks when a PR is created/updated
-  release-readiness:
-    name: Release Readiness Check
-    needs: release-please
-    if: needs.release-please.outputs.prs_created == 'true'
-    uses: ./.github/workflows/release-readiness-check.yaml
-    with:
-      pr_number: ${{ fromJSON(needs.release-please.outputs.pr_number) }}
-      ref: release-please--branches--main
-    secrets:
-      FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
-      SONARQUBE_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
-      SONARQUBE_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}

@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field, model_validator, field_validator, SecretStr
 from google.genai import types as adk_types
 from solace_agent_mesh.agent.tools.dynamic_tool import DynamicTool
@@ -38,6 +38,20 @@ class DatabaseConfig(BaseModel):
     cache_ttl_seconds: int = Field(
         default=3600,
         description="Time-to-live for schema cache in seconds (default: 3600 = 1 hour).",
+    )
+    include_tables: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "List of glob patterns for tables to include in schema detection. "
+            "If set, only matching tables are included. Supports wildcards: *, ?, [seq]."
+        ),
+    )
+    exclude_tables: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "List of glob patterns for tables to exclude from schema detection. "
+            "Applied after include_tables. Supports wildcards: *, ?, [seq]."
+        ),
     )
 
     # Connection pool settings
@@ -99,8 +113,13 @@ class DatabaseConfig(BaseModel):
                 raise ValueError(
                     "'schema_summary_override' is required when 'auto_detect_schema' is false"
                 )
+            if self.include_tables or self.exclude_tables:
+                log.warning(
+                    "Tool '%s': include_tables/exclude_tables have no effect when auto_detect_schema is false",
+                    self.tool_name,
+                )
         return self
-    
+
     def get(self, key: str, default: Any = None) -> Any:
         """Allows dictionary-like access to the model's attributes."""
         return getattr(self, key, default)
@@ -170,6 +189,8 @@ class SqlDatabaseTool(DynamicTool):
                 connect_args=self.tool_config.connect_args,
                 isolation_level=self.tool_config.isolation_level,
                 echo=self.tool_config.echo,
+                include_tables=self.tool_config.include_tables,
+                exclude_tables=self.tool_config.exclude_tables,
             )
         except Exception as e:
             self._connection_healthy = False

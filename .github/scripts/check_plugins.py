@@ -5,10 +5,16 @@ Check that all plugin directories are listed in the configuration files.
 This script scans the repository for plugin directories (sam-*) and verifies
 they are properly configured in:
 - .github/workflows/build-plugin.yaml
+- .github/workflows/deprecate-plugins.yaml
 - .github/workflows/sync-plugin-configs.yaml (paths exclusions)
 - .release-please-manifest.json
 - release-please-config.json
 - .github/pr_labeler.yaml
+
+Why this script exists:
+- Plugin onboarding/removal touches multiple files.
+- Missing one file causes CI gaps, release issues, or unlabeled PRs.
+- This script provides a single consistency check and fails fast.
 """
 
 from __future__ import annotations
@@ -19,13 +25,19 @@ import sys
 from pathlib import Path
 from typing import Set
 
+from plugin_exceptions import DEPRECATED_PLUGINS
+
+AUTO_INPUTS_START = "      # BEGIN AUTO-GENERATED PLUGIN INPUTS"
+AUTO_INPUTS_END = "      # END AUTO-GENERATED PLUGIN INPUTS"
+
 
 def get_plugin_directories(repo_root: Path) -> Set[str]:
     """Get all plugin directories (directories starting with 'sam-')."""
     plugins = set()
     for item in repo_root.iterdir():
         if item.is_dir() and item.name.startswith("sam-"):
-            # Check if it's a valid plugin (has pyproject.toml)
+            # Treat only Python package directories as plugins to avoid
+            # counting utility/demo folders that start with `sam-`.
             if (item / "pyproject.toml").exists():
                 plugins.add(item.name)
     return plugins
@@ -39,7 +51,8 @@ def get_plugins_from_build_workflow(repo_root: Path) -> Set[str]:
 
     content = workflow_path.read_text()
 
-    # Find the options list under workflow_dispatch
+    # Parse the workflow-dispatch plugin options list without adding a YAML
+    # dependency to this script. We rely on indentation + "- sam-..." pattern.
     plugins = set()
     in_options = False
     for line in content.split("\n"):
@@ -57,6 +70,27 @@ def get_plugins_from_build_workflow(repo_root: Path) -> Set[str]:
     return plugins
 
 
+def get_plugins_from_deprecate_workflow(repo_root: Path) -> Set[str]:
+    """Extract plugin names from deprecate-plugins.yaml workflow inputs."""
+    workflow_path = repo_root / ".github" / "workflows" / "deprecate-plugins.yaml"
+    if not workflow_path.exists():
+        return set()
+
+    content = workflow_path.read_text()
+    match = re.search(
+        rf"{re.escape(AUTO_INPUTS_START)}\n(.*?)\n{re.escape(AUTO_INPUTS_END)}",
+        content,
+        re.DOTALL,
+    )
+    managed_block = match.group(1) if match else content
+
+    plugins = set()
+    for plugin_match in re.finditer(r"^\s{6}(sam-[\w-]+):\s*$", managed_block, re.MULTILINE):
+        plugins.add(plugin_match.group(1))
+
+    return plugins
+
+
 def get_plugins_from_sync_workflow(repo_root: Path) -> Set[str]:
     """Extract plugin names from sync-plugin-configs.yaml paths exclusions (!)."""
     workflow_path = repo_root / ".github" / "workflows" / "sync-plugin-configs.yaml"
@@ -65,7 +99,7 @@ def get_plugins_from_sync_workflow(repo_root: Path) -> Set[str]:
 
     content = workflow_path.read_text()
 
-    # Find plugins in paths section with ! prefix (exclusions)
+    # This workflow keeps plugin paths in exclusion format: "!sam-foo/**".
     plugins = set()
     for match in re.finditer(r'^\s*-\s*"!(sam-[\w-]+)/\*\*"', content, re.MULTILINE):
         plugins.add(match.group(1))
@@ -77,6 +111,7 @@ def get_plugins_from_manifest(repo_root: Path) -> Set[str]:
     """Extract plugin names from .release-please-manifest.json."""
     manifest_path = repo_root / ".release-please-manifest.json"
     if not manifest_path.exists():
+        # Missing file should surface as mismatch in the final comparison.
         return set()
 
     with open(manifest_path) as f:
@@ -105,7 +140,7 @@ def get_plugins_from_pr_labeler(repo_root: Path) -> Set[str]:
 
     content = labeler_path.read_text()
 
-    # Find all top-level keys that start with 'sam-'
+    # Labeler config uses plugin names as top-level YAML keys.
     plugins = set()
     for line in content.split("\n"):
         match = re.match(r"^(sam-[\w-]+):", line)
@@ -116,25 +151,42 @@ def get_plugins_from_pr_labeler(repo_root: Path) -> Set[str]:
 
 
 def main():
-    # Find repository root
+    # Resolve repo root relative to this script location so the command works
+    # regardless of current working directory.
     script_dir = Path(__file__).parent
     repo_root = script_dir.parent.parent
 
     print(f"Repository root: {repo_root}")
     print()
 
-    # Get all plugin directories
-    actual_plugins = get_plugin_directories(repo_root)
-    print(f"Found {len(actual_plugins)} plugin directories:")
+    # The source of truth is active plugin directories in the repository.
+    # Deprecated plugins are ignored to avoid forcing legacy config churn.
+    all_plugins = get_plugin_directories(repo_root)
+    deprecated_plugins = all_plugins & DEPRECATED_PLUGINS
+    actual_plugins = all_plugins - DEPRECATED_PLUGINS
+
+    print(f"Found {len(all_plugins)} plugin directories:")
+    for plugin in sorted(all_plugins):
+        print(f"  - {plugin}")
+    print()
+
+    if deprecated_plugins:
+        print(f"Ignoring {len(deprecated_plugins)} deprecated plugins:")
+        for plugin in sorted(deprecated_plugins):
+            print(f"  - {plugin}")
+        print()
+
+    print(f"Using {len(actual_plugins)} active plugins for validation:")
     for plugin in sorted(actual_plugins):
         print(f"  - {plugin}")
     print()
 
-    # Check each config file
+    # Compare each config file against the active plugin set.
     all_match = True
 
     configs = [
         ("build-plugin.yaml", get_plugins_from_build_workflow(repo_root)),
+        ("deprecate-plugins.yaml", get_plugins_from_deprecate_workflow(repo_root)),
         ("sync-plugin-configs.yaml", get_plugins_from_sync_workflow(repo_root)),
         (".release-please-manifest.json", get_plugins_from_manifest(repo_root)),
         ("release-please-config.json", get_plugins_from_release_config(repo_root)),
@@ -144,8 +196,10 @@ def main():
     for config_name, config_plugins in configs:
         print(f"Checking {config_name}...")
 
-        missing = actual_plugins - config_plugins
-        extra = config_plugins - actual_plugins
+        # Deprecated plugins are excluded from both sides of comparison.
+        filtered_config_plugins = config_plugins - DEPRECATED_PLUGINS
+        missing = actual_plugins - filtered_config_plugins
+        extra = filtered_config_plugins - actual_plugins
 
         if missing:
             all_match = False
@@ -160,11 +214,11 @@ def main():
                 print(f"      - {plugin}")
 
         if not missing and not extra:
-            print(f"  ✅ All {len(config_plugins)} plugins are configured")
+            print(f"  ✅ All {len(filtered_config_plugins)} active plugins are configured")
 
         print()
 
-    # Summary
+    # Non-zero exit code lets CI fail when configuration drift is detected.
     if all_match:
         print("✅ All configuration files are in sync with plugin directories!")
         return 0

@@ -297,3 +297,755 @@ class TestCreateFeedbackInputBlocks:
         assert len(blocks) == 1
         assert blocks[0]["type"] == "context"
         assert "too large" in blocks[0]["elements"][0]["text"].lower()
+
+
+class TestTransformCitationsForSlack:
+    """Test suite for transform_citations_for_slack function."""
+
+    def test_web_search_citation_with_url(self):
+        """Test transforming web search citation [[cite:s0r0]] with URL mapping."""
+        text = "Python is popular.[[cite:s0r0]] It was created by Guido."
+        citation_map = {
+            "s0r0": {
+                "sourceUrl": "https://www.python.org/about/",
+                "title": "About Python",
+            }
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "[[cite:" not in result
+        assert "<https://www.python.org/about/|About Python>" in result
+
+    def test_deep_research_citation_with_url(self):
+        """Test transforming deep research citation [[cite:research0]] with URL."""
+        text = "AI is transforming industries.[[cite:research0]]"
+        citation_map = {
+            "research0": {
+                "sourceUrl": "https://arxiv.org/abs/2301.00001",
+                "title": "AI Impact Study",
+            }
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "[[cite:" not in result
+        assert "<https://arxiv.org/abs/2301.00001|AI Impact Study>" in result
+
+    def test_document_search_citation_with_url(self):
+        """Test transforming document search citation [[cite:idx0r0]] with URL."""
+        text = "The report states.[[cite:idx0r0]]"
+        citation_map = {
+            "idx0r0": {
+                "sourceUrl": "https://docs.example.com/report.pdf",
+                "title": "Annual Report 2024",
+            }
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "[[cite:" not in result
+        assert "<https://docs.example.com/report.pdf|Annual Report 2024>" in result
+
+    def test_citation_without_mapping_is_stripped(self):
+        """Test that citations without URL mapping are stripped cleanly."""
+        text = "Python is popular.[[cite:s0r0]] It was created by Guido."
+        result = utils.transform_citations_for_slack(text, {})
+        assert "[[cite:" not in result
+        assert "Python is popular. It was created by Guido." == result
+
+    def test_citation_with_no_map_at_all(self):
+        """Test that citations are stripped when no citation_map is provided."""
+        text = "Some fact.[[cite:research0]] Another fact."
+        result = utils.transform_citations_for_slack(text, None)
+        assert "[[cite:" not in result
+        assert "Some fact. Another fact." == result
+
+    def test_multi_citation_with_urls(self):
+        """Test transforming comma-separated multi-citations."""
+        text = "Multiple sources agree.[[cite:s0r0, s0r1]]"
+        citation_map = {
+            "s0r0": {
+                "sourceUrl": "https://example.com/a",
+                "title": "Source A",
+            },
+            "s0r1": {
+                "sourceUrl": "https://example.com/b",
+                "title": "Source B",
+            },
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "[[cite:" not in result
+        assert "<https://example.com/a|Source A>" in result
+        assert "<https://example.com/b|Source B>" in result
+
+    def test_single_bracket_citation_not_transformed(self):
+        """Single-bracket [cite:s0r0] is not a valid citation format; only [[cite:...]] is."""
+        text = "A fact.[cite:s0r0]"
+        citation_map = {
+            "s0r0": {
+                "sourceUrl": "https://example.com",
+                "title": "Example",
+            }
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        # Single-bracket citations are left as-is (not recognized)
+        assert result == text
+
+    def test_citation_url_without_title_shows_domain(self):
+        """Test that URL without title falls back to domain display."""
+        text = "A fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {
+                "sourceUrl": "https://www.example.com/some/long/path",
+            }
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "<https://www.example.com/some/long/path|example.com>" in result
+
+    def test_citation_with_metadata_link(self):
+        """Test that metadata.link is used as fallback URL."""
+        text = "A fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {
+                "metadata": {"link": "https://fallback.example.com"},
+                "title": "Fallback Source",
+            }
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "<https://fallback.example.com|Fallback Source>" in result
+
+    def test_multiple_separate_citations(self):
+        """Test multiple separate citations in the same text."""
+        text = "Fact one.[[cite:s0r0]] Fact two.[[cite:s0r1]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "https://a.com", "title": "A"},
+            "s0r1": {"sourceUrl": "https://b.com", "title": "B"},
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "[[cite:" not in result
+        assert "<https://a.com|A>" in result
+        assert "<https://b.com|B>" in result
+
+    def test_non_string_input(self):
+        """Test handling non-string input."""
+        result = utils.transform_citations_for_slack(None)
+        assert result is None
+
+    def test_text_without_citations(self):
+        """Test that text without citations is returned unchanged."""
+        text = "Just regular text with no citations."
+        result = utils.transform_citations_for_slack(text)
+        assert result == text
+
+    def test_correct_slack_markdown_integrates_citations(self):
+        """Test that correct_slack_markdown also transforms citations."""
+        text = "**Bold fact**.[[cite:s0r0]] More text."
+        citation_map = {
+            "s0r0": {
+                "sourceUrl": "https://example.com",
+                "title": "Example",
+            }
+        }
+        result = utils.correct_slack_markdown(text, citation_map)
+        # Citations should be transformed
+        assert "[[cite:" not in result
+        assert "<https://example.com|Example>" in result
+        # Bold should also be converted
+        assert "*Bold fact*" in result
+
+    def test_mixed_search_turns(self):
+        """Test citations from different search turns (s0r0, s1r0)."""
+        text = "First search.[[cite:s0r0]] Second search.[[cite:s1r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "https://first.com", "title": "First"},
+            "s1r0": {"sourceUrl": "https://second.com", "title": "Second"},
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "<https://first.com|First>" in result
+        assert "<https://second.com|Second>" in result
+
+
+class TestGetDomainFromUrl:
+    """Test suite for _get_domain_from_url helper function."""
+
+    def test_simple_url(self):
+        """Test extracting domain from a simple URL."""
+        assert utils._get_domain_from_url("https://example.com/path") == "example.com"
+
+    def test_www_prefix_removed(self):
+        """Test that www. prefix is stripped."""
+        assert utils._get_domain_from_url("https://www.example.com") == "example.com"
+
+    def test_subdomain_preserved(self):
+        """Test that non-www subdomains are preserved."""
+        assert utils._get_domain_from_url("https://api.example.com") == "api.example.com"
+
+    def test_complex_url(self):
+        """Test domain extraction from complex URL with path and query."""
+        result = utils._get_domain_from_url("https://finance.yahoo.com/quote/NVDA/?p=NVDA")
+        assert result == "finance.yahoo.com"
+
+    def test_invalid_url_returns_input(self):
+        """Test that invalid URLs return the input string."""
+        result = utils._get_domain_from_url("not-a-url")
+        assert result == "not-a-url"
+
+
+class TestTransformCitationsForMarkdown:
+    """Test suite for transform_citations_for_markdown function."""
+
+    def test_produces_standard_markdown_links(self):
+        """Test that output uses [text](url) format, not Slack <url|text>."""
+        text = "A fact.[[cite:research0]]"
+        citation_map = {
+            "research0": {
+                "sourceUrl": "https://example.com/article",
+                "title": "Example Article",
+            }
+        }
+        result = utils.transform_citations_for_markdown(text, citation_map)
+        assert "[Example Article](<https://example.com/article>)" in result
+        # Must NOT contain Slack mrkdwn <url|text> format
+        assert "|" not in result or "&#124;" in result
+        assert "[[cite:" not in result
+
+    def test_domain_fallback_in_markdown(self):
+        """Test domain fallback when no title is provided."""
+        text = "A fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "https://www.example.com/long/path"},
+        }
+        result = utils.transform_citations_for_markdown(text, citation_map)
+        assert "[example.com](<https://www.example.com/long/path>)" in result
+
+    def test_multi_citations_in_markdown(self):
+        """Test multiple citations produce markdown links."""
+        text = "Sources agree.[[cite:research0, research1]]"
+        citation_map = {
+            "research0": {"sourceUrl": "https://a.com", "title": "Source A"},
+            "research1": {"sourceUrl": "https://b.com", "title": "Source B"},
+        }
+        result = utils.transform_citations_for_markdown(text, citation_map)
+        assert "[Source A](<https://a.com>)" in result
+        assert "[Source B](<https://b.com>)" in result
+
+    def test_no_map_strips_citations(self):
+        """Test that citations are stripped when no map is provided."""
+        text = "A fact.[[cite:research0]] More text."
+        result = utils.transform_citations_for_markdown(text, None)
+        assert "[[cite:" not in result
+        assert "A fact. More text." == result
+
+    def test_non_string_input(self):
+        """Test handling non-string input."""
+        result = utils.transform_citations_for_markdown(None)
+        assert result is None
+
+    def test_title_only_no_url(self):
+        """Test citation with title but no URL uses italic markdown."""
+        text = "A fact.[[cite:research0]]"
+        citation_map = {
+            "research0": {"title": "Internal Report"},
+        }
+        result = utils.transform_citations_for_markdown(text, citation_map)
+        assert "*Internal Report*" in result
+        assert "[[cite:" not in result
+
+    def test_deep_research_report_style(self):
+        """Test realistic deep research report with multiple research citations."""
+        text = (
+            "## Executive Summary\n\n"
+            "AI is transforming industries.[[cite:research0]] "
+            "The market is growing rapidly.[[cite:research1]][[cite:research2]]\n\n"
+            "## Analysis\n\n"
+            "Key findings include.[[cite:research0, research3]]"
+        )
+        citation_map = {
+            "research0": {"sourceUrl": "https://arxiv.org/paper1", "title": "AI Impact Study"},
+            "research1": {"sourceUrl": "https://mckinsey.com/report", "title": "McKinsey AI Report"},
+            "research2": {"sourceUrl": "https://gartner.com/hype", "title": "Gartner Hype Cycle"},
+            "research3": {"sourceUrl": "https://nature.com/article", "title": "Nature AI Review"},
+        }
+        result = utils.transform_citations_for_markdown(text, citation_map)
+        assert "[[cite:" not in result
+        assert "[AI Impact Study](<https://arxiv.org/paper1>)" in result
+        assert "[McKinsey AI Report](<https://mckinsey.com/report>)" in result
+        assert "[Gartner Hype Cycle](<https://gartner.com/hype>)" in result
+        assert "[Nature AI Review](<https://nature.com/article>)" in result
+        # Verify markdown structure is preserved
+        assert "## Executive Summary" in result
+        assert "## Analysis" in result
+
+
+class TestCaptureRagSourcesLogic:
+    """Test suite for the citation map building logic used by _capture_rag_sources.
+
+    This is a logic-level test that replicates the _capture_rag_sources algorithm
+    without importing the adapter module (which depends on solace_agent_mesh and
+    other heavy runtime dependencies). This lets us validate the citation map
+    building logic in isolation during unit tests.
+    """
+
+    # Keys and defaults must match adapter.py _capture_rag_sources exactly.
+    # If _capture_rag_sources changes its field set or defaults, update this
+    # helper AND add/adjust the test_structural_equivalence_with_adapter test.
+    _CITATION_MAP_KEYS = {
+        "sourceUrl": None,
+        "url": None,
+        "title": None,
+        "filename": None,
+        "metadata": {},
+    }
+
+    def _build_citation_map(self, existing_map, sources):
+        """Replicate the _capture_rag_sources logic for testing.
+
+        IMPORTANT: This duplicates the algorithm from
+        adapter.py:_capture_rag_sources because the adapter module cannot be
+        imported in unit tests (heavy runtime dependencies).  If the real
+        method's key names, defaults, or iteration logic change, this helper
+        must be updated in lockstep — see _CITATION_MAP_KEYS and
+        test_structural_equivalence_with_adapter.
+        """
+        citation_map = existing_map or {}
+        for source in sources:
+            citation_id = source.get("citationId")
+            if not citation_id:
+                continue
+            citation_map[citation_id] = {
+                k: source.get(k, default)
+                for k, default in self._CITATION_MAP_KEYS.items()
+            }
+        return citation_map
+
+    def test_structural_equivalence_with_adapter(self):
+        """Verify _build_citation_map produces the same keys/defaults as the real code.
+
+        This is a canary: if adapter.py _capture_rag_sources changes its
+        dict literal, a developer should update _CITATION_MAP_KEYS to match.
+        We parse the real source to extract the key set so divergence is caught.
+        """
+        import ast
+        import inspect
+        import importlib.util
+        from pathlib import Path
+
+        # Locate adapter.py relative to the utils module
+        utils_path = Path(inspect.getfile(utils))
+        adapter_path = utils_path.parent / "adapter.py"
+        if not adapter_path.exists():
+            pytest.skip("adapter.py not found next to utils.py")
+
+        source = adapter_path.read_text()
+        tree = ast.parse(source)
+
+        # Find _capture_rag_sources method and extract the dict keys it writes
+        found_keys = None
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "_capture_rag_sources":
+                for child in ast.walk(node):
+                    if isinstance(child, ast.Dict):
+                        keys = []
+                        for k in child.keys:
+                            if isinstance(k, ast.Constant) and isinstance(k.value, str):
+                                keys.append(k.value)
+                        if "sourceUrl" in keys:
+                            found_keys = set(keys)
+                            break
+                break
+
+        assert found_keys is not None, (
+            "_capture_rag_sources dict literal not found in adapter.py — "
+            "has the method been refactored?"
+        )
+        assert found_keys == set(self._CITATION_MAP_KEYS.keys()), (
+            f"Key mismatch between test helper and adapter.py: "
+            f"test={set(self._CITATION_MAP_KEYS.keys())}, adapter={found_keys}"
+        )
+
+    def test_builds_citation_map_from_sources(self):
+        """Test building a citation map from RAG sources."""
+        sources = [
+            {
+                "citationId": "s0r0",
+                "sourceUrl": "https://example.com",
+                "title": "Example",
+                "filename": "example.com",
+                "metadata": {"link": "https://example.com", "type": "web_search"},
+            },
+            {
+                "citationId": "s0r1",
+                "sourceUrl": "https://other.com",
+                "title": "Other",
+                "filename": "other.com",
+                "metadata": {},
+            },
+        ]
+        result = self._build_citation_map(None, sources)
+        assert "s0r0" in result
+        assert "s0r1" in result
+        assert result["s0r0"]["sourceUrl"] == "https://example.com"
+        assert result["s0r1"]["title"] == "Other"
+
+    def test_merges_with_existing_map(self):
+        """Test merging new sources with an existing citation map."""
+        existing = {
+            "s0r0": {"sourceUrl": "https://existing.com", "title": "Existing"},
+        }
+        new_sources = [
+            {"citationId": "s1r0", "sourceUrl": "https://new.com", "title": "New", "metadata": {}},
+        ]
+        result = self._build_citation_map(existing, new_sources)
+        assert "s0r0" in result
+        assert "s1r0" in result
+        assert result["s0r0"]["sourceUrl"] == "https://existing.com"
+        assert result["s1r0"]["sourceUrl"] == "https://new.com"
+
+    def test_skips_sources_without_citation_id(self):
+        """Test that sources missing citationId are skipped."""
+        sources = [
+            {"sourceUrl": "https://no-id.com", "title": "No ID"},
+            {"citationId": "s0r0", "sourceUrl": "https://has-id.com", "title": "Has ID", "metadata": {}},
+        ]
+        result = self._build_citation_map(None, sources)
+        assert len(result) == 1
+        assert "s0r0" in result
+
+    def test_empty_sources_returns_empty_map(self):
+        """Test that empty sources list returns empty map."""
+        result = self._build_citation_map(None, [])
+        assert result == {}
+
+    def test_preserves_metadata(self):
+        """Test that metadata dict is preserved in citation map."""
+        sources = [
+            {
+                "citationId": "research0",
+                "sourceUrl": "https://arxiv.org/paper",
+                "title": "AI Paper",
+                "metadata": {"link": "https://arxiv.org/paper", "type": "deep_research", "favicon": "https://google.com/s2/favicons?domain=arxiv.org"},
+            },
+        ]
+        result = self._build_citation_map(None, sources)
+        assert result["research0"]["metadata"]["type"] == "deep_research"
+        assert result["research0"]["metadata"]["favicon"].startswith("https://google.com")
+
+    def test_tool_result_rag_metadata_structure(self):
+        """Test extracting sources from the actual tool_result.result_data.rag_metadata structure."""
+        # Simulate the actual data structure from web search tool results
+        tool_result_data = {
+            "type": "tool_result",
+            "tool_name": "web_search_google",
+            "result_data": {
+                "rag_metadata": {
+                    "query": "NVDA stock price",
+                    "searchType": "web_search",
+                    "sources": [
+                        {
+                            "citationId": "s0r0",
+                            "sourceUrl": "https://finance.yahoo.com/quote/NVDA/",
+                            "title": "NVIDIA Corporation (NVDA) Stock Price",
+                            "filename": "finance.yahoo.com",
+                            "metadata": {"link": "https://finance.yahoo.com/quote/NVDA/", "type": "web_search"},
+                        },
+                        {
+                            "citationId": "s0r1",
+                            "sourceUrl": "https://www.google.com/finance/quote/NVDA:NASDAQ",
+                            "title": "NVDA Stock Price - Google Finance",
+                            "filename": "google.com",
+                            "metadata": {"link": "https://www.google.com/finance/quote/NVDA:NASDAQ", "type": "web_search"},
+                        },
+                    ],
+                },
+            },
+        }
+
+        # Extract sources the same way the adapter does
+        result_data = tool_result_data.get("result_data", {})
+        rag_metadata = result_data.get("rag_metadata", {})
+        sources = rag_metadata.get("sources", [])
+
+        result = self._build_citation_map(None, sources)
+        assert len(result) == 2
+        assert result["s0r0"]["sourceUrl"] == "https://finance.yahoo.com/quote/NVDA/"
+        assert result["s0r1"]["title"] == "NVDA Stock Price - Google Finance"
+
+    def test_citation_map_used_by_transform(self):
+        """End-to-end: build citation map from sources, then transform text."""
+        sources = [
+            {
+                "citationId": "s0r0",
+                "sourceUrl": "https://finance.yahoo.com/quote/NVDA/",
+                "title": "NVIDIA Stock",
+                "metadata": {},
+            },
+        ]
+        citation_map = self._build_citation_map(None, sources)
+
+        text = "NVDA is at $180.[[cite:s0r0]]"
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "[[cite:" not in result
+        assert "<https://finance.yahoo.com/quote/NVDA/|NVIDIA Stock>" in result
+
+
+class TestCitationsInsideCodeBlocks:
+    """Test that citations inside code blocks are NOT transformed."""
+
+    def test_citation_in_fenced_code_block_preserved(self):
+        """Citations inside ``` code blocks should not be transformed."""
+        text = "Normal text.[[cite:s0r0]]\n```\nCode with [[cite:s0r1]] marker\n```\nMore text.[[cite:s0r2]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "https://a.com", "title": "A"},
+            "s0r1": {"sourceUrl": "https://b.com", "title": "B"},
+            "s0r2": {"sourceUrl": "https://c.com", "title": "C"},
+        }
+        result = utils.correct_slack_markdown(text, citation_map)
+        # Citations outside code blocks should be transformed
+        assert "[[cite:s0r0]]" not in result
+        assert "[[cite:s0r2]]" not in result
+        # Citation inside code block should be preserved
+        assert "[[cite:s0r1]]" in result
+
+    def test_citation_in_code_block_with_language(self):
+        """Citations inside ```python code blocks should not be transformed."""
+        text = "Text.[[cite:s0r0]]\n```python\n# See [[cite:s0r1]]\n```"
+        citation_map = {
+            "s0r0": {"sourceUrl": "https://a.com", "title": "A"},
+            "s0r1": {"sourceUrl": "https://b.com", "title": "B"},
+        }
+        result = utils.correct_slack_markdown(text, citation_map)
+        assert "[[cite:s0r0]]" not in result
+        assert "[[cite:s0r1]]" in result
+
+    def test_plain_transform_does_not_skip_code_blocks(self):
+        """transform_citations_for_slack (without skip_code_blocks) transforms all citations."""
+        text = "```\n[[cite:s0r0]]\n```"
+        citation_map = {"s0r0": {"sourceUrl": "https://a.com", "title": "A"}}
+        # Default behavior: code blocks are not special
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "[[cite:" not in result
+
+    def test_skip_code_blocks_preserves_citations_in_code(self):
+        """With skip_code_blocks=True, citations inside code blocks are preserved."""
+        text = "Normal.[[cite:s0r0]]\n```\nCode [[cite:s0r1]]\n```\nAfter.[[cite:s0r2]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "https://a.com", "title": "A"},
+            "s0r1": {"sourceUrl": "https://b.com", "title": "B"},
+            "s0r2": {"sourceUrl": "https://c.com", "title": "C"},
+        }
+        result = utils.transform_citations_for_slack(
+            text, citation_map, skip_code_blocks=True
+        )
+        # Outside code blocks: transformed
+        assert "[[cite:s0r0]]" not in result
+        assert "[[cite:s0r2]]" not in result
+        # Inside code block: preserved
+        assert "[[cite:s0r1]]" in result
+
+
+class TestTitleTruncationBoundary:
+    """Test the MAX_CITATION_TITLE_LENGTH boundary (40 chars)."""
+
+    def test_title_exactly_40_chars_is_used(self):
+        """A title of exactly 40 characters should be displayed."""
+        title_40 = "A" * 40
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {"s0r0": {"sourceUrl": "https://example.com", "title": title_40}}
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert title_40 in result
+
+    def test_title_41_chars_falls_back_to_domain(self):
+        """A title of 41 characters should fall back to domain display."""
+        title_41 = "A" * 41
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {"s0r0": {"sourceUrl": "https://example.com", "title": title_41}}
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert title_41 not in result
+        assert "example.com" in result
+
+    def test_title_39_chars_is_used(self):
+        """A title of 39 characters should be displayed."""
+        title_39 = "A" * 39
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {"s0r0": {"sourceUrl": "https://example.com", "title": title_39}}
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert title_39 in result
+
+    def test_markdown_title_truncation_boundary(self):
+        """Markdown format should also respect the 40-char boundary."""
+        title_41 = "B" * 41
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {"s0r0": {"sourceUrl": "https://example.com", "title": title_41}}
+        result = utils.transform_citations_for_markdown(text, citation_map)
+        assert title_41 not in result
+        assert "example.com" in result
+
+
+class TestUrlSchemeValidation:
+    """Test that only http:// and https:// URLs are allowed."""
+
+    def test_javascript_url_rejected(self):
+        """javascript: URLs should not create links."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "javascript:alert(1)", "title": "XSS"},
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "javascript:" not in result
+        # Should fall back to title-only display
+        assert "XSS" in result
+
+    def test_data_url_rejected(self):
+        """data: URLs should not create links."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "data:text/html,<script>alert(1)</script>", "title": "Data"},
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "data:" not in result
+        assert "Data" in result
+
+    def test_ftp_url_rejected(self):
+        """ftp:// URLs should not create links."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "ftp://files.example.com/doc.pdf", "title": "FTP Doc"},
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "ftp://" not in result
+        assert "FTP Doc" in result
+
+    def test_http_url_accepted(self):
+        """http:// URLs should create links."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "http://example.com", "title": "HTTP"},
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "<http://example.com|HTTP>" in result
+
+    def test_https_url_accepted(self):
+        """https:// URLs should create links."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "https://example.com", "title": "HTTPS"},
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "example.com" in result
+        assert "HTTPS" in result
+
+    def test_markdown_javascript_url_rejected(self):
+        """javascript: URLs should not create markdown links either."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "javascript:void(0)", "title": "Click Me"},
+        }
+        result = utils.transform_citations_for_markdown(text, citation_map)
+        assert "javascript:" not in result
+        assert "Click Me" in result
+
+
+class TestSlackMrkdwnInjection:
+    """Test that URLs and display text are sanitized for Slack mrkdwn."""
+
+    def test_url_with_pipe_is_escaped(self):
+        """Pipe characters in URLs should be escaped in Slack mrkdwn."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "https://example.com/a|b", "title": "Test"},
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        # The pipe should be escaped so it doesn't break Slack link syntax
+        assert "|b>" not in result or "&#124;" in result
+
+    def test_title_with_angle_brackets_escaped(self):
+        """Angle brackets in titles should be escaped in Slack mrkdwn."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "https://example.com", "title": "<script>"},
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "<script>" not in result
+        assert "&lt;script&gt;" in result
+
+    def test_url_with_angle_brackets_escaped(self):
+        """Angle brackets in URLs should be percent-encoded for Slack mrkdwn."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {"sourceUrl": "https://example.com/<path>", "title": "Test"},
+        }
+        result = utils.transform_citations_for_slack(text, citation_map)
+        assert "%3Cpath%3E" in result
+
+
+class TestMarkdownInjection:
+    """Test that display text is sanitized for standard markdown."""
+
+    def test_title_with_brackets_escaped(self):
+        """Titles with ]() should be escaped to prevent markdown injection."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {
+                "sourceUrl": "https://example.com",
+                "title": "Click](https://evil.com)",
+            },
+        }
+        result = utils.transform_citations_for_markdown(text, citation_map)
+        # The brackets/parens in the title should be escaped
+        assert "\\]" in result
+        assert "\\(" in result
+        # Should NOT create a link to evil.com
+        assert "evil.com" not in result or "\\(" in result
+
+    def test_title_with_square_brackets_escaped(self):
+        """Square brackets in titles should be escaped in markdown."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {
+                "sourceUrl": "https://example.com",
+                "title": "[link text]",
+            },
+        }
+        result = utils.transform_citations_for_markdown(text, citation_map)
+        assert "\\[link text\\]" in result
+
+    def test_url_with_angle_bracket_escaped(self):
+        """URLs containing > should have it percent-encoded in markdown links."""
+        text = "Fact.[[cite:s0r0]]"
+        citation_map = {
+            "s0r0": {
+                "sourceUrl": "https://example.com/q?a>b",
+                "title": "Test",
+            },
+        }
+        result = utils.transform_citations_for_markdown(text, citation_map)
+        # > must be escaped to %3E so it doesn't break [text](<url>) syntax
+        assert "%3E" in result
+        assert "a>b" not in result
+
+
+class TestHasValidUrlScheme:
+    """Test the _has_valid_url_scheme helper directly."""
+
+    def test_http_valid(self):
+        assert utils._has_valid_url_scheme("http://example.com") is True
+
+    def test_https_valid(self):
+        assert utils._has_valid_url_scheme("https://example.com") is True
+
+    def test_javascript_invalid(self):
+        assert utils._has_valid_url_scheme("javascript:alert(1)") is False
+
+    def test_data_invalid(self):
+        assert utils._has_valid_url_scheme("data:text/html,test") is False
+
+    def test_ftp_invalid(self):
+        assert utils._has_valid_url_scheme("ftp://files.example.com") is False
+
+    def test_empty_string_invalid(self):
+        assert utils._has_valid_url_scheme("") is False
+
+    def test_no_scheme_invalid(self):
+        assert utils._has_valid_url_scheme("example.com") is False
+
+
+class TestMaxCitationTitleLengthConstant:
+    """Test that the MAX_CITATION_TITLE_LENGTH constant is accessible."""
+
+    def test_constant_value(self):
+        assert utils.MAX_CITATION_TITLE_LENGTH == 40

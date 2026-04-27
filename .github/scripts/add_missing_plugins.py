@@ -5,6 +5,7 @@ Add missing plugins to all configuration files.
 This script scans the repository for plugin directories (sam-*) and adds
 any missing plugins to:
 - .github/workflows/build-plugin.yaml
+- .github/workflows/deprecate-plugins.yaml
 - .github/workflows/sync-plugin-configs.yaml (paths exclusions)
 - .release-please-manifest.json
 - release-please-config.json
@@ -18,6 +19,14 @@ import re
 import sys
 from pathlib import Path
 from typing import Set
+
+from plugin_exceptions import DEPRECATED_PLUGINS
+
+GITHUB_PATH = Path(".github")
+WORKFLOWS_PATH = GITHUB_PATH / "workflows"
+
+AUTO_INPUTS_START = "      # BEGIN AUTO-GENERATED PLUGIN INPUTS"
+AUTO_INPUTS_END = "      # END AUTO-GENERATED PLUGIN INPUTS"
 
 
 def get_plugin_directories(repo_root: Path) -> Set[str]:
@@ -40,7 +49,7 @@ def get_package_name(plugin_dir: str) -> str:
 
 def update_build_workflow(repo_root: Path, plugins: Set[str]) -> bool:
     """Update .github/workflows/build-plugin.yaml with missing plugins."""
-    workflow_path = repo_root / ".github" / "workflows" / "build-plugin.yaml"
+    workflow_path = repo_root / WORKFLOWS_PATH / "build-plugin.yaml"
 
     if not workflow_path.exists():
         print(f"  ⚠️  {workflow_path} does not exist, skipping")
@@ -84,9 +93,75 @@ def update_build_workflow(repo_root: Path, plugins: Set[str]) -> bool:
     return True
 
 
+def render_deprecate_workflow_inputs(plugins: Set[str]) -> str:
+    """Render the managed checkbox inputs block for deprecate-plugins.yaml."""
+    lines = [AUTO_INPUTS_START]
+    if plugins:
+        for plugin in sorted(plugins):
+            lines.extend(
+                [
+                    f"      {plugin}:",
+                    f'        description: "Deprecate {plugin}"',
+                    "        required: false",
+                    "        type: boolean",
+                    "        default: false",
+                ]
+            )
+    else:
+        lines.append("      # No active plugins remain.")
+    lines.append(AUTO_INPUTS_END)
+    return "\n".join(lines)
+
+
+def update_deprecate_workflow(repo_root: Path, plugins: Set[str]) -> bool:
+    """Sync deprecate-plugins.yaml checkbox inputs with active plugins."""
+    workflow_path = repo_root / WORKFLOWS_PATH / "deprecate-plugins.yaml"
+
+    if not workflow_path.exists():
+        print(f"  ⚠️  {workflow_path} does not exist, skipping")
+        return False
+
+    content = workflow_path.read_text()
+    existing_plugins = set()
+    match = re.search(
+        rf"{re.escape(AUTO_INPUTS_START)}\n(.*?)\n{re.escape(AUTO_INPUTS_END)}",
+        content,
+        re.DOTALL,
+    )
+    managed_block = match.group(1) if match else ""
+    for plugin_match in re.finditer(r"^\s{6}(sam-[\w-]+):\s*$", managed_block, re.MULTILINE):
+        existing_plugins.add(plugin_match.group(1))
+
+    missing = plugins - existing_plugins
+    extra = existing_plugins - plugins
+    if not missing and not extra:
+        print("  ✅ deprecate-plugins.yaml already has all active plugins")
+        return False
+
+    replacement = render_deprecate_workflow_inputs(plugins)
+    updated_content, count = re.subn(
+        rf"{re.escape(AUTO_INPUTS_START)}\n.*?\n{re.escape(AUTO_INPUTS_END)}",
+        replacement,
+        content,
+        count=1,
+        flags=re.DOTALL,
+    )
+    if count != 1:
+        print("  ⚠️  Could not find managed inputs block in deprecate-plugins.yaml")
+        return False
+
+    workflow_path.write_text(updated_content)
+    print("  ✅ Synced deprecate-plugins.yaml plugin inputs:")
+    for plugin in sorted(missing):
+        print(f"      + {plugin}")
+    for plugin in sorted(extra):
+        print(f"      - {plugin}")
+    return True
+
+
 def update_sync_workflow(repo_root: Path, plugins: Set[str]) -> bool:
     """Update .github/workflows/sync-plugin-configs.yaml paths exclusions with missing plugins."""
-    workflow_path = repo_root / ".github" / "workflows" / "sync-plugin-configs.yaml"
+    workflow_path = repo_root / WORKFLOWS_PATH / "sync-plugin-configs.yaml"
 
     if not workflow_path.exists():
         print(f"  ⚠️  {workflow_path} does not exist, skipping")
@@ -208,7 +283,7 @@ def update_release_config(repo_root: Path, plugins: Set[str]) -> bool:
 
 def update_pr_labeler(repo_root: Path, plugins: Set[str]) -> bool:
     """Update .github/pr_labeler.yaml with missing plugins."""
-    labeler_path = repo_root / ".github" / "pr_labeler.yaml"
+    labeler_path = repo_root / GITHUB_PATH / "pr_labeler.yaml"
 
     if labeler_path.exists():
         content = labeler_path.read_text()
@@ -255,9 +330,23 @@ def main():
     print(f"Repository root: {repo_root}")
     print()
 
-    # Get all plugin directories
-    actual_plugins = get_plugin_directories(repo_root)
-    print(f"Found {len(actual_plugins)} plugin directories:")
+    # Get all plugin directories and filter deprecated ones
+    all_plugins = get_plugin_directories(repo_root)
+    deprecated_plugins = all_plugins & DEPRECATED_PLUGINS
+    actual_plugins = all_plugins - DEPRECATED_PLUGINS
+
+    print(f"Found {len(all_plugins)} plugin directories:")
+    for plugin in sorted(all_plugins):
+        print(f"  - {plugin}")
+    print()
+
+    if deprecated_plugins:
+        print(f"Ignoring {len(deprecated_plugins)} deprecated plugins:")
+        for plugin in sorted(deprecated_plugins):
+            print(f"  - {plugin}")
+        print()
+
+    print(f"Using {len(actual_plugins)} active plugins for synchronization:")
     for plugin in sorted(actual_plugins):
         print(f"  - {plugin}")
     print()
@@ -267,6 +356,11 @@ def main():
 
     print("Updating build-plugin.yaml...")
     if update_build_workflow(repo_root, actual_plugins):
+        updated_any = True
+    print()
+
+    print("Updating deprecate-plugins.yaml...")
+    if update_deprecate_workflow(repo_root, actual_plugins):
         updated_any = True
     print()
 

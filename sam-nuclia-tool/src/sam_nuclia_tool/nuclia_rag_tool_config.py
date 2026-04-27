@@ -202,6 +202,11 @@ class NucliaRagToolConfig(BaseModel):
         ),
     )
 
+    user_prompt: Optional[str] = Field(
+        default=None,
+        description="The user prompt to use for the RAG model.",
+    )
+
     prompt_rephrasing: Optional[PromptRephrasingConfig] = Field(
         default=None,
         description=(

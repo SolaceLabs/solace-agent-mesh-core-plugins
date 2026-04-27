@@ -4,6 +4,18 @@ A plugin that provides a MongoDB agent to perform complex queries based on natur
 
 This plugin enables Solace Agent Mesh (SAM) agents to interact with MongoDB databases through natural language queries. The agent translates user questions into MongoDB aggregation pipelines and executes them, returning results in various formats.
 
+## About Solace Agent Mesh
+
+Solace Agent Mesh (SAM) is an open-source framework for building event-driven, multi-agent AI systems where specialized agents collaborate on complex tasks. It provides a standardized way for agents to communicate, share data, and integrate with external systems while keeping components loosely coupled and production-ready.
+
+SAM helps you:
+
+- Build event-driven multi-agent systems on Solace Event Mesh
+- Connect agents, tools, gateways, and services through a common runtime
+- Extend projects with installable plugins such as `sam-mongodb`
+
+Learn more in the [Solace Agent Mesh documentation](https://solacelabs.github.io/solace-agent-mesh/) and the [main project repository](https://github.com/SolaceLabs/solace-agent-mesh).
+
 ## Features
 
 - **Natural Language to MongoDB**: Converts user queries into MongoDB aggregation pipelines

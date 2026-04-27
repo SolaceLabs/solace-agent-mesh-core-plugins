@@ -1,0 +1,55 @@
+# Structured Invocation Workflow Test Case
+# Tests structured invocation with workflow targeting and schema validation
+
+test_scenario:
+  name: "structured_invocation_workflow"
+  description: "Test structured invocation mode with workflow targeting and input/output schemas"
+
+  llm_responses:
+    - static_response:
+        choices:
+          - message:
+              role: "assistant"
+              content: "Processed structured invocation successfully with data: [1, 2, 3]"
+        usage:
+          prompt_tokens: 20
+          completion_tokens: 12
+          total_tokens: 32
+
+  test_steps:
+    - type: "publish_message"
+      topic: "test/events/structured/workflow"
+      payload:
+        data:
+          - 1
+          - 2
+          - 3
+        metadata:
+          source: "test_system"
+          version: "1.0"
+      user_properties:
+        user_id: "structured_test_user"
+        request_id: "req-001"
+
+    - type: "expect_a2a_task"
+      target_agent: "TestEventMeshAgent"
+      content_contains: "data"
+      timeout_seconds: 5.0
+
+    - type: "respond_with"
+      content: "Processed structured invocation successfully"
+
+    - type: "expect_published"
+      topic_pattern: "test/responses/basic/*"
+      payload_contains: "Processed structured invocation"
+      timeout_seconds: 5.0
+
+  validation:
+    expected_messages: 1
+    expected_responses: 1
+    max_duration_seconds: 10.0
+
+tags:
+  - "structured"
+  - "workflow"
+  - "integration"

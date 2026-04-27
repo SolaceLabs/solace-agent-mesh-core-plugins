@@ -63,34 +63,27 @@
     }
   ],
   "group-pull-request-title-pattern": "chore: release ${branch}",
+  "extra-label": "skip_jira_status_check",
   "pull-request-header": ":robot: I have created a release *beep* *boop*",
   "packages": {
     "sam-bedrock-agent": {
       "package-name": "sam_bedrock_agent",
       "changelog-path": "CHANGELOG.md"
     },
-    "sam-event-mesh-agent": {
-      "package-name": "sam_event_mesh_agent",
-      "changelog-path": "CHANGELOG.md"
-    },
     "sam-event-mesh-gateway": {
       "package-name": "sam_event_mesh_gateway",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "sam-event-mesh-identity-provider": {
+      "package-name": "solace_agent_mesh_event_mesh_identity_provider",
       "changelog-path": "CHANGELOG.md"
     },
     "sam-event-mesh-tool": {
       "package-name": "sam_event_mesh_tool",
       "changelog-path": "CHANGELOG.md"
     },
-    "sam-geo-information": {
-      "package-name": "sam_geo_information",
-      "changelog-path": "CHANGELOG.md"
-    },
     "sam-mcp-server-gateway-adapter": {
       "package-name": "sam_mcp_server_gateway_adapter",
-      "changelog-path": "CHANGELOG.md"
-    },
-    "sam-mermaid": {
-      "package-name": "sam_mermaid",
       "changelog-path": "CHANGELOG.md"
     },
     "sam-mongodb": {
@@ -116,24 +109,12 @@
       "package-name": "sam_ruleset_lookup_tool",
       "changelog-path": "CHANGELOG.md"
     },
-    "sam-slack": {
-      "package-name": "sam_slack",
-      "changelog-path": "CHANGELOG.md"
-    },
     "sam-slack-gateway-adapter": {
       "package-name": "sam_slack_gateway_adapter",
       "changelog-path": "CHANGELOG.md"
     },
-    "sam-sql-database": {
-      "package-name": "sam_sql_database",
-      "changelog-path": "CHANGELOG.md"
-    },
     "sam-sql-database-tool": {
       "package-name": "sam_sql_database_tool",
-      "changelog-path": "CHANGELOG.md"
-    },
-    "sam-webhook-gateway": {
-      "package-name": "sam_webhook_gateway",
       "changelog-path": "CHANGELOG.md"
     }
   }

@@ -1,0 +1,243 @@
+name: Deprecate Plugins
+
+on:
+  workflow_dispatch:
+    inputs:
+      # BEGIN AUTO-GENERATED PLUGIN INPUTS
+      sam-bedrock-agent:
+        description: "Deprecate sam-bedrock-agent"
+        required: false
+        type: boolean
+        default: false
+      sam-event-mesh-gateway:
+        description: "Deprecate sam-event-mesh-gateway"
+        required: false
+        type: boolean
+        default: false
+      sam-event-mesh-identity-provider:
+        description: "Deprecate sam-event-mesh-identity-provider"
+        required: false
+        type: boolean
+        default: false
+      sam-event-mesh-tool:
+        description: "Deprecate sam-event-mesh-tool"
+        required: false
+        type: boolean
+        default: false
+      sam-mcp-server-gateway-adapter:
+        description: "Deprecate sam-mcp-server-gateway-adapter"
+        required: false
+        type: boolean
+        default: false
+      sam-mongodb:
+        description: "Deprecate sam-mongodb"
+        required: false
+        type: boolean
+        default: false
+      sam-nuclia-tool:
+        description: "Deprecate sam-nuclia-tool"
+        required: false
+        type: boolean
+        default: false
+      sam-rag:
+        description: "Deprecate sam-rag"
+        required: false
+        type: boolean
+        default: false
+      sam-rest-gateway:
+        description: "Deprecate sam-rest-gateway"
+        required: false
+        type: boolean
+        default: false
+      sam-ruleset-lookup-tool:
+        description: "Deprecate sam-ruleset-lookup-tool"
+        required: false
+        type: boolean
+        default: false
+      sam-slack-gateway-adapter:
+        description: "Deprecate sam-slack-gateway-adapter"
+        required: false
+        type: boolean
+        default: false
+      sam-sql-database-tool:
+        description: "Deprecate sam-sql-database-tool"
+        required: false
+        type: boolean
+        default: false
+      # END AUTO-GENERATED PLUGIN INPUTS
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+
+jobs:
+  deprecate-plugins:
+    runs-on: ubuntu-latest
+    environment: pypi
+    outputs:
+      pr_url: ${{ steps.create-pr.outputs.pr_url }}
+      pr_number: ${{ steps.create-pr.outputs.pr_number }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SAM_PLUGINS_PR_CREATE_TOKEN }}
+
+      - name: Setup Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Resolve selected plugins
+        id: selection
+        env:
+          WORKFLOW_INPUTS_JSON: ${{ toJSON(inputs) }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          raw_inputs = os.environ["WORKFLOW_INPUTS_JSON"]
+          payload = json.loads(raw_inputs)
+
+          def is_selected(value: object) -> bool:
+              return value is True or str(value).strip().lower() == "true"
+
+          plugins = sorted(
+              name
+              for name, enabled in payload.items()
+              if name.startswith("sam-") and is_selected(enabled)
+          )
+          if not plugins:
+              raise SystemExit(
+                  "No plugins selected. Choose at least one plugin to deprecate."
+              )
+
+          branch_name = f"chore/deprecate-{len(plugins)}-plugins-{os.environ['RUN_ID']}"
+          output_path = Path(os.environ["GITHUB_OUTPUT"])
+          with output_path.open("a", encoding="utf-8") as handle:
+              handle.write(f"plugins_csv={','.join(plugins)}\n")
+              handle.write(f"count={len(plugins)}\n")
+              handle.write(f"branch_name={branch_name}\n")
+
+          print(f"Selected plugins: {', '.join(plugins)}")
+          print(f"Branch name: {branch_name}")
+          PY
+
+      - name: Create branch
+        run: git switch -c "${{ steps.selection.outputs.branch_name }}"
+
+      - name: Deprecate selected plugins
+        env:
+          PLUGIN_CSV: ${{ steps.selection.outputs.plugins_csv }}
+        run: |
+          IFS=',' read -r -a PLUGINS <<< "$PLUGIN_CSV"
+          python .github/scripts/deprecate_plugins.py "${PLUGINS[@]}"
+
+      - name: Check for changes
+        run: |
+          if git diff --quiet; then
+            echo "No file changes were produced."
+            exit 1
+          fi
+          echo "Changed files:"
+          git diff --name-only
+
+      - name: Commit and push changes
+        env:
+          BRANCH_NAME: ${{ steps.selection.outputs.branch_name }}
+          PLUGIN_CSV: ${{ steps.selection.outputs.plugins_csv }}
+          PLUGIN_COUNT: ${{ steps.selection.outputs.count }}
+        run: |
+          git add \
+            .github/workflows/build-plugin.yaml \
+            .github/workflows/deprecate-plugins.yaml \
+            .github/pr_labeler.yaml \
+            .github/scripts/plugin_exceptions.py \
+            .release-please-manifest.json \
+            release-please-config.json
+
+          COMMIT_MESSAGE_FILE="$(mktemp)"
+          {
+            printf 'chore: deprecate %s plugins\n\n' "$PLUGIN_COUNT"
+            IFS=',' read -r -a PLUGINS <<< "$PLUGIN_CSV"
+            for plugin in "${PLUGINS[@]}"; do
+              printf -- '- %s\n' "$plugin"
+            done
+          } > "$COMMIT_MESSAGE_FILE"
+
+          git -c user.email="github-actions[bot]@users.noreply.github.com" \
+            -c user.name="github-actions[bot]" \
+            commit -F "$COMMIT_MESSAGE_FILE"
+          git push --set-upstream origin "$BRANCH_NAME"
+
+      - name: Create pull request
+        id: create-pr
+        env:
+          GH_TOKEN: ${{ secrets.SAM_PLUGINS_PR_CREATE_TOKEN }}
+          BRANCH_NAME: ${{ steps.selection.outputs.branch_name }}
+          PLUGIN_CSV: ${{ steps.selection.outputs.plugins_csv }}
+          PLUGIN_COUNT: ${{ steps.selection.outputs.count }}
+          REPOSITORY: ${{ github.repository }}
+          REVIEWER: ${{ github.actor }}
+        run: |
+          PR_BODY_FILE="$(mktemp)"
+          {
+            printf 'This PR deprecates %s plugin(s).\n\n' "$PLUGIN_COUNT"
+            echo "Deprecated plugins:"
+            echo
+            IFS=',' read -r -a PLUGINS <<< "$PLUGIN_CSV"
+            for plugin in "${PLUGINS[@]}"; do
+              printf -- '- %s\n' "$plugin"
+            done
+          } > "$PR_BODY_FILE"
+
+          PR_URL="$(gh pr create \
+            --repo "$REPOSITORY" \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --title "chore: deprecate ${PLUGIN_COUNT} plugins" \
+            --body-file "$PR_BODY_FILE")"
+          gh pr edit "$PR_URL" --repo "$REPOSITORY" --add-reviewer "$REVIEWER"
+          PR_NUMBER="$(gh pr view "$PR_URL" --repo "$REPOSITORY" --json number --jq '.number')"
+
+          {
+            echo "pr_url=$PR_URL"
+            echo "pr_number=$PR_NUMBER"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Created pull request: $PR_URL"
+
+      - name: Summary
+        if: always()
+        env:
+          BRANCH_NAME: ${{ steps.selection.outputs.branch_name }}
+          PLUGIN_CSV: ${{ steps.selection.outputs.plugins_csv }}
+          PR_NUMBER: ${{ steps.create-pr.outputs.pr_number }}
+          PR_URL: ${{ steps.create-pr.outputs.pr_url }}
+        run: |
+          echo "## Plugin Deprecation" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "$BRANCH_NAME" ]; then
+            echo "**Branch:** \`$BRANCH_NAME\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ -n "$PLUGIN_CSV" ]; then
+            echo "**Deprecated plugins:**" >> "$GITHUB_STEP_SUMMARY"
+            IFS=',' read -r -a PLUGINS <<< "$PLUGIN_CSV"
+            for plugin in "${PLUGINS[@]}"; do
+              echo "- \`$plugin\`" >> "$GITHUB_STEP_SUMMARY"
+            done
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ -n "$PR_URL" ]; then
+            echo "**Pull request:** [#$PR_NUMBER]($PR_URL)" >> "$GITHUB_STEP_SUMMARY"
+          fi

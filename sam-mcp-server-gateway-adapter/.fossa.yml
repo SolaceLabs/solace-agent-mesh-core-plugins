@@ -2,9 +2,9 @@
 version: 3
 
 project:
-  locator: SolaceLabs_sam-mermaid
-  id: SolaceLabs_sam-mermaid
-  name: sam-mermaid
+  locator: SolaceLabs_sam-mcp-server-gateway-adapter
+  id: SolaceLabs_sam-mcp-server-gateway-adapter
+  name: sam-mcp-server-gateway-adapter
   labels:
     - solaceai
     - solace-agent-mesh-core-plugins

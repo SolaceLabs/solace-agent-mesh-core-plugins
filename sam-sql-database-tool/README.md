@@ -4,6 +4,18 @@ This plugin for Solace Agent Mesh (SAM) provides a powerful and dynamic tool for
 
 Unlike the `sam-sql-database` agent, which provides a complete Natural-Language-to-SQL agent, this plugin provides a **tool** that can be added to any existing or new agent. This allows you to create multi-faceted agents that can interact directly with databases for specific, targeted tasks.
 
+## About Solace Agent Mesh
+
+Solace Agent Mesh (SAM) is an open-source framework for building event-driven, multi-agent AI systems where specialized agents collaborate on complex tasks. It provides a standardized way for agents to communicate, share data, and integrate with external systems while keeping components loosely coupled and production-ready.
+
+SAM helps you:
+
+- Build event-driven multi-agent systems on Solace Event Mesh
+- Connect agents, tools, gateways, and services through a common runtime
+- Extend projects with installable plugins such as `sam-sql-database-tool`
+
+Learn more in the [Solace Agent Mesh documentation](https://solacelabs.github.io/solace-agent-mesh/) and the [main project repository](https://github.com/SolaceLabs/solace-agent-mesh).
+
 ## Key Features
 
 - **Dynamic Tool Creation**: Define custom SQL query tools directly in your agent's YAML configuration. Each tool instance is completely independent.
@@ -52,6 +64,14 @@ tools:
       # schema_sample_size: 100
       # cache_ttl_seconds: 3600
 
+      # --- Table Filtering (glob patterns supported: *, ?, [seq]) ---
+      # include_tables:            # Only include matching tables in schema detection
+      #   - "customers*"
+      #   - "orders*"
+      # exclude_tables:            # Exclude matching tables from schema detection
+      #   - "bkp_*"
+      #   - "*_temp"
+
       # --- Connection Pool (optional tuning) ---
       # pool_size: 10
       # max_overflow: 10
@@ -73,13 +93,18 @@ tools:
     -   **PostgreSQL**: `postgresql+psycopg2://user:password@host:port/dbname`
     -   **MySQL**: `mysql+pymysql://user:password@host:port/dbname`
     -   **MariaDB**: `mysql+pymysql://user:password@host:port/dbname`
-    -   **MSSQL (FreeTDS - Recommended)**: `mssql+pyodbc://user:password@host:port/dbname?driver=FreeTDS&TrustServerCertificate=yes`
-        -   Open-source driver with simpler installation: `sudo apt-get install freetds-dev freetds-bin tdsodbc && sudo odbcinst -i -d -f /usr/share/tdsodbc/odbcinst.ini`
-        -   Works well for standard SQL operations.
-    -   **MSSQL (Microsoft ODBC)**: `mssql+pyodbc://user:password@host:port/dbname?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes`
+    -   **MSSQL (Microsoft ODBC - Recommended)**: `mssql+pyodbc://user:password@host:port/dbname?driver=ODBC+Driver+18+for+SQL+Server`
         -   Official Microsoft driver with full feature support (Azure AD auth, Always Encrypted, etc.).
         -   Requires ODBC Driver 17 or 18 installed on the host system.
-        -   Use `TrustServerCertificate=yes` for self-signed certificates or `Encrypt=no` to disable encryption.
+        -   Driver 18+ enables encryption by default. Control this with the `Encrypt` parameter:
+            -   `Encrypt=yes` / `Encrypt=mandatory` — encrypt all traffic (default in Driver 18+).
+            -   `Encrypt=no` / `Encrypt=optional` — disable encryption.
+            -   `Encrypt=strict` — strict TLS; ignores `TrustServerCertificate` and requires a fully valid certificate chain (Driver 18+ only).
+        -   Use `TrustServerCertificate=yes` to bypass certificate validation for self-signed certificates (not applicable when `Encrypt=strict`).
+        -   See the [Microsoft docs on ODBC connection string keywords](https://learn.microsoft.com/en-us/sql/relational-databases/native-client/applications/using-connection-string-keywords-with-sql-server-native-client) for the full list of supported parameters.
+    -   **MSSQL (FreeTDS)**: `mssql+pyodbc://user:password@host:port/dbname?driver=FreeTDS`
+        -   Open-source driver with simpler installation: `sudo apt-get install freetds-dev freetds-bin tdsodbc && sudo odbcinst -i -d -f /usr/share/tdsodbc/odbcinst.ini`
+        -   Works well for standard SQL operations.
     -   **Oracle**: `oracle+oracledb://user:password@host:port/?service_name=SERVICE_NAME`
         -   Uses the `oracledb` driver in thin mode (no Oracle Instant Client required).
         -   Replace `SERVICE_NAME` with your Oracle service name (e.g., `XEPDB1`, `ORCL`).
@@ -88,6 +113,18 @@ tools:
 -   `max_enum_cardinality`: (Optional, default: `100`) Maximum number of distinct values to consider a column as an enum. Increase for columns like countries (190+), decrease for faster init times.
 -   `schema_sample_size`: (Optional, default: `100`) Number of rows to sample per table for schema detection. Increase for better accuracy on sparse data, decrease for faster init times.
 -   `cache_ttl_seconds`: (Optional, default: `3600`) Time-to-live for schema cache in seconds. After this duration, the schema will be re-detected on the next query. Set to `0` to disable caching.
+-   `include_tables`: (Optional) A list of glob patterns for tables to include in schema detection. If set, only tables matching at least one pattern are included. Supports wildcards: `*`, `?`, `[seq]`. Example: `["tms_trx*", "tms_alert*"]`.
+-   `exclude_tables`: (Optional) A list of glob patterns for tables to exclude from schema detection. Applied after `include_tables`. Supports the same wildcard syntax. Example: `["bkp_*", "*_temp", "*_dev"]`. Both options can be used together and matching is case-sensitive.
+
+    **Important: Table filtering is not access control.** These options only control which tables appear in the schema provided to the LLM. They do not prevent the LLM from executing queries against other tables in the database — for example, by querying database metadata or being prompted to access tables outside the filter. The underlying database connection still has full access to all tables the database user can see.
+
+    To reduce the likelihood of the LLM querying unfiltered tables, add an instruction to your agent such as:
+    ```
+    Only query tables that appear in your tool's schema description.
+    Do not query database metadata tables or any tables not listed in your schema.
+    ```
+
+    **For actual access control, configure the database user in the connection string with `SELECT` permissions restricted to only the allowed tables.** This is the only way to guarantee that the LLM cannot access tables outside the intended scope.
 
 #### Connection Pool Settings
 

@@ -1,0 +1,142 @@
+name: Publish Release Assets to Package Index
+
+on:
+  workflow_dispatch:
+    inputs:
+      project-name:
+        description: "Plugin path from manifest (for example: sam-rag)"
+        required: true
+        type: string
+      version:
+        description: "Plugin version (for example: 0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish downloaded release assets
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Validate project name and resolve release tag
+        id: validate
+        env:
+          PROJECT_NAME: ${{ inputs.project-name }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ -z "$PROJECT_NAME" || -z "$VERSION" ]]; then
+            echo "Both project-name and version are required."
+            exit 1
+          fi
+
+          NORMALIZED_PROJECT="${PROJECT_NAME//_/-}"
+
+          # Validate project-name against release manifest using jq.
+          if ! jq -e --arg project "$NORMALIZED_PROJECT" 'has($project)' .release-please-manifest.json >/dev/null; then
+            echo "project-name '$PROJECT_NAME' (normalized: '$NORMALIZED_PROJECT') is not present in .release-please-manifest.json"
+            exit 1
+          fi
+
+          # Keep both name styles because release tags may use either component
+          # from release-please config package-name (underscores) or path (hyphens).
+          UNDERSCORE_COMPONENT="${NORMALIZED_PROJECT//-/_}"
+
+          echo "project_name=$NORMALIZED_PROJECT" >> "$GITHUB_OUTPUT"
+          echo "project_component_hyphen=$NORMALIZED_PROJECT" >> "$GITHUB_OUTPUT"
+          echo "project_component_underscore=$UNDERSCORE_COMPONENT" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Validated project '$NORMALIZED_PROJECT' for version '$VERSION'"
+
+      - name: Verify release exists for project-version
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.validate.outputs.version }}
+          COMPONENT_UNDERSCORE: ${{ steps.validate.outputs.project_component_underscore }}
+        run: |
+          RELEASE_TAG="${COMPONENT_UNDERSCORE}-${VERSION}"
+          gh release view "$RELEASE_TAG" \
+            --repo "${{ github.repository }}" \
+            --json tagName,url > release.json
+
+          RELEASE_URL="$(jq -r '.url' release.json)"
+          if [[ -z "$RELEASE_URL" || "$RELEASE_URL" == "null" ]]; then
+            echo "Release URL not found for tag: $RELEASE_TAG"
+            exit 1
+          fi
+
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "release_url=$RELEASE_URL" >> "$GITHUB_OUTPUT"
+          echo "Found release tag: $RELEASE_TAG"
+          echo "Found release url: $RELEASE_URL"
+
+      - name: Download wheel files from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+        run: |
+          mkdir -p release-artifacts
+          gh release download "$RELEASE_TAG" \
+            --repo "${{ github.repository }}" \
+            --pattern "*.whl" \
+            --dir release-artifacts \
+            --clobber
+
+          shopt -s nullglob
+          wheels=(release-artifacts/*.whl)
+          if (( ${#wheels[@]} == 0 )); then
+            echo "No wheel files were found in release $RELEASE_TAG"
+            exit 1
+          fi
+          echo "Downloaded ${#wheels[@]} wheel file(s):"
+          ls -la release-artifacts
+
+      - name: Resolve package index target
+        id: publish-target
+        env:
+          PYPI_URL: ${{ vars.PYPI_URL }}
+        run: |
+          TARGET_URL="${PYPI_URL:-}"
+          if [[ -n "$TARGET_URL" ]]; then
+            TARGET_NAME="$TARGET_URL"
+          else
+            TARGET_NAME="PyPI"
+          fi
+
+          echo "repository_url=$TARGET_URL" >> "$GITHUB_OUTPUT"
+          echo "target_name=$TARGET_NAME" >> "$GITHUB_OUTPUT"
+          echo "Publishing target: $TARGET_NAME"
+
+      - name: Publish wheels to configured package index
+        if: steps.publish-target.outputs.repository_url != ''
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # release/v1
+        with:
+          packages-dir: release-artifacts/
+          repository-url: ${{ steps.publish-target.outputs.repository_url }}
+          verbose: true
+
+      - name: Publish wheels to PyPI
+        if: steps.publish-target.outputs.repository_url == ''
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # release/v1
+        with:
+          packages-dir: release-artifacts/
+          verbose: true
+
+      - name: Create summary
+        run: |
+          echo "## Wheels Published to Package Index" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Package:** ${{ steps.validate.outputs.project_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Version:** ${{ steps.validate.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Release Tag:** ${{ steps.release.outputs.release_tag }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Release URL:** ${{ steps.release.outputs.release_url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Publish Target:** ${{ steps.publish-target.outputs.target_name }}" >> "$GITHUB_STEP_SUMMARY"

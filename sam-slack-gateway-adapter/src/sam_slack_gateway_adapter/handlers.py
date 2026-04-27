@@ -222,8 +222,7 @@ async def _process_slack_event(adapter: "SlackAdapter", event: Dict, say: Any):
 async def handle_slack_message(adapter: "SlackAdapter", event: Dict, say: Any):
     """Handles 'message' events from Slack (DMs, potentially thread messages)."""
     # Filter out bot messages and message change events
-    if event.get("bot_id") or event.get("subtype") in [
-        "bot_message",
+    if adapter._is_bot_message(event) or event.get("subtype") in [
         "message_changed",
         "message_deleted",
     ]:
