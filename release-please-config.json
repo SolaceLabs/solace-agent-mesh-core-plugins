@@ -94,6 +94,10 @@
       "package-name": "sam_nuclia_tool",
       "changelog-path": "CHANGELOG.md"
     },
+    "sam-powerbi": {
+      "package-name": "solace_agent_mesh_powerbi",
+      "changelog-path": "CHANGELOG.md"
+    },
     "sam-rag": {
       "package-name": "sam_rag",
       "changelog-path": "CHANGELOG.md",
