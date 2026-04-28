@@ -39,6 +39,11 @@ on:
         required: false
         type: boolean
         default: false
+      sam-powerbi:
+        description: "Deprecate sam-powerbi"
+        required: false
+        type: boolean
+        default: false
       sam-rag:
         description: "Deprecate sam-rag"
         required: false
