@@ -46,6 +46,10 @@ src-path = "src"
 "README.md" = "sam_powerbi/README.md"
 "pyproject.toml" = "sam_powerbi/pyproject.toml"
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "--tb=short --strict-markers --disable-warnings -p pytest_asyncio"
+
 [tool.hatch.envs.hatch-test]
 dependencies = [
   "pytest>=8.0.0",
@@ -53,9 +57,3 @@ dependencies = [
   "pytest-mock>=3.0.0",
   "pytest-cov>=4.0.0",
 ]
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["tests"]
-asyncio_default_fixture_loop_scope = "function"
-
