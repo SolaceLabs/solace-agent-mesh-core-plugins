@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_rag-0.1.2...sam_rag-0.1.3) (2026-04-28)
+
+
+### Bug Fixes
+
+* **DATAGO-133921:** bump lxml for sam-rag ([#162](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues/162)) ([6d1fcbf](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/commit/6d1fcbf9127461ba02e315d9c26c05aac8e687c9))
+
 ## [0.1.2](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_rag-0.1.1...sam_rag-0.1.2) (2026-04-07)
 
 
