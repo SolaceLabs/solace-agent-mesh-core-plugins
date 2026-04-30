@@ -21,7 +21,7 @@ dependencies = [
     "SQLAlchemy==2.0.40",
     "PyMySQL==1.1.2",
     "psycopg2-binary==2.9.10",
-    "pydantic==2.11.9",
+    "pydantic==2.12.5",  # bumped from 2.11.9 — required by litellm==1.83.14 (via solace-agent-mesh)
     "PyYAML==6.0.2"
 ]
 
