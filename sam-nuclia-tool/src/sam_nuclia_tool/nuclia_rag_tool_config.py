@@ -188,6 +188,16 @@ class NucliaRagToolConfig(BaseModel):
         description="If true, citation markers will be rendered as clickable markdown links",
     )
 
+    citations_type: str = Field(
+        default="default",
+        description=(
+            "How to include citations in the tool response. Options:\n"
+            "- 'default': citations returned as a separate chunk after the answer.\n"
+            "- 'llm_footnotes': citations embedded as markdown footnotes in the LLM response.\n"
+            "- 'none': Do not include citations in the tool response."
+        )
+    )
+
     include_citations_in_tool_response: bool = Field(
         default=False,
         description="If true, citations are included as a separate field in the tool response",

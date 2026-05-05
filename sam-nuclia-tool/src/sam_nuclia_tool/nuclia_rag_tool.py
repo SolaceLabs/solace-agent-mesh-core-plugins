@@ -398,6 +398,7 @@ class NucliaRagTool(DynamicTool):
         token = self.tool_config.token
         top_k = self.tool_config.top_k
         user_prompt = self.tool_config.user_prompt if self.tool_config.user_prompt else None
+        citations_type = self.tool_config.citations_type if self.tool_config.citations_type else "default"
 
         try:
             log.info(
@@ -415,7 +416,7 @@ class NucliaRagTool(DynamicTool):
             search = sdk.NucliaSearch()
             ask_query = AskRequest(
                 query=rephrased_query,
-                citations=True,
+                citations=citations_type,
                 prompt=user_prompt,
                 top_k=top_k,
                 prefer_markdown=True,
