@@ -188,7 +188,7 @@ class NucliaRagToolConfig(BaseModel):
         description="If true, citation markers will be rendered as clickable markdown links",
     )
 
-    citations_type: str = Field(
+    citations: str = Field(
         default="default",
         description=(
             "How to include citations in the tool response. Options:\n"
@@ -203,6 +203,15 @@ class NucliaRagToolConfig(BaseModel):
         description="If true, citations are included as a separate field in the tool response",
     )
 
+    prefer_markdown: bool = Field(
+        default=True,
+        description=(
+            "Whether to prefer markdown formatting in Nuclia search results. If true, "
+            "Nuclia will return content formatted in markdown when available, which can improve "
+            "the readability of the retrieved context. If false, Nuclia will return plain text."
+        ),
+    )
+    
     # --- Template-Based Configuration ---
     template_parameters: List[TemplateParameter] = Field(
         default_factory=list,
