@@ -211,10 +211,17 @@ class NucliaRagToolConfig(BaseModel):
             "and audit metadata. These parameters become part of the tool's schema."
         ),
     )
-
     user_prompt: Optional[str] = Field(
         default=None,
         description="The user prompt to use for the RAG model.",
+    )
+
+    rephrase: bool = Field(
+        default=False,
+        description=(
+            "Whether to enable dynamic prompt rephrasing. If true, the user's query will be "
+            "rephrased using the default rephrase prompt before being sent to Nuclia."
+        ),
     )
 
     prompt_rephrasing: Optional[PromptRephrasingConfig] = Field(

@@ -399,6 +399,7 @@ class NucliaRagTool(DynamicTool):
         top_k = self.tool_config.top_k
         user_prompt = self.tool_config.user_prompt if self.tool_config.user_prompt else None
         citations_type = self.tool_config.citations_type if self.tool_config.citations_type else "default"
+        rephrase = self.tool_config.rephrase if self.tool_config.rephrase is not None else False
 
         try:
             log.info(
@@ -420,7 +421,7 @@ class NucliaRagTool(DynamicTool):
                 prompt=user_prompt,
                 top_k=top_k,
                 prefer_markdown=True,
-                rephrase=True,
+                rephrase=rephrase,
                 show=[ResourceProperties.BASIC, ResourceProperties.VALUES],
                 rag_strategies=[
                     {"name": RagStrategyName.NEIGHBOURING_PARAGRAPHS},
