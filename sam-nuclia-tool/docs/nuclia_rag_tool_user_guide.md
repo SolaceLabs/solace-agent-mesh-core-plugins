@@ -96,6 +96,9 @@ When the user asks a question, use the `NucliaRagTool` tool:
 | `output_filename_base` | String | `"nuclia_answer"` | Base name for output artifacts |
 | `artifact_description_query_max_length` | Integer | `150` | Max query length in artifact description |
 | `inline_citation_links` | Boolean | `true` | Make citation markers clickable |
+| `citations` | String | `default' | How to include citations in the tool response. Options:<br/>- `default`: citations returned as a separate chunk after the answer. <br/>-`llm_footnotes`: citations embedded as markdown footnotes in the LLM response.<br/>-`none`: Do not include citations in the tool response. |
+| `rephrase` | Boolean | `true` | Whether to enable dynamic prompt rephrasing. If `true`, the user's query will be rephrased using the default rephrase prompt from Nuclia. |
+| `prefer_markdown` | Boolean | `true` | Whether to prefer markdown formatting in Nuclia search results. If `true`, Nuclia will return content formatted in markdown when available, which can improve the readability of the retrieved context. If `false`, Nuclia will return plain text. |
 | `remi_publish_topic` | String | None | Topic template for publishing REMi evaluation events. Supports variables: `{interaction_id}`, `{tool_name}`, `{learning_id}` |
 
 ### Complete Example
@@ -120,10 +123,13 @@ tools:
       output_filename_base: "document_answer"
       artifact_description_query_max_length: 200
       inline_citation_links: true
+      citations: "llm_footnotes"
+      prefer_markdown: true
       
       # Advanced features (covered in later sections)
       template_parameters: []
       prompt_rephrasing: null
+      rephrase: false
       filter_expression_template: null
 ```
 
