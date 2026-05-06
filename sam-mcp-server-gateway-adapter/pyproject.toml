@@ -28,7 +28,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
 dependencies = [
-    "fastmcp>=2.14.2",
+    "fastmcp>=3.2.0",
     "starlette~=0.49.1",
     "httpx>=0.27.0",
 ]
