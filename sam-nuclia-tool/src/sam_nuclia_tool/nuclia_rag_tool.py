@@ -398,6 +398,9 @@ class NucliaRagTool(DynamicTool):
         token = self.tool_config.token
         top_k = self.tool_config.top_k
         user_prompt = self.tool_config.user_prompt if self.tool_config.user_prompt else None
+        citations = self.tool_config.citations if self.tool_config.citations else "default"
+        rephrase = self.tool_config.rephrase if self.tool_config.rephrase is not None else True
+        prefer_markdown = self.tool_config.prefer_markdown if self.tool_config.prefer_markdown is not None else True
 
         try:
             log.info(
@@ -415,11 +418,11 @@ class NucliaRagTool(DynamicTool):
             search = sdk.NucliaSearch()
             ask_query = AskRequest(
                 query=rephrased_query,
-                citations=True,
+                citations=citations,
                 prompt=user_prompt,
                 top_k=top_k,
-                prefer_markdown=True,
-                rephrase=True,
+                prefer_markdown=prefer_markdown,
+                rephrase=rephrase,
                 show=[ResourceProperties.BASIC, ResourceProperties.VALUES],
                 rag_strategies=[
                     {"name": RagStrategyName.NEIGHBOURING_PARAGRAPHS},

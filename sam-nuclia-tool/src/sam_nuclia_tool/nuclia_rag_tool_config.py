@@ -188,11 +188,30 @@ class NucliaRagToolConfig(BaseModel):
         description="If true, citation markers will be rendered as clickable markdown links",
     )
 
+    citations: str = Field(
+        default="default",
+        description=(
+            "How to include citations in the tool response. Options:\n"
+            "- 'default': citations returned as a separate chunk after the answer.\n"
+            "- 'llm_footnotes': citations embedded as markdown footnotes in the LLM response.\n"
+            "- 'none': Do not include citations in the tool response."
+        )
+    )
+
     include_citations_in_tool_response: bool = Field(
         default=False,
         description="If true, citations are included as a separate field in the tool response",
     )
 
+    prefer_markdown: bool = Field(
+        default=True,
+        description=(
+            "Whether to prefer markdown formatting in Nuclia search results. If true, "
+            "Nuclia will return content formatted in markdown when available, which can improve "
+            "the readability of the retrieved context. If false, Nuclia will return plain text."
+        ),
+    )
+    
     # --- Template-Based Configuration ---
     template_parameters: List[TemplateParameter] = Field(
         default_factory=list,
@@ -201,10 +220,17 @@ class NucliaRagToolConfig(BaseModel):
             "and audit metadata. These parameters become part of the tool's schema."
         ),
     )
-
     user_prompt: Optional[str] = Field(
         default=None,
         description="The user prompt to use for the RAG model.",
+    )
+
+    rephrase: bool = Field(
+        default=False,
+        description=(
+            "Whether to enable dynamic prompt rephrasing. If true, the user's query will be "
+            "rephrased using the default rephrase prompt before being sent to Nuclia."
+        ),
     )
 
     prompt_rephrasing: Optional[PromptRephrasingConfig] = Field(
