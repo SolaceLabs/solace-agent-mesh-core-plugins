@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_nuclia_tool-0.1.3...sam_nuclia_tool-0.1.4) (2026-05-11)
+
+
+### Bug Fixes
+
+* **sam-nuclia-tool:** Made some hardcoded parameters configurable  ([#165](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues/165)) ([c0039df](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/commit/c0039df989305856d16716714e65f79db819bcd6))
+
 ## [0.1.3](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_nuclia_tool-0.1.2...sam_nuclia_tool-0.1.3) (2026-04-02)
 
 
