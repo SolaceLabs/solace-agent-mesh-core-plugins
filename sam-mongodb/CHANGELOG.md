@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_mongodb-0.1.1...sam_mongodb-0.1.2) (2026-05-11)
+
+
+### Bug Fixes
+
+* **DATAGO-135081:** bump deps for critical/high vuln fixes ([#166](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues/166)) ([8dcf449](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/commit/8dcf44958932134f29d0b9ec4b1976cf1357dc09))
+
 ## [0.1.1](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_mongodb-0.1.0...sam_mongodb-0.1.1) (2026-04-02)
 
 

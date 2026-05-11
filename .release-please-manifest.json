@@ -3,13 +3,13 @@
   "sam-event-mesh-gateway": "1.1.0",
   "sam-event-mesh-identity-provider": "0.1.1",
   "sam-event-mesh-tool": "0.1.1",
-  "sam-mcp-server-gateway-adapter": "0.1.1",
-  "sam-mongodb": "0.1.1",
-  "sam-nuclia-tool": "0.1.3",
+  "sam-mcp-server-gateway-adapter": "0.1.2",
+  "sam-mongodb": "0.1.2",
+  "sam-nuclia-tool": "0.1.4",
   "sam-powerbi": "0.1.0",
   "sam-rag": "0.1.3",
   "sam-rest-gateway": "0.2.1",
   "sam-ruleset-lookup-tool": "0.1.1",
   "sam-slack-gateway-adapter": "0.1.1",
-  "sam-sql-database-tool": "0.3.5"
+  "sam-sql-database-tool": "0.3.6"
 }

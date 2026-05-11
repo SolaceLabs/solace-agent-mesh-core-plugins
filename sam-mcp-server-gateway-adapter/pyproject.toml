@@ -10,7 +10,7 @@ type = "gateway"
 
 [project]
 name = "sam_mcp_server_gateway_adapter"
-version = "0.1.1"
+version = "0.1.2"
 authors = [
   { name="SolaceLabs", email="solacelabs@solace.com" },
 ]
