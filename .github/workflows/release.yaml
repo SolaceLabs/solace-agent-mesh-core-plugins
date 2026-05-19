@@ -23,6 +23,9 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    outputs:
+      normalized_project: ${{ steps.validate.outputs.project_name }}
+      release_tag: ${{ steps.validate.outputs.release_tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -140,3 +143,50 @@ jobs:
           echo "**Release Tag:** ${{ steps.release.outputs.release_tag }}" >> "$GITHUB_STEP_SUMMARY"
           echo "**Release URL:** ${{ steps.release.outputs.release_url }}" >> "$GITHUB_STEP_SUMMARY"
           echo "**Publish Target:** ${{ steps.publish-target.outputs.target_name }}" >> "$GITHUB_STEP_SUMMARY"
+  linearb:
+    name: LinearB (release)
+    needs: publish
+    environment: linearb
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update LinearB deployment
+        env:
+          LINEARB_API_TOKEN: ${{ secrets.LINEARB_API_TOKEN }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+          REF_NAME: ${{ needs.publish.outputs.release_tag }}
+          SERVICE_NAME: ${{ needs.publish.outputs.normalized_project }}
+        run: |
+          json_payload=$(jq -n \
+            --arg repo_url "$REPO_URL" \
+            --arg ref_name "$REF_NAME" \
+            --arg stage "release" \
+            --arg service "$SERVICE_NAME" \
+            '{
+              repo_url: $repo_url,
+              ref_name: $ref_name,
+              stage: $stage,
+              services: [$service]
+            }')
+
+          echo "Payload:"
+          echo "$json_payload" | jq .
+
+          RESPONSE=$(curl --silent --location --request POST \
+            'https://public-api.linearb.io/api/v1/deployments' \
+            --header "x-api-key: ${LINEARB_API_TOKEN}" \
+            --header 'Content-Type: application/json' \
+            --data-raw "$json_payload" \
+            --write-out "\n%{http_code}")
+
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
+          RESPONSE_BODY=$(echo "$RESPONSE" | sed '$ d')
+
+          echo "HTTP Status: $HTTP_STATUS"
+          echo "$RESPONSE_BODY" | jq '.' 2>/dev/null || echo "$RESPONSE_BODY"
+
+          if [[ "$HTTP_STATUS" -ge 200 ]] && [[ "$HTTP_STATUS" -lt 300 ]]; then
+            echo "LinearB deployment marked successfully"
+          else
+            echo "LinearB API call failed with status $HTTP_STATUS"
+            exit 1
+          fi
