@@ -2,12 +2,16 @@
 Unit tests for hang-recovery behavior in the Slack adapter.
 
 Covers DATAGO-137322: a hung Slack API call must not wedge the broker
-consumer flow. Two complementary defenses are verified here:
+consumer flow. Three complementary defenses are verified here:
 
-1. The Slack ``AsyncWebClient`` is created with a finite HTTP timeout so
-   stalled requests fail fast instead of awaiting forever.
+1. The Slack ``AsyncWebClient`` is created with a finite HTTP timeout
+   and the ``Bolt-Async/{version}`` user-agent prefix is preserved.
 2. ``handle_task_complete`` bounds the per-task queue drain with
    ``asyncio.wait_for`` so a stuck queue worker can't block the broker ACK.
+3. The synchronous ``requests.post`` used for Slack file uploads is
+   called with an explicit ``timeout=`` so a stalled upload connection
+   can't hang the queue worker indefinitely (the slack-sdk's async
+   methods have a 30s default, but ``requests`` does not).
 """
 
 import asyncio
@@ -21,7 +25,10 @@ from sam_slack_gateway_adapter.adapter import (
     SlackAdapter,
     SlackAdapterConfig,
 )
-from sam_slack_gateway_adapter.message_queue import SlackMessageQueue
+from sam_slack_gateway_adapter.message_queue import (
+    FileUploadOp,
+    SlackMessageQueue,
+)
 from solace_agent_mesh.gateway.adapter.types import (
     GatewayContext,
     ResponseContext,
@@ -92,6 +99,36 @@ class TestSlackClientHttpTimeout:
         # otherwise a stalled chat.update can hang forever.
         assert client.timeout == 30, (
             f"Slack AsyncWebClient must have timeout=30, got timeout={client.timeout}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_init_preserves_bolt_user_agent_prefix(
+        self, mock_gateway_context
+    ):
+        """init() must set ``user_agent_prefix='Bolt-Async/{version}'`` so Slack
+        telemetry can continue to identify this adapter as a Bolt client.
+
+        Without this, constructing AsyncWebClient(...) directly drops the
+        prefix that slack_bolt's create_async_web_client() would have added
+        when AsyncApp(token=...) built its own client.
+        """
+        adapter = SlackAdapter()
+
+        with patch(
+            "sam_slack_gateway_adapter.adapter.AsyncSocketModeHandler"
+        ), patch.object(SlackAdapter, "_register_handlers"), patch(
+            "sam_slack_gateway_adapter.adapter.asyncio.create_task"
+        ):
+            await adapter.init(mock_gateway_context)
+
+        client = adapter.slack_app.client
+        # AsyncWebClient stores the assembled UA string (prefix + sdk pieces)
+        # as `client.headers["User-Agent"]`. The "Bolt-Async/" piece must
+        # appear somewhere in that combined string.
+        ua = (client.headers or {}).get("User-Agent", "")
+        assert "Bolt-Async/" in ua, (
+            f"Slack AsyncWebClient must include 'Bolt-Async/' in User-Agent, "
+            f"got User-Agent={ua!r}"
         )
 
 
@@ -223,3 +260,84 @@ class TestHandleTaskCompleteTimeout:
             "Timeout waiting for queue to complete" in record.message
             for record in caplog.records
         ), "Should not log timeout warning on the happy path"
+
+
+class TestFileUploadHttpTimeout:
+    """Verify Fix 3: the synchronous ``requests.post`` for Slack file uploads
+    is invoked with a finite timeout.
+
+    The slack-sdk's async methods default to ``timeout=30`` at the HTTP
+    layer, but the file-upload path takes a different route: it grabs an
+    upload URL from Slack then uses ``requests.post`` (sync, run via
+    ``asyncio.to_thread``) to send the bytes. ``requests`` has NO default
+    timeout, so without an explicit one a stalled upload-server connection
+    hangs the queue worker forever. This is the most likely culprit for
+    the recurring DATAGO-137322 wedges.
+    """
+
+    @pytest.mark.asyncio
+    async def test_file_upload_passes_explicit_timeout_to_requests_post(self):
+        """``_handle_file_upload`` must invoke ``requests.post`` with a
+        finite ``timeout=`` kwarg.
+        """
+        # Real SlackMessageQueue (no Slack network involvement — every
+        # outgoing call is mocked).
+        mock_client = MagicMock()
+        mock_client.files_getUploadURLExternal = AsyncMock(
+            return_value={
+                "upload_url": "https://files.slack.com/upload/fake",
+                "file_id": "F_FAKE_ID",
+            }
+        )
+        mock_client.files_completeUploadExternal = AsyncMock(
+            return_value={"ok": True}
+        )
+
+        queue = SlackMessageQueue(
+            task_id="task-upload-timeout",
+            slack_client=mock_client,
+            channel_id="C_FAKE",
+            thread_ts="1.1",
+            adapter=MagicMock(),
+        )
+
+        # Mock requests.post to record its call kwargs without actually
+        # making a network call. Return a fake response that passes
+        # raise_for_status().
+        fake_response = MagicMock()
+        fake_response.raise_for_status = MagicMock()
+
+        # `requests` is imported inside _handle_file_upload (local import),
+        # so it's not an attribute of the message_queue module. Patch the
+        # `requests` module's `post` directly — the function will see the
+        # patched value when it accesses `requests.post`.
+        # Also patch _wait_for_file_visible: it polls files.info repeatedly
+        # for up to 30s, which we don't need to exercise here.
+        with patch(
+            "requests.post", return_value=fake_response
+        ) as mock_post, patch.object(
+            queue, "_wait_for_file_visible", new=AsyncMock()
+        ):
+            await queue._handle_file_upload(
+                FileUploadOp(
+                    filename="report.txt",
+                    content_bytes=b"hello world",
+                    initial_comment=None,
+                )
+            )
+
+        # Find the call to the upload URL (the one we care about — the only
+        # requests.post call in this code path).
+        mock_post.assert_called_once()
+        _, kwargs = mock_post.call_args
+        assert "timeout" in kwargs, (
+            "requests.post for Slack file upload MUST be called with an "
+            "explicit timeout= kwarg; without it the call can hang forever "
+            "and wedge the queue worker (DATAGO-137322)."
+        )
+        assert isinstance(kwargs["timeout"], (int, float)), (
+            f"timeout must be numeric, got {type(kwargs['timeout']).__name__}"
+        )
+        assert kwargs["timeout"] > 0, (
+            f"timeout must be positive, got {kwargs['timeout']}"
+        )

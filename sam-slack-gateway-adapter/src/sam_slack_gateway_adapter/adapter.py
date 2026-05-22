@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional
 import requests
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.async_app import AsyncApp
+from slack_bolt.version import __version__ as bolt_version
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
@@ -88,9 +89,13 @@ class SlackAdapter(GatewayAdapter):
         # Explicit HTTP timeout so a stalled Slack API call fails fast instead
         # of hanging the queue worker forever. Without this, a single bad
         # chat.update can wedge the entire broker consumer flow.
+        # The user_agent_prefix matches what slack_bolt.util.async_utils.
+        # create_async_web_client() would set (Slack uses this for telemetry
+        # to identify Bolt clients in support investigations).
         slack_web_client = AsyncWebClient(
             token=adapter_config.slack_bot_token,
             timeout=30,
+            user_agent_prefix=f"Bolt-Async/{bolt_version}",
         )
         self.slack_app = AsyncApp(client=slack_web_client)
 
