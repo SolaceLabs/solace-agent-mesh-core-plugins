@@ -23,7 +23,7 @@ from solace_agent_mesh.gateway.adapter.types import (
     GatewayContext,
     ResponseContext,
     SamDataPart,
-    SamError,ƒ
+    SamError,
     SamFeedback,
     SamFilePart,
     SamTask,
