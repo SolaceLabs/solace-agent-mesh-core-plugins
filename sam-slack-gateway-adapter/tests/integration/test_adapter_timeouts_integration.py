@@ -9,10 +9,9 @@ These complement the structural unit tests in
   * A Slack HTTP client whose chat methods genuinely hang (await sleep)
 
 The production timeout (``QUEUE_DRAIN_TIMEOUT_SEC = 60.0``) is patched down to
-a small value so the test runs in ~1 second instead of ~60. The fix
-(DATAGO-137322) is verified by behavior: ``handle_task_complete`` must return
-within the bounded window even when the queue worker is stuck on a Slack call
-that never returns.
+a small value so the test runs in ~1 second instead of ~60. The fix is verified
+by behavior: ``handle_task_complete`` must return within the bounded window
+even when the queue worker is stuck on a Slack call that never returns.
 """
 
 import asyncio
@@ -103,9 +102,9 @@ async def test_handle_task_complete_recovers_from_hung_slack_call(
     """End-to-end: real queue + real worker + hung Slack client → adapter must
     recover within the bounded timeout and proceed to ACK.
 
-    This is the regression test for DATAGO-137322. Without the fix, the
-    background worker hangs on chat.postMessage forever, queue.join() never
-    returns, and handle_task_complete blocks indefinitely.
+    This is the regression test for the hung-consumer bug. Without the fix,
+    the background worker hangs on chat.postMessage forever, queue.join()
+    never returns, and handle_task_complete blocks indefinitely.
     """
     task_id = response_ctx.task_id
 

@@ -1,8 +1,8 @@
 """
 Unit tests for hang-recovery behavior in the Slack adapter.
 
-Covers DATAGO-137322: a hung Slack API call must not wedge the broker
-consumer flow. Three complementary defenses are verified here:
+A hung Slack API call must not wedge the broker consumer flow. Three
+complementary defenses are verified here:
 
 1. The Slack ``AsyncWebClient`` is created with a finite HTTP timeout
    and the ``Bolt-Async/{version}`` user-agent prefix is preserved.
@@ -272,7 +272,7 @@ class TestFileUploadHttpTimeout:
     ``asyncio.to_thread``) to send the bytes. ``requests`` has NO default
     timeout, so without an explicit one a stalled upload-server connection
     hangs the queue worker forever. This is the most likely culprit for
-    the recurring DATAGO-137322 wedges.
+    the recurring slack-gateway wedges.
     """
 
     @pytest.mark.asyncio
@@ -333,7 +333,7 @@ class TestFileUploadHttpTimeout:
         assert "timeout" in kwargs, (
             "requests.post for Slack file upload MUST be called with an "
             "explicit timeout= kwarg; without it the call can hang forever "
-            "and wedge the queue worker (DATAGO-137322)."
+            "and wedge the queue worker."
         )
         assert isinstance(kwargs["timeout"], (int, float)), (
             f"timeout must be numeric, got {type(kwargs['timeout']).__name__}"

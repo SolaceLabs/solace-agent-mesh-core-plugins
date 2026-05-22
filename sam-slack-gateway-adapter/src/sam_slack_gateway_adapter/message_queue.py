@@ -1185,8 +1185,7 @@ class SlackMessageQueue:
             # synchronous (run in a thread) and previously had NO timeout, so
             # a stalled connection to Slack's upload URL could hang the queue
             # worker indefinitely — and unlike the slack-sdk's async methods,
-            # this call has no built-in 30s default. That's the most likely
-            # production hang source for DATAGO-137322.
+            # this call has no built-in 30s default.
             upload_response = await asyncio.to_thread(
                 requests.post, upload_url, data=op.content_bytes, timeout=60
             )
