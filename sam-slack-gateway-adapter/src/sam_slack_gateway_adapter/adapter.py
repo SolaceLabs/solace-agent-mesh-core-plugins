@@ -23,7 +23,7 @@ from solace_agent_mesh.gateway.adapter.types import (
     GatewayContext,
     ResponseContext,
     SamDataPart,
-    SamError,
+    SamError,ƒ
     SamFeedback,
     SamFilePart,
     SamTask,
@@ -40,7 +40,7 @@ _NO_EMAIL_MARKER = "_NO_EMAIL_"
 # Upper bound on how long handle_task_complete will wait for the per-task
 # SlackMessageQueue to drain before giving up and ACKing the broker message
 # anyway. A hung Slack HTTP call inside the queue worker must not be allowed
-# to wedge the broker consumer flow (DATAGO-137322).
+# to wedge the broker consumer.
 QUEUE_DRAIN_TIMEOUT_SEC = 60.0
 
 
@@ -87,7 +87,7 @@ class SlackAdapter(GatewayAdapter):
 
         # Explicit HTTP timeout so a stalled Slack API call fails fast instead
         # of hanging the queue worker forever. Without this, a single bad
-        # chat.update can wedge the entire broker consumer flow (DATAGO-137322).
+        # chat.update can wedge the entire broker consumer flow.
         slack_web_client = AsyncWebClient(
             token=adapter_config.slack_bot_token,
             timeout=30,
@@ -557,7 +557,7 @@ class SlackAdapter(GatewayAdapter):
         if task_id in self.message_queues:
             queue = self.message_queues[task_id]
             # Bound the wait so a hung Slack API call in the queue worker can't
-            # block the broker ACK and wedge the consumer flow (DATAGO-137322).
+            # block the broker ACK and wedge the consumer flow.
             try:
                 await asyncio.wait_for(
                     queue.wait_until_complete(),
