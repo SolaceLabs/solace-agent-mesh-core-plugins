@@ -1181,8 +1181,13 @@ class SlackMessageQueue:
             )
             import requests
 
+            # Bound the file upload at the HTTP layer. requests.post here is
+            # synchronous (run in a thread) and previously had NO timeout, so
+            # a stalled connection to Slack's upload URL could hang the queue
+            # worker indefinitely — and unlike the slack-sdk's async methods,
+            # this call has no built-in 30s default.
             upload_response = await asyncio.to_thread(
-                requests.post, upload_url, data=op.content_bytes
+                requests.post, upload_url, data=op.content_bytes, timeout=60
             )
             upload_response.raise_for_status()
 

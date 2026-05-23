@@ -11,7 +11,9 @@ from typing import Any, Dict, Optional
 import requests
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.async_app import AsyncApp
+from slack_bolt.version import __version__ as bolt_version
 from slack_sdk.errors import SlackApiError
+from slack_sdk.web.async_client import AsyncWebClient
 
 from pydantic import BaseModel, Field
 
@@ -35,6 +37,12 @@ from .message_queue import SlackMessageQueue
 log = logging.getLogger(__name__)
 
 _NO_EMAIL_MARKER = "_NO_EMAIL_"
+
+# Upper bound on how long handle_task_complete will wait for the per-task
+# SlackMessageQueue to drain before giving up and ACKing the broker message
+# anyway. A hung Slack HTTP call inside the queue worker must not be allowed
+# to wedge the broker consumer.
+QUEUE_DRAIN_TIMEOUT_SEC = 60.0
 
 
 class SlackAdapterConfig(BaseModel):
@@ -78,7 +86,18 @@ class SlackAdapter(GatewayAdapter):
         # Config is now a validated Pydantic model
         adapter_config: SlackAdapterConfig = self.context.adapter_config
 
-        self.slack_app = AsyncApp(token=adapter_config.slack_bot_token)
+        # Explicit HTTP timeout so a stalled Slack API call fails fast instead
+        # of hanging the queue worker forever. Without this, a single bad
+        # chat.update can wedge the entire broker consumer flow.
+        # The user_agent_prefix matches what slack_bolt.util.async_utils.
+        # create_async_web_client() would set (Slack uses this for telemetry
+        # to identify Bolt clients in support investigations).
+        slack_web_client = AsyncWebClient(
+            token=adapter_config.slack_bot_token,
+            timeout=30,
+            user_agent_prefix=f"Bolt-Async/{bolt_version}",
+        )
+        self.slack_app = AsyncApp(client=slack_web_client)
 
         # --- Register Event and Action Handlers ---
         self._register_handlers()
@@ -542,7 +561,19 @@ class SlackAdapter(GatewayAdapter):
 
         if task_id in self.message_queues:
             queue = self.message_queues[task_id]
-            await queue.wait_until_complete()
+            # Bound the wait so a hung Slack API call in the queue worker can't
+            # block the broker ACK and wedge the consumer flow.
+            try:
+                await asyncio.wait_for(
+                    queue.wait_until_complete(),
+                    timeout=QUEUE_DRAIN_TIMEOUT_SEC,
+                )
+            except asyncio.TimeoutError:
+                log.warning(
+                    "Timeout waiting for queue to complete for task %s; "
+                    "proceeding so the broker message can be ACKed",
+                    task_id,
+                )
 
         # Final citation resolution pass: RAG data signals may have arrived after
         # the text was already formatted and posted. Re-apply citation transformation
