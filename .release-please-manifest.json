@@ -3,7 +3,7 @@
   "sam-event-mesh-gateway": "1.1.0",
   "sam-event-mesh-identity-provider": "0.1.1",
   "sam-event-mesh-tool": "0.1.1",
-  "sam-mcp-server-gateway-adapter": "0.1.2",
+  "sam-mcp-server-gateway-adapter": "0.1.3",
   "sam-mongodb": "0.1.2",
   "sam-nuclia-tool": "0.1.4",
   "sam-powerbi": "0.1.0",

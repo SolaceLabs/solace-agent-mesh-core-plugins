@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_mcp_server_gateway_adapter-0.1.2...sam_mcp_server_gateway_adapter-0.1.3) (2026-07-20)
+
+
+### Bug Fixes
+
+* **DATAGO-144731:** widen sam-mcp-server-gateway-adapter starlette range to &lt;2 ([#171](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues/171)) ([2fff32a](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/commit/2fff32ac2da0e368a37a43a60ab31fb99c0adac2))
+
 ## [0.1.2](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_mcp_server_gateway_adapter-0.1.1...sam_mcp_server_gateway_adapter-0.1.2) (2026-05-11)
 
 
