@@ -16,7 +16,7 @@ tool_config (populated from the agent YAML ``tool_config:`` block):
 
 Each SAM user gets their own delegated PowerBI token, cached in its own
 file derived from ``token_cache_path`` and the caller's ``user_id`` (from
-``tool_context.invocation_context.user_id``). This isolation is only as
+``tool_context.session.user_id``). This isolation is only as
 good as the gateway's identity: it requires the gateway to supply a real
 per-human user_id (e.g. Slack does this by default; REST/webhook/event-mesh
 gateways only do so if authentication is enforced and configured with a
@@ -268,7 +268,7 @@ async def execute_powerbi_query(
         return err
 
     user_id = (
-        tool_context.invocation_context.user_id
+        tool_context.session.user_id
         if tool_context is not None
         else ANONYMOUS_USER_ID
     )

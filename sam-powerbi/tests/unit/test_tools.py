@@ -222,7 +222,7 @@ class TestUserIdThreading:
 
     def _tool_context(self, user_id):
         ctx = MagicMock()
-        ctx.invocation_context.user_id = user_id
+        ctx.session.user_id = user_id
         return ctx
 
     @pytest.mark.asyncio
