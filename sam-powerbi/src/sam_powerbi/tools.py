@@ -316,6 +316,14 @@ async def execute_powerbi_query(
             auth.force_reauth()
             token, err = _get_token(auth, "Re-auth failed")
             if err:
+                if error_info:
+                    err["message"] = (
+                        f"PowerBI rejected the previous token (X-PowerBI-Error-Info: "
+                        f"{error_info}) before this new sign-in was requested — signing in "
+                        f"again will not help if that reason is a permissions/access issue "
+                        f"rather than an expired token. {err['message']}"
+                    )
+                    err["powerbi_error_info"] = error_info
                 return err
             resp = await _post(token)
 
@@ -335,6 +343,7 @@ async def execute_powerbi_query(
                         "lacks access to this workspace/dataset."
                         + (f" PowerBI-Error-Info: {error_info}" if error_info else "")
                     ),
+                    "powerbi_error_info": error_info,
                 }
 
         if resp.status_code == 200:
@@ -352,6 +361,7 @@ async def execute_powerbi_query(
                     + (f" X-PowerBI-Error-Info: {error_info}" if error_info else "")
                 ),
                 "retry_after": retry_after,
+                "powerbi_error_info": error_info,
             }
         error_info = _powerbi_error_info(resp)
         return {
@@ -362,6 +372,7 @@ async def execute_powerbi_query(
                 + (f" | X-PowerBI-Error-Info: {error_info}" if error_info else "")
             ),
             "http_status": resp.status_code,
+            "powerbi_error_info": error_info,
         }
 
     except httpx.TimeoutException:

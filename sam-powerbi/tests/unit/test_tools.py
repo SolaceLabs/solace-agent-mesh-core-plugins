@@ -424,6 +424,40 @@ class TestAuthFlow:
         assert r["error_code"] == "AUTH_REQUIRED"
 
     @pytest.mark.asyncio
+    async def test_401_retry_triggers_new_device_flow_carries_error_info(self):
+        """Regression: the reason for the original 401 (e.g. GroupNotAccessible)
+        must survive into the AUTH_REQUIRED response, not just server logs —
+        otherwise the LLM/user only ever sees "sign in again" with no clue
+        that re-authenticating alone won't fix a permissions/access problem.
+        """
+        pending = PowerBIAuthPending(
+            verification_uri="https://aka.ms/devicelogin",
+            user_code="XYZ",
+            expires_in=900,
+            message="Sign in",
+        )
+        resp_401 = _mock_http(
+            401, headers={"X-PowerBI-Error-Info": "GroupNotAccessible"}
+        )
+
+        with patch("sam_powerbi.tools._get_auth") as m:
+            auth = MagicMock()
+            auth.get_token_or_start_device_flow.side_effect = ["token", pending]
+            m.return_value = auth
+
+            with patch("httpx.AsyncClient") as mock_cls:
+                inst = AsyncMock()
+                inst.post.return_value = resp_401
+                mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+                mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+                r = await execute_powerbi_query("EVALUATE 'T'", tool_config=MINIMAL_CFG)
+
+        assert r["error_code"] == "AUTH_REQUIRED"
+        assert "GroupNotAccessible" in r["message"]
+        assert r["powerbi_error_info"] == "GroupNotAccessible"
+
+    @pytest.mark.asyncio
     async def test_401_retry_triggers_auth_error(self):
         resp_401 = _mock_http(401)
 
@@ -468,6 +502,7 @@ class TestAuthFlow:
 
         assert r["error_code"] == "AUTH_ERROR"
         assert "TokenExpired" in r["message"]
+        assert r["powerbi_error_info"] == "TokenExpired"
         auth.force_reauth.assert_called_once()
 
     @pytest.mark.asyncio
