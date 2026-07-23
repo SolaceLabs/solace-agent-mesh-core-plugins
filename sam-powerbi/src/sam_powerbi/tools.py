@@ -130,6 +130,16 @@ def _format_results_markdown(payload: Dict[str, Any], max_rows: int = 100) -> Di
     }
 
 
+def _powerbi_error_info(resp: httpx.Response) -> Optional[str]:
+    """Extract PowerBI's own diagnostic header, when present.
+
+    PowerBI's REST API often explains *why* a request failed (expired token,
+    missing consent, no workspace access, etc.) in this header even when the
+    HTTP status code alone (e.g. a bare 401) doesn't say.
+    """
+    return resp.headers.get("X-PowerBI-Error-Info") or None
+
+
 def _auth_required_response(pending: PowerBIAuthPending) -> Dict[str, Any]:
     return {
         "status": "error",
@@ -298,12 +308,34 @@ async def execute_powerbi_query(
         resp = await _post(token)
 
         if resp.status_code == 401:
-            logger.info("[sam_powerbi] 401 — forcing re-authentication")
+            error_info = _powerbi_error_info(resp)
+            logger.info(
+                "[sam_powerbi] 401 — forcing re-authentication%s",
+                f" (X-PowerBI-Error-Info: {error_info})" if error_info else "",
+            )
             auth.force_reauth()
             token, err = _get_token(auth, "Re-auth failed")
             if err:
                 return err
             resp = await _post(token)
+
+            if resp.status_code == 401:
+                error_info = _powerbi_error_info(resp)
+                logger.warning(
+                    "[sam_powerbi] Still 401 after re-authentication%s",
+                    f" — X-PowerBI-Error-Info: {error_info}" if error_info else "",
+                )
+                return {
+                    "status": "error",
+                    "error_code": "AUTH_ERROR",
+                    "message": (
+                        "PowerBI rejected the freshly-acquired token (401 persists after "
+                        "re-authentication). This usually means the AAD app registration is "
+                        "missing consented PowerBI API permissions, or the signed-in user "
+                        "lacks access to this workspace/dataset."
+                        + (f" PowerBI-Error-Info: {error_info}" if error_info else "")
+                    ),
+                }
 
         if resp.status_code == 200:
             return _handle_200_response(resp)
@@ -311,16 +343,24 @@ async def execute_powerbi_query(
             return _handle_400_response(resp)
         if resp.status_code == 429:
             retry_after = resp.headers.get("Retry-After", "unknown")
+            error_info = _powerbi_error_info(resp)
             return {
                 "status": "error",
                 "error_code": "RATE_LIMIT",
-                "message": f"PowerBI REST API rate limit exceeded (Retry-After: {retry_after}s). Wait before retrying.",
+                "message": (
+                    f"PowerBI REST API rate limit exceeded (Retry-After: {retry_after}s). Wait before retrying."
+                    + (f" X-PowerBI-Error-Info: {error_info}" if error_info else "")
+                ),
                 "retry_after": retry_after,
             }
+        error_info = _powerbi_error_info(resp)
         return {
             "status": "error",
             "error_code": "REST_ERROR",
-            "message": f"HTTP {resp.status_code}: {resp.text[:500]}",
+            "message": (
+                f"HTTP {resp.status_code}: {resp.text[:500]}"
+                + (f" | X-PowerBI-Error-Info: {error_info}" if error_info else "")
+            ),
             "http_status": resp.status_code,
         }
 

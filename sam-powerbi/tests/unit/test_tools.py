@@ -447,6 +447,49 @@ class TestAuthFlow:
         assert r["error_code"] == "AUTH_ERROR"
         assert "re-auth failed" in r["message"]
 
+    @pytest.mark.asyncio
+    async def test_persistent_401_surfaces_powerbi_error_info(self):
+        resp_401 = _mock_http(
+            401, text="Unauthorized", headers={"X-PowerBI-Error-Info": "TokenExpired"}
+        )
+
+        with patch("sam_powerbi.tools._get_auth") as m:
+            auth = MagicMock()
+            auth.get_token_or_start_device_flow.return_value = "token"
+            m.return_value = auth
+
+            with patch("httpx.AsyncClient") as mock_cls:
+                inst = AsyncMock()
+                inst.post.return_value = resp_401
+                mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+                mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+                r = await execute_powerbi_query("EVALUATE 'T'", tool_config=MINIMAL_CFG)
+
+        assert r["error_code"] == "AUTH_ERROR"
+        assert "TokenExpired" in r["message"]
+        auth.force_reauth.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_persistent_401_without_header_omits_error_info(self):
+        resp_401 = _mock_http(401, text="Unauthorized")
+
+        with patch("sam_powerbi.tools._get_auth") as m:
+            auth = MagicMock()
+            auth.get_token_or_start_device_flow.return_value = "token"
+            m.return_value = auth
+
+            with patch("httpx.AsyncClient") as mock_cls:
+                inst = AsyncMock()
+                inst.post.return_value = resp_401
+                mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+                mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+                r = await execute_powerbi_query("EVALUATE 'T'", tool_config=MINIMAL_CFG)
+
+        assert r["error_code"] == "AUTH_ERROR"
+        assert "PowerBI-Error-Info" not in r["message"]
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # execute_powerbi_query — HTTP response handling
@@ -566,6 +609,24 @@ class TestHTTPResponseHandling:
         assert r["retry_after"] == "60"
 
     @pytest.mark.asyncio
+    async def test_429_rate_limit_includes_powerbi_error_info_header(self):
+        resp = _mock_http(
+            429,
+            text="Too Many Requests",
+            headers={"Retry-After": "60", "X-PowerBI-Error-Info": "TooManyRequests"},
+        )
+
+        with patch("httpx.AsyncClient") as mock_cls:
+            inst = AsyncMock()
+            inst.post.return_value = resp
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            r = await execute_powerbi_query("EVALUATE 'T'", tool_config=MINIMAL_CFG)
+
+        assert r["error_code"] == "RATE_LIMIT"
+        assert "TooManyRequests" in r["message"]
+
+    @pytest.mark.asyncio
     async def test_503_rest_error(self):
         resp = _mock_http(503, text="Service Unavailable")
 
@@ -578,6 +639,24 @@ class TestHTTPResponseHandling:
 
         assert r["error_code"] == "REST_ERROR"
         assert "503" in r["message"]
+
+    @pytest.mark.asyncio
+    async def test_rest_error_includes_powerbi_error_info_header(self):
+        resp = _mock_http(
+            503,
+            text="Service Unavailable",
+            headers={"X-PowerBI-Error-Info": "InternalServerError"},
+        )
+
+        with patch("httpx.AsyncClient") as mock_cls:
+            inst = AsyncMock()
+            inst.post.return_value = resp
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            r = await execute_powerbi_query("EVALUATE 'T'", tool_config=MINIMAL_CFG)
+
+        assert r["error_code"] == "REST_ERROR"
+        assert "InternalServerError" in r["message"]
 
     @pytest.mark.asyncio
     async def test_timeout_exception(self):
