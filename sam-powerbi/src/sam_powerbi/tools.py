@@ -13,11 +13,22 @@ tool_config (populated from the agent YAML ``tool_config:`` block):
     rest_timeout_seconds: per-request HTTP timeout (default 30)
     token_cache_path: MSAL serializable cache file path
                       (default /tmp/samv2/powerbi_msal_cache.json)
+
+Each SAM user gets their own delegated PowerBI token, cached in its own
+file derived from ``token_cache_path`` and the caller's ``user_id`` (from
+``tool_context.invocation_context.user_id``). This isolation is only as
+good as the gateway's identity: it requires the gateway to supply a real
+per-human user_id (e.g. Slack does this by default; REST/webhook/event-mesh
+gateways only do so if authentication is enforced and configured with a
+per-user claim — otherwise every caller collapses onto the same generic
+identity and shares one cached token). Check your gateway's auth config.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import os
 import threading
 from typing import Any, Dict, Optional
 
@@ -34,11 +45,20 @@ logger = logging.getLogger(__name__)
 
 POWERBI_REST_BASE = "https://api.powerbi.com/v1.0/myorg"
 
-# One PowerBIAuth per (tenant, client, cache_path) tuple. Built lazily on
-# first tool call so that a SAM install missing PowerBI env vars still
-# starts up cleanly and only fails when the tool is actually invoked.
+ANONYMOUS_USER_ID = "anonymous"
+
+# One PowerBIAuth per (tenant, client, per-user cache_path) tuple. Built
+# lazily on first tool call so that a SAM install missing PowerBI env vars
+# still starts up cleanly and only fails when the tool is actually invoked.
 _auth_cache: Dict[tuple, PowerBIAuth] = {}
 _auth_lock = threading.Lock()
+
+
+def _user_cache_path(base_path: str, user_id: str) -> str:
+    """Derive a per-user MSAL cache file path from the configured base path."""
+    root, ext = os.path.splitext(base_path)
+    user_key = hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:16]
+    return f"{root}.{user_key}{ext}"
 
 
 def _require(cfg: Dict[str, Any], key: str) -> str:
@@ -50,10 +70,11 @@ def _require(cfg: Dict[str, Any], key: str) -> str:
     return str(val)
 
 
-def _get_auth(cfg: Dict[str, Any]) -> PowerBIAuth:
+def _get_auth(cfg: Dict[str, Any], user_id: str) -> PowerBIAuth:
     tenant = _require(cfg, "tenant_id")
     client = _require(cfg, "client_id")
-    cache_path = cfg.get("token_cache_path") or "/tmp/samv2/powerbi_msal_cache.json"
+    base_path = cfg.get("token_cache_path") or "/tmp/samv2/powerbi_msal_cache.json"
+    cache_path = _user_cache_path(base_path, user_id)
     key = (tenant, client, cache_path)
     with _auth_lock:
         auth = _auth_cache.get(key)
@@ -246,7 +267,12 @@ async def execute_powerbi_query(
     if err:
         return err
 
-    auth = _get_auth(cfg)
+    user_id = (
+        tool_context.invocation_context.user_id
+        if tool_context is not None
+        else ANONYMOUS_USER_ID
+    )
+    auth = _get_auth(cfg, user_id)
     token, err = _get_token(auth, "Failed to acquire PowerBI token")
     if err:
         return err

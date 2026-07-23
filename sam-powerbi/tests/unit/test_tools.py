@@ -7,6 +7,7 @@ import httpx
 from sam_powerbi.tools import (
     _require,
     _get_auth,
+    _user_cache_path,
     _format_results_markdown,
     execute_powerbi_query,
     _auth_cache,
@@ -140,18 +141,20 @@ class TestGetAuth:
     def test_creates_powerbi_auth_with_correct_args(self):
         with patch("sam_powerbi.tools.PowerBIAuth") as mock_cls:
             mock_cls.return_value = MagicMock()
-            _get_auth(MINIMAL_CFG)
+            _get_auth(MINIMAL_CFG, "user-1")
             mock_cls.assert_called_once_with(
                 tenant_id="tenant-123",
                 client_id="client-456",
-                token_cache_path="/tmp/samv2/powerbi_msal_cache.json",
+                token_cache_path=_user_cache_path(
+                    "/tmp/samv2/powerbi_msal_cache.json", "user-1"
+                ),
             )
 
     def test_caches_instance_for_same_key(self):
         with patch("sam_powerbi.tools.PowerBIAuth") as mock_cls:
             mock_cls.return_value = MagicMock()
-            r1 = _get_auth(MINIMAL_CFG)
-            r2 = _get_auth(MINIMAL_CFG)
+            r1 = _get_auth(MINIMAL_CFG, "user-1")
+            r2 = _get_auth(MINIMAL_CFG, "user-1")
             assert r1 is r2
             mock_cls.assert_called_once()
 
@@ -159,20 +162,32 @@ class TestGetAuth:
         with patch("sam_powerbi.tools.PowerBIAuth") as mock_cls:
             auth_a, auth_b = MagicMock(), MagicMock()
             mock_cls.side_effect = [auth_a, auth_b]
-            r1 = _get_auth({**MINIMAL_CFG, "tenant_id": "tenant-A"})
-            r2 = _get_auth({**MINIMAL_CFG, "tenant_id": "tenant-B"})
+            r1 = _get_auth({**MINIMAL_CFG, "tenant_id": "tenant-A"}, "user-1")
+            r2 = _get_auth({**MINIMAL_CFG, "tenant_id": "tenant-B"}, "user-1")
             assert r1 is auth_a
             assert r2 is auth_b
+
+    def test_different_users_get_different_instances(self):
+        with patch("sam_powerbi.tools.PowerBIAuth") as mock_cls:
+            auth_a, auth_b = MagicMock(), MagicMock()
+            mock_cls.side_effect = [auth_a, auth_b]
+            r1 = _get_auth(MINIMAL_CFG, "user-1")
+            r2 = _get_auth(MINIMAL_CFG, "user-2")
+            assert r1 is auth_a
+            assert r2 is auth_b
+            assert mock_cls.call_args_list[0].kwargs["token_cache_path"] != (
+                mock_cls.call_args_list[1].kwargs["token_cache_path"]
+            )
 
     def test_uses_custom_cache_path(self):
         cfg = {**MINIMAL_CFG, "token_cache_path": "/custom/path.json"}
         with patch("sam_powerbi.tools.PowerBIAuth") as mock_cls:
             mock_cls.return_value = MagicMock()
-            _get_auth(cfg)
+            _get_auth(cfg, "user-1")
             mock_cls.assert_called_once_with(
                 tenant_id="tenant-123",
                 client_id="client-456",
-                token_cache_path="/custom/path.json",
+                token_cache_path=_user_cache_path("/custom/path.json", "user-1"),
             )
 
 
@@ -190,6 +205,70 @@ class TestConfigValidation:
     async def test_none_tool_config_treated_as_empty(self):
         r = await execute_powerbi_query("EVALUATE ROW(\"x\", 1)", tool_config=None)
         assert r["error_code"] == "CONFIG_ERROR"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# execute_powerbi_query — per-user identity threading
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestUserIdThreading:
+    @pytest.fixture(autouse=True)
+    def mock_auth(self):
+        with patch("sam_powerbi.tools._get_auth") as m:
+            auth = MagicMock()
+            auth.get_token_or_start_device_flow.return_value = "fake-token"
+            m.return_value = auth
+            yield m
+
+    def _tool_context(self, user_id):
+        ctx = MagicMock()
+        ctx.invocation_context.user_id = user_id
+        return ctx
+
+    @pytest.mark.asyncio
+    async def test_passes_tool_context_user_id_to_get_auth(self, mock_auth):
+        resp = _mock_http(200, json_data={"results": []})
+        with patch("httpx.AsyncClient") as mock_cls:
+            inst = AsyncMock()
+            inst.post.return_value = resp
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            await execute_powerbi_query(
+                "EVALUATE 'Table'",
+                tool_context=self._tool_context("slack:T1:U123"),
+                tool_config=MINIMAL_CFG,
+            )
+        mock_auth.assert_called_once_with(MINIMAL_CFG, "slack:T1:U123")
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_anonymous_without_tool_context(self, mock_auth):
+        resp = _mock_http(200, json_data={"results": []})
+        with patch("httpx.AsyncClient") as mock_cls:
+            inst = AsyncMock()
+            inst.post.return_value = resp
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            await execute_powerbi_query(
+                "EVALUATE 'Table'", tool_config=MINIMAL_CFG
+            )
+        mock_auth.assert_called_once_with(MINIMAL_CFG, "anonymous")
+
+
+class TestUserCachePath:
+    def test_same_user_same_path(self):
+        p1 = _user_cache_path("/tmp/samv2/powerbi_msal_cache.json", "user-1")
+        p2 = _user_cache_path("/tmp/samv2/powerbi_msal_cache.json", "user-1")
+        assert p1 == p2
+
+    def test_different_users_different_paths(self):
+        p1 = _user_cache_path("/tmp/samv2/powerbi_msal_cache.json", "user-1")
+        p2 = _user_cache_path("/tmp/samv2/powerbi_msal_cache.json", "user-2")
+        assert p1 != p2
+
+    def test_preserves_extension_and_base(self):
+        p = _user_cache_path("/tmp/samv2/powerbi_msal_cache.json", "user-1")
+        assert p.startswith("/tmp/samv2/powerbi_msal_cache.")
+        assert p.endswith(".json")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
