@@ -253,6 +253,22 @@ class TestUserIdThreading:
             )
         mock_auth.assert_called_once_with(MINIMAL_CFG, "anonymous")
 
+    @pytest.mark.asyncio
+    async def test_logs_warning_without_tool_context(self, mock_auth, caplog):
+        resp = _mock_http(200, json_data={"results": []})
+        with patch("httpx.AsyncClient") as mock_cls:
+            inst = AsyncMock()
+            inst.post.return_value = resp
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            with caplog.at_level("WARNING", logger="sam_powerbi.tools"):
+                await execute_powerbi_query(
+                    "EVALUATE 'Table'", tool_config=MINIMAL_CFG
+                )
+        assert any(
+            "No tool_context" in record.message for record in caplog.records
+        )
+
 
 class TestUserCachePath:
     def test_same_user_same_path(self):

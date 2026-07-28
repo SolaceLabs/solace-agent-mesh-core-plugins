@@ -277,11 +277,12 @@ async def execute_powerbi_query(
     if err:
         return err
 
-    user_id = (
-        tool_context.session.user_id
-        if tool_context is not None
-        else ANONYMOUS_USER_ID
-    )
+    if tool_context is None:
+        logger.warning("[sam_powerbi] No tool_context — falling back to shared anonymous cache; per-user isolation is disabled")
+        user_id = ANONYMOUS_USER_ID
+    else:
+        user_id = tool_context.session.user_id
+
     auth = _get_auth(cfg, user_id)
     token, err = _get_token(auth, "Failed to acquire PowerBI token")
     if err:
