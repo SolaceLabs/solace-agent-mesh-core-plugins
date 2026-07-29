@@ -281,9 +281,9 @@ def _dispatch_response(resp: httpx.Response) -> Dict[str, Any]:
         return _handle_200_response(resp)
     if resp.status_code == 400:
         return _handle_400_response(resp)
+    error_info = _powerbi_error_info(resp)
     if resp.status_code == 429:
         retry_after = resp.headers.get("Retry-After", "unknown")
-        error_info = _powerbi_error_info(resp)
         return {
             "status": "error",
             "error_code": "RATE_LIMIT",
@@ -294,7 +294,6 @@ def _dispatch_response(resp: httpx.Response) -> Dict[str, Any]:
             "retry_after": retry_after,
             "powerbi_error_info": error_info,
         }
-    error_info = _powerbi_error_info(resp)
     return {
         "status": "error",
         "error_code": "REST_ERROR",
