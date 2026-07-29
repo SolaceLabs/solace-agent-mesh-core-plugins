@@ -1,0 +1,21 @@
+version: 3
+project:
+  locator: SolaceLabs_sam-mermaid
+  id: SolaceLabs_sam-mermaid
+  name: sam-mermaid
+  teams: []
+  labels:
+    - python
+vendoredDependencies:
+  forceRescans: false
+  scanMethod: CLILicenseScan
+  licenseScanPathFilters:
+    exclude:
+      - "./.git"
+      - "./.github"
+paths:
+  exclude:
+    - ./.git
+    - ./.github
+telemetry:
+  scope: full
