@@ -275,6 +275,38 @@ def _handle_400_response(resp: httpx.Response) -> Dict[str, Any]:
         return {"status": "error", "error_code": "DAX_ERROR", "message": resp.text[:500]}
 
 
+def _dispatch_response(resp: httpx.Response) -> Dict[str, Any]:
+    """Map a non-retried HTTP response to the tool's result dict, by status code."""
+    if resp.status_code == 200:
+        return _handle_200_response(resp)
+    if resp.status_code == 400:
+        return _handle_400_response(resp)
+    if resp.status_code == 429:
+        retry_after = resp.headers.get("Retry-After", "unknown")
+        error_info = _powerbi_error_info(resp)
+        return {
+            "status": "error",
+            "error_code": "RATE_LIMIT",
+            "message": (
+                f"PowerBI REST API rate limit exceeded (Retry-After: {retry_after}s). Wait before retrying."
+                + (f" X-PowerBI-Error-Info: {error_info}" if error_info else "")
+            ),
+            "retry_after": retry_after,
+            "powerbi_error_info": error_info,
+        }
+    error_info = _powerbi_error_info(resp)
+    return {
+        "status": "error",
+        "error_code": "REST_ERROR",
+        "message": (
+            f"HTTP {resp.status_code}: {resp.text[:500]}"
+            + (f" | X-PowerBI-Error-Info: {error_info}" if error_info else "")
+        ),
+        "http_status": resp.status_code,
+        "powerbi_error_info": error_info,
+    }
+
+
 def _validate_dax(dax_query: str) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
     """Validate and normalise a DAX query. Returns (dax, None) or (None, error_dict)."""
     if not dax_query or not dax_query.strip():
@@ -372,34 +404,7 @@ async def execute_powerbi_query(
         if err:
             return err
 
-        if resp.status_code == 200:
-            return _handle_200_response(resp)
-        if resp.status_code == 400:
-            return _handle_400_response(resp)
-        if resp.status_code == 429:
-            retry_after = resp.headers.get("Retry-After", "unknown")
-            error_info = _powerbi_error_info(resp)
-            return {
-                "status": "error",
-                "error_code": "RATE_LIMIT",
-                "message": (
-                    f"PowerBI REST API rate limit exceeded (Retry-After: {retry_after}s). Wait before retrying."
-                    + (f" X-PowerBI-Error-Info: {error_info}" if error_info else "")
-                ),
-                "retry_after": retry_after,
-                "powerbi_error_info": error_info,
-            }
-        error_info = _powerbi_error_info(resp)
-        return {
-            "status": "error",
-            "error_code": "REST_ERROR",
-            "message": (
-                f"HTTP {resp.status_code}: {resp.text[:500]}"
-                + (f" | X-PowerBI-Error-Info: {error_info}" if error_info else "")
-            ),
-            "http_status": resp.status_code,
-            "powerbi_error_info": error_info,
-        }
+        return _dispatch_response(resp)
 
     except httpx.TimeoutException:
         return {
