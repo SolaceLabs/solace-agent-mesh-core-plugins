@@ -166,6 +166,71 @@ def _get_token(
         return None, {"status": "error", "error_code": "AUTH_ERROR", "message": f"{error_prefix}: {e}"}
 
 
+async def _send_query_with_reauth(
+    auth: PowerBIAuth, endpoint: str, body: Dict[str, Any], token: str, timeout: float
+) -> tuple[Optional[httpx.Response], Optional[Dict[str, Any]]]:
+    """POST the query; on 401, force reauth and retry once.
+
+    Returns (response, None) on any non-terminal outcome (including a second
+    401 that the caller's status dispatch will report), or (None, error_dict)
+    if reauth itself failed.
+    """
+
+    async def _post(bearer: str) -> httpx.Response:
+        async with httpx.AsyncClient(timeout=timeout) as client_http:
+            return await client_http.post(
+                endpoint,
+                headers={
+                    "Authorization": f"Bearer {bearer}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+
+    resp = await _post(token)
+    if resp.status_code != 401:
+        return resp, None
+
+    error_info = _powerbi_error_info(resp)
+    logger.info(
+        "[sam_powerbi] 401 — forcing re-authentication%s",
+        f" (X-PowerBI-Error-Info: {error_info})" if error_info else "",
+    )
+    auth.force_reauth()
+    token, err = _get_token(auth, "Re-auth failed")
+    if err:
+        if error_info:
+            err["message"] = (
+                f"PowerBI rejected the previous token (X-PowerBI-Error-Info: "
+                f"{error_info}) before this new sign-in was requested — signing in "
+                f"again will not help if that reason is a permissions/access issue "
+                f"rather than an expired token. {err['message']}"
+            )
+            err["powerbi_error_info"] = error_info
+        return None, err
+
+    resp = await _post(token)
+    if resp.status_code == 401:
+        error_info = _powerbi_error_info(resp)
+        logger.warning(
+            "[sam_powerbi] Still 401 after re-authentication%s",
+            f" — X-PowerBI-Error-Info: {error_info}" if error_info else "",
+        )
+        return None, {
+            "status": "error",
+            "error_code": "AUTH_ERROR",
+            "message": (
+                "PowerBI rejected the freshly-acquired token (401 persists after "
+                "re-authentication). This usually means the AAD app registration is "
+                "missing consented PowerBI API permissions, or the signed-in user "
+                "lacks access to this workspace/dataset."
+                + (f" PowerBI-Error-Info: {error_info}" if error_info else "")
+            ),
+            "powerbi_error_info": error_info,
+        }
+    return resp, None
+
+
 def _handle_200_response(resp: httpx.Response) -> Dict[str, Any]:
     """Parse and format a 200 executeQueries response."""
     try:
@@ -302,58 +367,10 @@ async def execute_powerbi_query(
         "serializerSettings": {"includeNulls": True},
     }
 
-    async def _post(bearer: str) -> httpx.Response:
-        async with httpx.AsyncClient(timeout=timeout) as client_http:
-            return await client_http.post(
-                endpoint,
-                headers={
-                    "Authorization": f"Bearer {bearer}",
-                    "Content-Type": "application/json",
-                },
-                json=body,
-            )
-
     try:
-        resp = await _post(token)
-
-        if resp.status_code == 401:
-            error_info = _powerbi_error_info(resp)
-            logger.info(
-                "[sam_powerbi] 401 — forcing re-authentication%s",
-                f" (X-PowerBI-Error-Info: {error_info})" if error_info else "",
-            )
-            auth.force_reauth()
-            token, err = _get_token(auth, "Re-auth failed")
-            if err:
-                if error_info:
-                    err["message"] = (
-                        f"PowerBI rejected the previous token (X-PowerBI-Error-Info: "
-                        f"{error_info}) before this new sign-in was requested — signing in "
-                        f"again will not help if that reason is a permissions/access issue "
-                        f"rather than an expired token. {err['message']}"
-                    )
-                    err["powerbi_error_info"] = error_info
-                return err
-            resp = await _post(token)
-
-            if resp.status_code == 401:
-                error_info = _powerbi_error_info(resp)
-                logger.warning(
-                    "[sam_powerbi] Still 401 after re-authentication%s",
-                    f" — X-PowerBI-Error-Info: {error_info}" if error_info else "",
-                )
-                return {
-                    "status": "error",
-                    "error_code": "AUTH_ERROR",
-                    "message": (
-                        "PowerBI rejected the freshly-acquired token (401 persists after "
-                        "re-authentication). This usually means the AAD app registration is "
-                        "missing consented PowerBI API permissions, or the signed-in user "
-                        "lacks access to this workspace/dataset."
-                        + (f" PowerBI-Error-Info: {error_info}" if error_info else "")
-                    ),
-                    "powerbi_error_info": error_info,
-                }
+        resp, err = await _send_query_with_reauth(auth, endpoint, body, token, timeout)
+        if err:
+            return err
 
         if resp.status_code == 200:
             return _handle_200_response(resp)
