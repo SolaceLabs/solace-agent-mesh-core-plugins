@@ -328,6 +328,16 @@ def _validate_dax(dax_query: str) -> tuple[Optional[str], Optional[Dict[str, Any
     return dax, None
 
 
+def _resolve_user_id(tool_context: Optional[ToolContext]) -> str:
+    """Resolve the per-user cache key from tool_context, falling back to a shared anonymous identity."""
+    if tool_context is None:
+        logger.warning(
+            "[sam_powerbi] No tool_context — falling back to shared anonymous cache; per-user isolation is disabled"
+        )
+        return ANONYMOUS_USER_ID
+    return tool_context.session.user_id
+
+
 def _validate_request_config(cfg: Dict[str, Any]) -> tuple[Optional[tuple[str, str, float]], Optional[Dict[str, Any]]]:
     """Validate tool_config. Returns ((workspace_id, dataset_id, timeout), None) or (None, error_dict)."""
     try:
@@ -382,11 +392,7 @@ async def execute_powerbi_query(
     if err:
         return err
 
-    if tool_context is None:
-        logger.warning("[sam_powerbi] No tool_context — falling back to shared anonymous cache; per-user isolation is disabled")
-        user_id = ANONYMOUS_USER_ID
-    else:
-        user_id = tool_context.session.user_id
+    user_id = _resolve_user_id(tool_context)
 
     auth = _get_auth(cfg, user_id)
     token, err = _get_token(auth, "Failed to acquire PowerBI token")
