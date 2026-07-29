@@ -231,6 +231,20 @@ def _validate_dax(dax_query: str) -> tuple[Optional[str], Optional[Dict[str, Any
     return dax, None
 
 
+def _validate_request_config(cfg: Dict[str, Any]) -> tuple[Optional[tuple[str, str, float]], Optional[Dict[str, Any]]]:
+    """Validate tool_config. Returns ((workspace_id, dataset_id, timeout), None) or (None, error_dict)."""
+    try:
+        _require(cfg, "tenant_id")
+        _require(cfg, "client_id")
+        workspace_id = _require(cfg, "workspace_id")
+        dataset_id = _require(cfg, "dataset_id")
+    except ValueError as e:
+        logger.error("[sam_powerbi] %s", e)
+        return None, {"status": "error", "error_code": "CONFIG_ERROR", "message": str(e)}
+    timeout = float(cfg.get("rest_timeout_seconds") or 30)
+    return (workspace_id, dataset_id, timeout), None
+
+
 async def execute_powerbi_query(
     dax_query: str,
     tool_context: Optional[ToolContext] = None,
@@ -262,16 +276,10 @@ async def execute_powerbi_query(
     """
     cfg = tool_config or {}
 
-    try:
-        _require(cfg, "tenant_id")
-        _require(cfg, "client_id")
-        workspace_id = _require(cfg, "workspace_id")
-        dataset_id = _require(cfg, "dataset_id")
-    except ValueError as e:
-        logger.error("[sam_powerbi] %s", e)
-        return {"status": "error", "error_code": "CONFIG_ERROR", "message": str(e)}
-
-    timeout = float(cfg.get("rest_timeout_seconds") or 30)
+    config, err = _validate_request_config(cfg)
+    if err:
+        return err
+    workspace_id, dataset_id, timeout = config
 
     dax, err = _validate_dax(dax_query)
     if err:
