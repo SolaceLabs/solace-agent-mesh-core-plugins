@@ -197,7 +197,7 @@ async def _send_query_with_reauth(
         f" (X-PowerBI-Error-Info: {error_info})" if error_info else "",
     )
     auth.force_reauth()
-    token, err = _get_token(auth, "Re-auth failed")
+    new_token, err = _get_token(auth, "Re-auth failed")
     if err:
         if error_info:
             err["message"] = (
@@ -209,7 +209,7 @@ async def _send_query_with_reauth(
             err["powerbi_error_info"] = error_info
         return None, err
 
-    resp = await _post(token)
+    resp = await _post(new_token)
     if resp.status_code == 401:
         error_info = _powerbi_error_info(resp)
         logger.warning(
