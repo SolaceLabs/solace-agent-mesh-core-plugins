@@ -71,7 +71,7 @@ class PowerBIAuth:
         self,
         tenant_id: str,
         client_id: str,
-        token_cache_path: str = "/tmp/samv2/powerbi_msal_cache.json",
+        token_cache_path: str = os.path.expanduser("~/.cache/samv2/powerbi_msal_cache.json"),
     ):
         if not tenant_id:
             raise ValueError("tenant_id is required for PowerBIAuth")

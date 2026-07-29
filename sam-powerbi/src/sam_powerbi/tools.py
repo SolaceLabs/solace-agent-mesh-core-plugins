@@ -12,7 +12,7 @@ tool_config (populated from the agent YAML ``tool_config:`` block):
     dataset_id: PowerBI semantic-model GUID (required)
     rest_timeout_seconds: per-request HTTP timeout (default 30)
     token_cache_path: MSAL serializable cache file path
-                      (default /tmp/samv2/powerbi_msal_cache.json)
+                      (default ~/.cache/samv2/powerbi_msal_cache.json)
 
 Each SAM user gets their own delegated PowerBI token, cached in its own
 file derived from ``token_cache_path`` and the caller's ``user_id`` (from
@@ -73,7 +73,7 @@ def _require(cfg: Dict[str, Any], key: str) -> str:
 def _get_auth(cfg: Dict[str, Any], user_id: str) -> PowerBIAuth:
     tenant = _require(cfg, "tenant_id")
     client = _require(cfg, "client_id")
-    base_path = cfg.get("token_cache_path") or "/tmp/samv2/powerbi_msal_cache.json"
+    base_path = cfg.get("token_cache_path") or os.path.expanduser("~/.cache/samv2/powerbi_msal_cache.json")
     cache_path = _user_cache_path(base_path, user_id)
     key = (tenant, client, cache_path)
     with _auth_lock:

@@ -1,4 +1,6 @@
 """Unit tests for sam_powerbi.tools."""
+import os
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -146,7 +148,7 @@ class TestGetAuth:
                 tenant_id="tenant-123",
                 client_id="client-456",
                 token_cache_path=_user_cache_path(
-                    "/tmp/samv2/powerbi_msal_cache.json", "user-1"
+                    os.path.expanduser("~/.cache/samv2/powerbi_msal_cache.json"), "user-1"
                 ),
             )
 
