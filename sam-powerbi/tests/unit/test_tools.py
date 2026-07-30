@@ -765,18 +765,21 @@ class TestHTTPResponseHandling:
         assert "(truncated)" in r["message"]
 
     @pytest.mark.asyncio
-    async def test_custom_rest_timeout_passed_to_httpx(self):
+    async def test_custom_rest_timeout_passed_to_fail_after(self):
         cfg = {**MINIMAL_CFG, "rest_timeout_seconds": "7"}
         resp = _mock_http(200, json_data={"results": []})
 
-        with patch("httpx.AsyncClient") as mock_cls:
+        with patch("httpx.AsyncClient") as mock_cls, patch(
+            "sam_powerbi.tools.anyio.fail_after"
+        ) as mock_fail_after:
             inst = AsyncMock()
             inst.post.return_value = resp
             mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await execute_powerbi_query("EVALUATE 'T'", tool_config=cfg)
 
-        mock_cls.assert_called_with(timeout=7.0)
+        mock_cls.assert_called_with(timeout=None)
+        mock_fail_after.assert_called_with(7.0)
 
     @pytest.mark.asyncio
     async def test_unexpected_exception(self):

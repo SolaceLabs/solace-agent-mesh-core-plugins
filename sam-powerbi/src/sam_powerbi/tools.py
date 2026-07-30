@@ -32,6 +32,7 @@ import os
 import threading
 from typing import Any, Dict, Optional
 
+import anyio
 import httpx
 from google.adk.tools import ToolContext
 
@@ -177,15 +178,16 @@ async def _send_query_with_reauth(
     """
 
     async def _post(bearer: str) -> httpx.Response:
-        async with httpx.AsyncClient(timeout=timeout) as client_http:
-            return await client_http.post(
-                endpoint,
-                headers={
-                    "Authorization": f"Bearer {bearer}",
-                    "Content-Type": "application/json",
-                },
-                json=body,
-            )
+        async with httpx.AsyncClient(timeout=None) as client_http:
+            with anyio.fail_after(timeout):
+                return await client_http.post(
+                    endpoint,
+                    headers={
+                        "Authorization": f"Bearer {bearer}",
+                        "Content-Type": "application/json",
+                    },
+                    json=body,
+                )
 
     resp = await _post(token)
     if resp.status_code != 401:
@@ -411,7 +413,7 @@ async def execute_powerbi_query(
 
         return _dispatch_response(resp)
 
-    except httpx.TimeoutException:
+    except (httpx.TimeoutException, TimeoutError):
         return {
             "status": "error",
             "error_code": "TIMEOUT",
