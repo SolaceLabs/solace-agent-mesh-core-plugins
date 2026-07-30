@@ -168,26 +168,26 @@ def _get_token(
 
 
 async def _send_query_with_reauth(
-    auth: PowerBIAuth, endpoint: str, body: Dict[str, Any], token: str, timeout: float
+    auth: PowerBIAuth, endpoint: str, body: Dict[str, Any], token: str
 ) -> tuple[Optional[httpx.Response], Optional[Dict[str, Any]]]:
     """POST the query; on 401, force reauth and retry once.
 
     Returns (response, None) on any non-terminal outcome (including a second
     401 that the caller's status dispatch will report), or (None, error_dict)
-    if reauth itself failed.
+    if reauth itself failed. The caller is expected to bound the whole call
+    with a timeout context manager (e.g. anyio.fail_after).
     """
 
     async def _post(bearer: str) -> httpx.Response:
         async with httpx.AsyncClient(timeout=None) as client_http:
-            with anyio.fail_after(timeout):
-                return await client_http.post(
-                    endpoint,
-                    headers={
-                        "Authorization": f"Bearer {bearer}",
-                        "Content-Type": "application/json",
-                    },
-                    json=body,
-                )
+            return await client_http.post(
+                endpoint,
+                headers={
+                    "Authorization": f"Bearer {bearer}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
 
     resp = await _post(token)
     if resp.status_code != 401:
@@ -407,7 +407,8 @@ async def execute_powerbi_query(
     }
 
     try:
-        resp, err = await _send_query_with_reauth(auth, endpoint, body, token, timeout)
+        with anyio.fail_after(timeout):
+            resp, err = await _send_query_with_reauth(auth, endpoint, body, token)
         if err:
             return err
 
