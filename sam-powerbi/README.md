@@ -34,7 +34,7 @@ export AZURE_TENANT_ID="your azure tenant id"
 export POWERBI_CLIENT_ID="your powerBI client id"
 export POWERBI_WORKSPACE_ID="your powerBI workspace id"
 export POWERBI_SEMANTIC_MODEL_ID="your semantic model id"
-export POWERBI_TOKEN_CACHE="your location for your token-cahe, default /tmp/samv2/powerbi_msal_cache.json"
+export POWERBI_TOKEN_CACHE="your location for your token-cahe, default ~/.cache/samv2/powerbi_msal_cache.json"
 ```
 
 ## Build

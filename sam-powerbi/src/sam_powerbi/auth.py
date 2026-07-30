@@ -60,8 +60,10 @@ class PowerBIAuth:
     """
     Manages delegated PowerBI OAuth tokens via MSAL device-code flow.
 
-    One instance per (tenant_id, client_id, token_cache_path) tuple. Safe
-    for concurrent tool calls — all state transitions go through
+    One instance per (tenant_id, client_id, token_cache_path) tuple. Callers
+    (see tools._get_auth) derive a distinct token_cache_path per SAM user, so
+    in practice this means one instance — and one cached account — per user.
+    Safe for concurrent tool calls — all state transitions go through
     ``_token_lock``.
     """
 
@@ -69,7 +71,7 @@ class PowerBIAuth:
         self,
         tenant_id: str,
         client_id: str,
-        token_cache_path: str = "/tmp/samv2/powerbi_msal_cache.json",
+        token_cache_path: str = os.path.expanduser("~/.cache/samv2/powerbi_msal_cache.json"),
     ):
         if not tenant_id:
             raise ValueError("tenant_id is required for PowerBIAuth")
@@ -123,6 +125,8 @@ class PowerBIAuth:
         accounts = self._app.get_accounts()
         if not accounts:
             return None
+        # token_cache_path is per-user (see tools._user_cache_path), so this
+        # cache holds exactly one account — accounts[0] is unambiguous.
         result = self._app.acquire_token_silent([POWERBI_SCOPE], account=accounts[0])
         if result and "access_token" in result:
             self._save_cache()

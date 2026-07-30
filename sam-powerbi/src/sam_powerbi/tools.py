@@ -12,15 +12,27 @@ tool_config (populated from the agent YAML ``tool_config:`` block):
     dataset_id: PowerBI semantic-model GUID (required)
     rest_timeout_seconds: per-request HTTP timeout (default 30)
     token_cache_path: MSAL serializable cache file path
-                      (default /tmp/samv2/powerbi_msal_cache.json)
+                      (default ~/.cache/samv2/powerbi_msal_cache.json)
+
+Each SAM user gets their own delegated PowerBI token, cached in its own
+file derived from ``token_cache_path`` and the caller's ``user_id`` (from
+``tool_context.session.user_id``). This isolation is only as
+good as the gateway's identity: it requires the gateway to supply a real
+per-human user_id (e.g. Slack does this by default; REST/webhook/event-mesh
+gateways only do so if authentication is enforced and configured with a
+per-user claim — otherwise every caller collapses onto the same generic
+identity and shares one cached token). Check your gateway's auth config.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import os
 import threading
 from typing import Any, Dict, Optional
 
+import anyio
 import httpx
 from google.adk.tools import ToolContext
 
@@ -34,11 +46,20 @@ logger = logging.getLogger(__name__)
 
 POWERBI_REST_BASE = "https://api.powerbi.com/v1.0/myorg"
 
-# One PowerBIAuth per (tenant, client, cache_path) tuple. Built lazily on
-# first tool call so that a SAM install missing PowerBI env vars still
-# starts up cleanly and only fails when the tool is actually invoked.
+ANONYMOUS_USER_ID = "anonymous"
+
+# One PowerBIAuth per (tenant, client, per-user cache_path) tuple. Built
+# lazily on first tool call so that a SAM install missing PowerBI env vars
+# still starts up cleanly and only fails when the tool is actually invoked.
 _auth_cache: Dict[tuple, PowerBIAuth] = {}
 _auth_lock = threading.Lock()
+
+
+def _user_cache_path(base_path: str, user_id: str) -> str:
+    """Derive a per-user MSAL cache file path from the configured base path."""
+    root, ext = os.path.splitext(base_path)
+    user_key = hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:16]
+    return f"{root}.{user_key}{ext}"
 
 
 def _require(cfg: Dict[str, Any], key: str) -> str:
@@ -50,10 +71,11 @@ def _require(cfg: Dict[str, Any], key: str) -> str:
     return str(val)
 
 
-def _get_auth(cfg: Dict[str, Any]) -> PowerBIAuth:
+def _get_auth(cfg: Dict[str, Any], user_id: str) -> PowerBIAuth:
     tenant = _require(cfg, "tenant_id")
     client = _require(cfg, "client_id")
-    cache_path = cfg.get("token_cache_path") or "/tmp/samv2/powerbi_msal_cache.json"
+    base_path = cfg.get("token_cache_path") or os.path.expanduser("~/.cache/samv2/powerbi_msal_cache.json")
+    cache_path = _user_cache_path(base_path, user_id)
     key = (tenant, client, cache_path)
     with _auth_lock:
         auth = _auth_cache.get(key)
@@ -109,6 +131,16 @@ def _format_results_markdown(payload: Dict[str, Any], max_rows: int = 100) -> Di
     }
 
 
+def _powerbi_error_info(resp: httpx.Response) -> Optional[str]:
+    """Extract PowerBI's own diagnostic header, when present.
+
+    PowerBI's REST API often explains *why* a request failed (expired token,
+    missing consent, no workspace access, etc.) in this header even when the
+    HTTP status code alone (e.g. a bare 401) doesn't say.
+    """
+    return resp.headers.get("X-PowerBI-Error-Info") or None
+
+
 def _auth_required_response(pending: PowerBIAuthPending) -> Dict[str, Any]:
     return {
         "status": "error",
@@ -133,6 +165,72 @@ def _get_token(
         return None, _auth_required_response(pending)
     except PowerBIAuthError as e:
         return None, {"status": "error", "error_code": "AUTH_ERROR", "message": f"{error_prefix}: {e}"}
+
+
+async def _send_query_with_reauth(
+    auth: PowerBIAuth, endpoint: str, body: Dict[str, Any], token: str
+) -> tuple[Optional[httpx.Response], Optional[Dict[str, Any]]]:
+    """POST the query; on 401, force reauth and retry once.
+
+    Returns (response, None) on any non-terminal outcome (including a second
+    401 that the caller's status dispatch will report), or (None, error_dict)
+    if reauth itself failed. The caller is expected to bound the whole call
+    with a timeout context manager (e.g. anyio.fail_after).
+    """
+
+    async def _post(bearer: str) -> httpx.Response:
+        async with httpx.AsyncClient(timeout=None) as client_http:
+            return await client_http.post(
+                endpoint,
+                headers={
+                    "Authorization": f"Bearer {bearer}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+
+    resp = await _post(token)
+    if resp.status_code != 401:
+        return resp, None
+
+    error_info = _powerbi_error_info(resp)
+    logger.info(
+        "[sam_powerbi] 401 — forcing re-authentication%s",
+        f" (X-PowerBI-Error-Info: {error_info})" if error_info else "",
+    )
+    auth.force_reauth()
+    new_token, err = _get_token(auth, "Re-auth failed")
+    if err:
+        if error_info:
+            err["message"] = (
+                f"PowerBI rejected the previous token (X-PowerBI-Error-Info: "
+                f"{error_info}) before this new sign-in was requested — signing in "
+                f"again will not help if that reason is a permissions/access issue "
+                f"rather than an expired token. {err['message']}"
+            )
+            err["powerbi_error_info"] = error_info
+        return None, err
+
+    resp = await _post(new_token)
+    if resp.status_code == 401:
+        error_info = _powerbi_error_info(resp)
+        logger.warning(
+            "[sam_powerbi] Still 401 after re-authentication%s",
+            f" — X-PowerBI-Error-Info: {error_info}" if error_info else "",
+        )
+        return None, {
+            "status": "error",
+            "error_code": "AUTH_ERROR",
+            "message": (
+                "PowerBI rejected the freshly-acquired token (401 persists after "
+                "re-authentication). This usually means the AAD app registration is "
+                "missing consented PowerBI API permissions, or the signed-in user "
+                "lacks access to this workspace/dataset."
+                + (f" PowerBI-Error-Info: {error_info}" if error_info else "")
+            ),
+            "powerbi_error_info": error_info,
+        }
+    return resp, None
 
 
 def _handle_200_response(resp: httpx.Response) -> Dict[str, Any]:
@@ -179,6 +277,37 @@ def _handle_400_response(resp: httpx.Response) -> Dict[str, Any]:
         return {"status": "error", "error_code": "DAX_ERROR", "message": resp.text[:500]}
 
 
+def _dispatch_response(resp: httpx.Response) -> Dict[str, Any]:
+    """Map a non-retried HTTP response to the tool's result dict, by status code."""
+    if resp.status_code == 200:
+        return _handle_200_response(resp)
+    if resp.status_code == 400:
+        return _handle_400_response(resp)
+    error_info = _powerbi_error_info(resp)
+    if resp.status_code == 429:
+        retry_after = resp.headers.get("Retry-After", "unknown")
+        return {
+            "status": "error",
+            "error_code": "RATE_LIMIT",
+            "message": (
+                f"PowerBI REST API rate limit exceeded (Retry-After: {retry_after}s). Wait before retrying."
+                + (f" X-PowerBI-Error-Info: {error_info}" if error_info else "")
+            ),
+            "retry_after": retry_after,
+            "powerbi_error_info": error_info,
+        }
+    return {
+        "status": "error",
+        "error_code": "REST_ERROR",
+        "message": (
+            f"HTTP {resp.status_code}: {resp.text[:500]}"
+            + (f" | X-PowerBI-Error-Info: {error_info}" if error_info else "")
+        ),
+        "http_status": resp.status_code,
+        "powerbi_error_info": error_info,
+    }
+
+
 def _validate_dax(dax_query: str) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
     """Validate and normalise a DAX query. Returns (dax, None) or (None, error_dict)."""
     if not dax_query or not dax_query.strip():
@@ -198,6 +327,30 @@ def _validate_dax(dax_query: str) -> tuple[Optional[str], Optional[Dict[str, Any
             ),
         }
     return dax, None
+
+
+def _resolve_user_id(tool_context: Optional[ToolContext]) -> str:
+    """Resolve the per-user cache key from tool_context, falling back to a shared anonymous identity."""
+    if tool_context is None:
+        logger.warning(
+            "[sam_powerbi] No tool_context — falling back to shared anonymous cache; per-user isolation is disabled"
+        )
+        return ANONYMOUS_USER_ID
+    return tool_context.session.user_id
+
+
+def _validate_request_config(cfg: Dict[str, Any]) -> tuple[Optional[tuple[str, str, float]], Optional[Dict[str, Any]]]:
+    """Validate tool_config. Returns ((workspace_id, dataset_id, timeout), None) or (None, error_dict)."""
+    try:
+        _require(cfg, "tenant_id")
+        _require(cfg, "client_id")
+        workspace_id = _require(cfg, "workspace_id")
+        dataset_id = _require(cfg, "dataset_id")
+    except ValueError as e:
+        logger.error("[sam_powerbi] %s", e)
+        return None, {"status": "error", "error_code": "CONFIG_ERROR", "message": str(e)}
+    timeout = float(cfg.get("rest_timeout_seconds") or 30)
+    return (workspace_id, dataset_id, timeout), None
 
 
 async def execute_powerbi_query(
@@ -231,22 +384,18 @@ async def execute_powerbi_query(
     """
     cfg = tool_config or {}
 
-    try:
-        _require(cfg, "tenant_id")
-        _require(cfg, "client_id")
-        workspace_id = _require(cfg, "workspace_id")
-        dataset_id = _require(cfg, "dataset_id")
-    except ValueError as e:
-        logger.error("[sam_powerbi] %s", e)
-        return {"status": "error", "error_code": "CONFIG_ERROR", "message": str(e)}
-
-    timeout = float(cfg.get("rest_timeout_seconds") or 30)
+    config, err = _validate_request_config(cfg)
+    if err:
+        return err
+    workspace_id, dataset_id, timeout = config
 
     dax, err = _validate_dax(dax_query)
     if err:
         return err
 
-    auth = _get_auth(cfg)
+    user_id = _resolve_user_id(tool_context)
+
+    auth = _get_auth(cfg, user_id)
     token, err = _get_token(auth, "Failed to acquire PowerBI token")
     if err:
         return err
@@ -257,48 +406,15 @@ async def execute_powerbi_query(
         "serializerSettings": {"includeNulls": True},
     }
 
-    async def _post(bearer: str) -> httpx.Response:
-        async with httpx.AsyncClient(timeout=timeout) as client_http:
-            return await client_http.post(
-                endpoint,
-                headers={
-                    "Authorization": f"Bearer {bearer}",
-                    "Content-Type": "application/json",
-                },
-                json=body,
-            )
-
     try:
-        resp = await _post(token)
+        with anyio.fail_after(timeout):
+            resp, err = await _send_query_with_reauth(auth, endpoint, body, token)
+        if err:
+            return err
 
-        if resp.status_code == 401:
-            logger.info("[sam_powerbi] 401 — forcing re-authentication")
-            auth.force_reauth()
-            token, err = _get_token(auth, "Re-auth failed")
-            if err:
-                return err
-            resp = await _post(token)
+        return _dispatch_response(resp)
 
-        if resp.status_code == 200:
-            return _handle_200_response(resp)
-        if resp.status_code == 400:
-            return _handle_400_response(resp)
-        if resp.status_code == 429:
-            retry_after = resp.headers.get("Retry-After", "unknown")
-            return {
-                "status": "error",
-                "error_code": "RATE_LIMIT",
-                "message": f"PowerBI REST API rate limit exceeded (Retry-After: {retry_after}s). Wait before retrying.",
-                "retry_after": retry_after,
-            }
-        return {
-            "status": "error",
-            "error_code": "REST_ERROR",
-            "message": f"HTTP {resp.status_code}: {resp.text[:500]}",
-            "http_status": resp.status_code,
-        }
-
-    except httpx.TimeoutException:
+    except (httpx.TimeoutException, TimeoutError):
         return {
             "status": "error",
             "error_code": "TIMEOUT",

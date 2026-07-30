@@ -1,4 +1,6 @@
 """Unit tests for sam_powerbi.tools."""
+import os
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -7,6 +9,7 @@ import httpx
 from sam_powerbi.tools import (
     _require,
     _get_auth,
+    _user_cache_path,
     _format_results_markdown,
     execute_powerbi_query,
     _auth_cache,
@@ -140,18 +143,20 @@ class TestGetAuth:
     def test_creates_powerbi_auth_with_correct_args(self):
         with patch("sam_powerbi.tools.PowerBIAuth") as mock_cls:
             mock_cls.return_value = MagicMock()
-            _get_auth(MINIMAL_CFG)
+            _get_auth(MINIMAL_CFG, "user-1")
             mock_cls.assert_called_once_with(
                 tenant_id="tenant-123",
                 client_id="client-456",
-                token_cache_path="/tmp/samv2/powerbi_msal_cache.json",
+                token_cache_path=_user_cache_path(
+                    os.path.expanduser("~/.cache/samv2/powerbi_msal_cache.json"), "user-1"
+                ),
             )
 
     def test_caches_instance_for_same_key(self):
         with patch("sam_powerbi.tools.PowerBIAuth") as mock_cls:
             mock_cls.return_value = MagicMock()
-            r1 = _get_auth(MINIMAL_CFG)
-            r2 = _get_auth(MINIMAL_CFG)
+            r1 = _get_auth(MINIMAL_CFG, "user-1")
+            r2 = _get_auth(MINIMAL_CFG, "user-1")
             assert r1 is r2
             mock_cls.assert_called_once()
 
@@ -159,20 +164,32 @@ class TestGetAuth:
         with patch("sam_powerbi.tools.PowerBIAuth") as mock_cls:
             auth_a, auth_b = MagicMock(), MagicMock()
             mock_cls.side_effect = [auth_a, auth_b]
-            r1 = _get_auth({**MINIMAL_CFG, "tenant_id": "tenant-A"})
-            r2 = _get_auth({**MINIMAL_CFG, "tenant_id": "tenant-B"})
+            r1 = _get_auth({**MINIMAL_CFG, "tenant_id": "tenant-A"}, "user-1")
+            r2 = _get_auth({**MINIMAL_CFG, "tenant_id": "tenant-B"}, "user-1")
             assert r1 is auth_a
             assert r2 is auth_b
+
+    def test_different_users_get_different_instances(self):
+        with patch("sam_powerbi.tools.PowerBIAuth") as mock_cls:
+            auth_a, auth_b = MagicMock(), MagicMock()
+            mock_cls.side_effect = [auth_a, auth_b]
+            r1 = _get_auth(MINIMAL_CFG, "user-1")
+            r2 = _get_auth(MINIMAL_CFG, "user-2")
+            assert r1 is auth_a
+            assert r2 is auth_b
+            assert mock_cls.call_args_list[0].kwargs["token_cache_path"] != (
+                mock_cls.call_args_list[1].kwargs["token_cache_path"]
+            )
 
     def test_uses_custom_cache_path(self):
         cfg = {**MINIMAL_CFG, "token_cache_path": "/custom/path.json"}
         with patch("sam_powerbi.tools.PowerBIAuth") as mock_cls:
             mock_cls.return_value = MagicMock()
-            _get_auth(cfg)
+            _get_auth(cfg, "user-1")
             mock_cls.assert_called_once_with(
                 tenant_id="tenant-123",
                 client_id="client-456",
-                token_cache_path="/custom/path.json",
+                token_cache_path=_user_cache_path("/custom/path.json", "user-1"),
             )
 
 
@@ -190,6 +207,86 @@ class TestConfigValidation:
     async def test_none_tool_config_treated_as_empty(self):
         r = await execute_powerbi_query("EVALUATE ROW(\"x\", 1)", tool_config=None)
         assert r["error_code"] == "CONFIG_ERROR"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# execute_powerbi_query — per-user identity threading
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestUserIdThreading:
+    @pytest.fixture(autouse=True)
+    def mock_auth(self):
+        with patch("sam_powerbi.tools._get_auth") as m:
+            auth = MagicMock()
+            auth.get_token_or_start_device_flow.return_value = "fake-token"
+            m.return_value = auth
+            yield m
+
+    def _tool_context(self, user_id):
+        ctx = MagicMock()
+        ctx.session.user_id = user_id
+        return ctx
+
+    @pytest.mark.asyncio
+    async def test_passes_tool_context_user_id_to_get_auth(self, mock_auth):
+        resp = _mock_http(200, json_data={"results": []})
+        with patch("httpx.AsyncClient") as mock_cls:
+            inst = AsyncMock()
+            inst.post.return_value = resp
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            await execute_powerbi_query(
+                "EVALUATE 'Table'",
+                tool_context=self._tool_context("slack:T1:U123"),
+                tool_config=MINIMAL_CFG,
+            )
+        mock_auth.assert_called_once_with(MINIMAL_CFG, "slack:T1:U123")
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_anonymous_without_tool_context(self, mock_auth):
+        resp = _mock_http(200, json_data={"results": []})
+        with patch("httpx.AsyncClient") as mock_cls:
+            inst = AsyncMock()
+            inst.post.return_value = resp
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            await execute_powerbi_query(
+                "EVALUATE 'Table'", tool_config=MINIMAL_CFG
+            )
+        mock_auth.assert_called_once_with(MINIMAL_CFG, "anonymous")
+
+    @pytest.mark.asyncio
+    async def test_logs_warning_without_tool_context(self, mock_auth, caplog):
+        resp = _mock_http(200, json_data={"results": []})
+        with patch("httpx.AsyncClient") as mock_cls:
+            inst = AsyncMock()
+            inst.post.return_value = resp
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            with caplog.at_level("WARNING", logger="sam_powerbi.tools"):
+                await execute_powerbi_query(
+                    "EVALUATE 'Table'", tool_config=MINIMAL_CFG
+                )
+        assert any(
+            "No tool_context" in record.message for record in caplog.records
+        )
+
+
+class TestUserCachePath:
+    def test_same_user_same_path(self):
+        p1 = _user_cache_path("/tmp/samv2/powerbi_msal_cache.json", "user-1")
+        p2 = _user_cache_path("/tmp/samv2/powerbi_msal_cache.json", "user-1")
+        assert p1 == p2
+
+    def test_different_users_different_paths(self):
+        p1 = _user_cache_path("/tmp/samv2/powerbi_msal_cache.json", "user-1")
+        p2 = _user_cache_path("/tmp/samv2/powerbi_msal_cache.json", "user-2")
+        assert p1 != p2
+
+    def test_preserves_extension_and_base(self):
+        p = _user_cache_path("/tmp/samv2/powerbi_msal_cache.json", "user-1")
+        assert p.startswith("/tmp/samv2/powerbi_msal_cache.")
+        assert p.endswith(".json")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -345,6 +442,40 @@ class TestAuthFlow:
         assert r["error_code"] == "AUTH_REQUIRED"
 
     @pytest.mark.asyncio
+    async def test_401_retry_triggers_new_device_flow_carries_error_info(self):
+        """Regression: the reason for the original 401 (e.g. GroupNotAccessible)
+        must survive into the AUTH_REQUIRED response, not just server logs —
+        otherwise the LLM/user only ever sees "sign in again" with no clue
+        that re-authenticating alone won't fix a permissions/access problem.
+        """
+        pending = PowerBIAuthPending(
+            verification_uri="https://aka.ms/devicelogin",
+            user_code="XYZ",
+            expires_in=900,
+            message="Sign in",
+        )
+        resp_401 = _mock_http(
+            401, headers={"X-PowerBI-Error-Info": "GroupNotAccessible"}
+        )
+
+        with patch("sam_powerbi.tools._get_auth") as m:
+            auth = MagicMock()
+            auth.get_token_or_start_device_flow.side_effect = ["token", pending]
+            m.return_value = auth
+
+            with patch("httpx.AsyncClient") as mock_cls:
+                inst = AsyncMock()
+                inst.post.return_value = resp_401
+                mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+                mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+                r = await execute_powerbi_query("EVALUATE 'T'", tool_config=MINIMAL_CFG)
+
+        assert r["error_code"] == "AUTH_REQUIRED"
+        assert "GroupNotAccessible" in r["message"]
+        assert r["powerbi_error_info"] == "GroupNotAccessible"
+
+    @pytest.mark.asyncio
     async def test_401_retry_triggers_auth_error(self):
         resp_401 = _mock_http(401)
 
@@ -367,6 +498,50 @@ class TestAuthFlow:
 
         assert r["error_code"] == "AUTH_ERROR"
         assert "re-auth failed" in r["message"]
+
+    @pytest.mark.asyncio
+    async def test_persistent_401_surfaces_powerbi_error_info(self):
+        resp_401 = _mock_http(
+            401, text="Unauthorized", headers={"X-PowerBI-Error-Info": "TokenExpired"}
+        )
+
+        with patch("sam_powerbi.tools._get_auth") as m:
+            auth = MagicMock()
+            auth.get_token_or_start_device_flow.return_value = "token"
+            m.return_value = auth
+
+            with patch("httpx.AsyncClient") as mock_cls:
+                inst = AsyncMock()
+                inst.post.return_value = resp_401
+                mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+                mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+                r = await execute_powerbi_query("EVALUATE 'T'", tool_config=MINIMAL_CFG)
+
+        assert r["error_code"] == "AUTH_ERROR"
+        assert "TokenExpired" in r["message"]
+        assert r["powerbi_error_info"] == "TokenExpired"
+        auth.force_reauth.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_persistent_401_without_header_omits_error_info(self):
+        resp_401 = _mock_http(401, text="Unauthorized")
+
+        with patch("sam_powerbi.tools._get_auth") as m:
+            auth = MagicMock()
+            auth.get_token_or_start_device_flow.return_value = "token"
+            m.return_value = auth
+
+            with patch("httpx.AsyncClient") as mock_cls:
+                inst = AsyncMock()
+                inst.post.return_value = resp_401
+                mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+                mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+                r = await execute_powerbi_query("EVALUATE 'T'", tool_config=MINIMAL_CFG)
+
+        assert r["error_code"] == "AUTH_ERROR"
+        assert "PowerBI-Error-Info" not in r["message"]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -487,6 +662,24 @@ class TestHTTPResponseHandling:
         assert r["retry_after"] == "60"
 
     @pytest.mark.asyncio
+    async def test_429_rate_limit_includes_powerbi_error_info_header(self):
+        resp = _mock_http(
+            429,
+            text="Too Many Requests",
+            headers={"Retry-After": "60", "X-PowerBI-Error-Info": "TooManyRequests"},
+        )
+
+        with patch("httpx.AsyncClient") as mock_cls:
+            inst = AsyncMock()
+            inst.post.return_value = resp
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            r = await execute_powerbi_query("EVALUATE 'T'", tool_config=MINIMAL_CFG)
+
+        assert r["error_code"] == "RATE_LIMIT"
+        assert "TooManyRequests" in r["message"]
+
+    @pytest.mark.asyncio
     async def test_503_rest_error(self):
         resp = _mock_http(503, text="Service Unavailable")
 
@@ -499,6 +692,24 @@ class TestHTTPResponseHandling:
 
         assert r["error_code"] == "REST_ERROR"
         assert "503" in r["message"]
+
+    @pytest.mark.asyncio
+    async def test_rest_error_includes_powerbi_error_info_header(self):
+        resp = _mock_http(
+            503,
+            text="Service Unavailable",
+            headers={"X-PowerBI-Error-Info": "InternalServerError"},
+        )
+
+        with patch("httpx.AsyncClient") as mock_cls:
+            inst = AsyncMock()
+            inst.post.return_value = resp
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            r = await execute_powerbi_query("EVALUATE 'T'", tool_config=MINIMAL_CFG)
+
+        assert r["error_code"] == "REST_ERROR"
+        assert "InternalServerError" in r["message"]
 
     @pytest.mark.asyncio
     async def test_timeout_exception(self):
@@ -554,18 +765,21 @@ class TestHTTPResponseHandling:
         assert "(truncated)" in r["message"]
 
     @pytest.mark.asyncio
-    async def test_custom_rest_timeout_passed_to_httpx(self):
+    async def test_custom_rest_timeout_passed_to_fail_after(self):
         cfg = {**MINIMAL_CFG, "rest_timeout_seconds": "7"}
         resp = _mock_http(200, json_data={"results": []})
 
-        with patch("httpx.AsyncClient") as mock_cls:
+        with patch("httpx.AsyncClient") as mock_cls, patch(
+            "sam_powerbi.tools.anyio.fail_after"
+        ) as mock_fail_after:
             inst = AsyncMock()
             inst.post.return_value = resp
             mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await execute_powerbi_query("EVALUATE 'T'", tool_config=cfg)
 
-        mock_cls.assert_called_with(timeout=7.0)
+        mock_cls.assert_called_with(timeout=None)
+        mock_fail_after.assert_called_with(7.0)
 
     @pytest.mark.asyncio
     async def test_unexpected_exception(self):
