@@ -18,10 +18,6 @@ on:
         required: false
       FOSSA_API_KEY:
         required: true
-      SONARQUBE_TOKEN:
-        required: true
-      SONARQUBE_HOST_URL:
-        required: true
   workflow_dispatch:
     inputs:
       plugin_directory:
@@ -64,7 +60,6 @@ jobs:
   build-plugin:
     runs-on: ubuntu-latest
     outputs:
-      sonarqube_status: ${{ steps.record-sonar-result.outputs.status }}
       plugin_directory: ${{ inputs.plugin_directory }}
     steps:
       - name: Checkout
@@ -150,7 +145,7 @@ jobs:
 
           echo "tests_present=true" >> $GITHUB_OUTPUT
 
-          # Keep file paths relative so Sonar running in a container can parse coverage.xml.
+          # Keep file paths relative so coverage tooling running in a container can parse coverage.xml.
           printf "[run]\nrelative_files = True\n" > .coveragerc
 
           echo "Running tests with coverage and CTRF output..."
@@ -176,34 +171,30 @@ jobs:
 
           exit "$TEST_RC"
 
-      - name: Verify SonarQube plugin config
-        run: |
-          if [[ ! -f "${{ inputs.plugin_directory }}/sonar-project.properties" ]]; then
-            echo "Missing sonar-project.properties in ${{ inputs.plugin_directory }}"
-            exit 1
-          fi
-
-      - name: SonarQube Scan
-        id: sonarqube-scan
-        continue-on-error: true
-        uses: sonarsource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9 # v7.0.0
-        env:
-          SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
+      - name: Code Coverage Summary
+        if: ${{ steps.test.outputs.coverage_exists == 'true' }}
+        uses: irongut/CodeCoverageSummary@51cc3a756ddcd398d447c044c02cb6aa83fdae95 # v1.3.0
         with:
-          projectBaseDir: ${{ inputs.plugin_directory }}
-          args: >
-            -Dsonar.pullrequest.github.summary_comment=false
-            -Dsonar.scm.disabled=true
-            -Dsonar.qualitygate.wait=true
+          filename: ${{ inputs.plugin_directory }}/coverage.xml
+          badge: true
+          format: markdown
+          output: both
+          thresholds: "50 75"
 
-      - name: Record SonarQube Result
-        id: record-sonar-result
-        if: always()
+      - name: Add Coverage Summary to Job Summary
+        if: ${{ steps.test.outputs.coverage_exists == 'true' }}
         run: |
-          echo "Plugin: ${{ inputs.plugin_directory }}"
-          echo "SonarQube scan outcome: ${{ steps.sonarqube-scan.outcome }}"
-          echo "status=${{ steps.sonarqube-scan.outcome }}" >> $GITHUB_OUTPUT
+          echo "## Coverage - ${{ inputs.plugin_directory }}" >> "$GITHUB_STEP_SUMMARY"
+          cat code-coverage-results.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post Coverage Comment
+        if: ${{ github.event_name == 'pull_request' && steps.test.outputs.coverage_exists == 'true' }}
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: coverage-${{ inputs.plugin_directory }}
+          title: "Coverage - ${{ inputs.plugin_directory }}"
+          recreate: true
+          path: code-coverage-results.md
 
       - name: Build package distributions
         id: build-package
@@ -356,7 +347,6 @@ jobs:
           revision: ${{ steps.fossa_target.outputs.revision }}
           sha: ${{ steps.get-sha.outputs.sha }}
           github_event: ${{ github.event_name }}
-          sonarqube_result: ${{ steps.sonarqube-scan.outcome }}
           unit_test_result: ${{ steps.unit_test_status.outputs.status }}
           unit_test_outcome: ${{ steps.test.outcome }}
           unit_test_report_path: ${{ inputs.plugin_directory }}/report.json
