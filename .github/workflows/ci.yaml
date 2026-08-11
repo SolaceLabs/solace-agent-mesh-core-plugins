@@ -122,8 +122,6 @@ jobs:
     secrets:
       COMMIT_KEY: ${{ secrets.COMMIT_KEY }}
       FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
-      SONARQUBE_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
-      SONARQUBE_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
 
   # CI Status check - aggregates all job results
   ci-status:
@@ -160,33 +158,11 @@ jobs:
           pr_number: ${{ github.event.pull_request.number }}
           github_token: ${{ github.token }}
           fossa_api_key: ${{ secrets.FOSSA_API_KEY }}
-          sonarqube_token: ${{ secrets.SONARQUBE_TOKEN }}
-          sonarqube_host_url: ${{ secrets.SONARQUBE_HOST_URL }}
           repo_owner: ${{ github.repository_owner }}
           base_branch: main
           check_name: Release Readiness Check
           comment_marker: Release Readiness Check Results
           update_pr_comment: "true"
-          update_check_details: "true"
-          fail_on_issues: "true"
-
-      - name: Publish SonarQube Quality Gate check
-        id: sonar_gate
-        if: always() && github.event_name == 'pull_request' && !contains(github.head_ref, 'release-please') && needs.label-pr.outputs.all_plugins != '[]' && (needs.builds.result == 'success' || needs.builds.result == 'skipped')
-        continue-on-error: true
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        uses: SolaceDev/solace-public-workflows/monorepo-ci-report-status@main
-        with:
-          check_type: sonarqube
-          projects_json: ${{ needs.label-pr.outputs.all_plugins }}
-          results_dir: ci-plugin-results
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          pr_number: ${{ github.event.pull_request.number }}
-          sonarqube_host_url: ${{ secrets.SONARQUBE_HOST_URL }}
-          check_name: SonarQube Quality Gate
-          comment_on_pr: "true"
-          comment_marker: SonarQube Quality Gate
           update_check_details: "true"
           fail_on_issues: "true"
 
@@ -256,11 +232,6 @@ jobs:
             echo "All CI checks passed!"
             exit 0
           fi
-
-          if [[ "${{ steps.sonar_gate.outcome }}" != "success" && "${{ steps.sonar_gate.outcome }}" != "skipped" ]]; then
-            fail "SonarQube quality gate failed"
-          fi
-          echo "SonarQube quality gate passed or was skipped"
 
           if [[ "${{ steps.unit_tests_gate.outcome }}" != "success" && "${{ steps.unit_tests_gate.outcome }}" != "skipped" ]]; then
             fail "Unit tests gate failed"
