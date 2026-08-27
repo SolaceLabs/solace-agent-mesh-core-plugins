@@ -19,6 +19,7 @@ readme = "README.md"
 license = { text = "Apache License 2.0" }
 requires-python = ">=3.10.16,<3.14"
 classifiers = [
+    "Development Status :: 7 - Inactive",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
