@@ -19,6 +19,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
 ]
+classifiers = [
+    "Development Status :: 7 - Inactive",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sam_event_mesh_agent"]

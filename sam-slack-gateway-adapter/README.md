@@ -1,3 +1,14 @@
+> [!WARNING]
+> ## Solace Agent Mesh plugins in Python are now deprecated
+>
+> 👋 Thank you to everyone who's used the Solace Agent Mesh plugins! This Python version is now **deprecated** — it's no longer under active development and won't receive new features, bug fixes or security updates.
+>
+> 🚀 **Check out the new version of Solace Agent Mesh** → https://docs.solace.com/Agent-Mesh/agent-mesh.htm
+>
+> 🖥️ A free edition of the Solace Agent Mesh desktop app is available: https://solace.com/products/agent-mesh/download/
+>
+> These packages remain installable; the repository will be archived (read-only) for reference.
+
 # Slack Gateway Adapter SAM Plugin
 
 This plugin provides a Slack gateway adapter for the Solace Agent Mesh framework using the new generic gateway framework. It allows you to interact with Slack channels and messages, enabling bi-directional communication between Slack users and SAM agents.

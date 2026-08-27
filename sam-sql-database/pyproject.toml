@@ -24,6 +24,9 @@ dependencies = [
     "pydantic==2.12.5",
     "PyYAML==6.0.2"
 ]
+classifiers = [
+    "Development Status :: 7 - Inactive",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sam_sql_database"]
