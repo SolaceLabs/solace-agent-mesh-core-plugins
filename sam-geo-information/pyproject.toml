@@ -21,6 +21,9 @@ dependencies = [
     "requests==2.33.0",
     "PyYAML==6.0.2"
 ]
+classifiers = [
+    "Development Status :: 7 - Inactive",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sam_geo_information"]
