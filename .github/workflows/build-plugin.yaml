@@ -94,7 +94,8 @@ jobs:
         id: setup-uv
         uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
       - name: Install Hatch
-        run: uv tool install hatch
+        # hatchling>=1.32 defaults core metadata to 2.5, which current PyPI upload tooling rejects
+        run: uv tool install --with "hatchling<1.32" hatch
       - name: Create Hatch Environment
         working-directory: ${{ inputs.plugin_directory }}
         run: hatch -v env create "${{ steps.test-runtime.outputs.hatch_test_env }}"
