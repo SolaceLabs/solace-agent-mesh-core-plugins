@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.8](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_sql_database_tool-0.3.7...sam_sql_database_tool-0.3.8) (2026-08-28)
+
+
+### Bug Fixes
+
+* pin hatchling below 1.32 to avoid core-metadata 2.5 upload breakage ([#185](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues/185)) ([8c6e0e0](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/commit/8c6e0e045d070acfd9985b84bbd391496ffc52bb))
+
 ## [0.3.7](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_sql_database_tool-0.3.6...sam_sql_database_tool-0.3.7) (2026-08-28)
 
 

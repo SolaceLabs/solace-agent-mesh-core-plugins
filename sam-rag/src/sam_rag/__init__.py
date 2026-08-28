@@ -1,3 +1,3 @@
 """SAM RAG Plugin for Solace Agent Mesh."""
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
