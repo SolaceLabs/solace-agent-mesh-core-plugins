@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.7](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_sql_database_tool-0.3.6...sam_sql_database_tool-0.3.7) (2026-08-28)
+
+
+### Bug Fixes
+
+* deprecate SAM v1 — banner, classifier, docs (DATAGO-147013) [13db4608] ([#184](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues/184)) ([bd806fb](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/commit/bd806fbc1b99a337d78f98b1baa9a78877538fb4))
+
 ## [0.3.6](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_sql_database_tool-0.3.5...sam_sql_database_tool-0.3.6) (2026-05-11)
 
 

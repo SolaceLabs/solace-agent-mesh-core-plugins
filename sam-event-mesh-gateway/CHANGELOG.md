@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_event_mesh_gateway-1.1.0...sam_event_mesh_gateway-1.1.1) (2026-08-28)
+
+
+### Bug Fixes
+
+* deprecate SAM v1 — banner, classifier, docs (DATAGO-147013) [13db4608] ([#184](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues/184)) ([bd806fb](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/commit/bd806fbc1b99a337d78f98b1baa9a78877538fb4))
+
 ## [1.1.0](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_event_mesh_gateway-1.0.0...sam_event_mesh_gateway-1.1.0) (2026-04-02)
 
 

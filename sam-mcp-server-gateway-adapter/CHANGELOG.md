@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_mcp_server_gateway_adapter-0.1.3...sam_mcp_server_gateway_adapter-0.1.4) (2026-08-28)
+
+
+### Bug Fixes
+
+* deprecate SAM v1 — banner, classifier, docs (DATAGO-147013) [13db4608] ([#184](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues/184)) ([bd806fb](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/commit/bd806fbc1b99a337d78f98b1baa9a78877538fb4))
+
 ## [0.1.3](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_mcp_server_gateway_adapter-0.1.2...sam_mcp_server_gateway_adapter-0.1.3) (2026-07-20)
 
 
