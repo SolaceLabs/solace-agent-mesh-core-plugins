@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_nuclia_tool-0.1.5...sam_nuclia_tool-0.1.6) (2026-08-28)
+
+
+### Bug Fixes
+
+* pin hatchling below 1.32 to avoid core-metadata 2.5 upload breakage ([#185](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/issues/185)) ([8c6e0e0](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/commit/8c6e0e045d070acfd9985b84bbd391496ffc52bb))
+
 ## [0.1.5](https://github.com/SolaceLabs/solace-agent-mesh-core-plugins/compare/sam_nuclia_tool-0.1.4...sam_nuclia_tool-0.1.5) (2026-08-28)
 
 

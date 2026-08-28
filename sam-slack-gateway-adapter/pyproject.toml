@@ -10,7 +10,7 @@ type = "gateway"
 
 [project]
 name = "sam_slack_gateway_adapter"
-version = "0.1.3"
+version = "0.1.4"
 authors = [
   { name="SolaceLabs", email="solacelabs@solace.com" },
 ]
