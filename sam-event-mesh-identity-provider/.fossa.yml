@@ -1,0 +1,21 @@
+version: 3
+project:
+  locator: SolaceLabs_sam-event-mesh-identity-provider
+  id: SolaceLabs_sam-event-mesh-identity-provider
+  name: sam-event-mesh-identity-provider
+  teams: []
+  labels:
+    - python
+vendoredDependencies:
+  forceRescans: false
+  scanMethod: CLILicenseScan
+  licenseScanPathFilters:
+    exclude:
+      - "./.git"
+      - "./.github"
+paths:
+  exclude:
+    - ./.git
+    - ./.github
+telemetry:
+  scope: full
