@@ -397,7 +397,8 @@ class RestGatewayComponent(BaseGatewayComponent):
             log.debug(
                 "%s Storing final task result in cache for v2 polling.", log_id_prefix
             )
-            self.result_cache.set(task_id, final_task_dict, ttl=600)
+            ttl = self.get_config("result_cache_ttl_seconds", 600)
+            self.result_cache.set(task_id, final_task_dict, ttl=ttl)
 
     async def _send_error_to_external(
         self, external_request_context: Dict[str, Any], error_data: JSONRPCError
@@ -445,6 +446,7 @@ class RestGatewayComponent(BaseGatewayComponent):
                 log_id_prefix,
                 a2a.get_error_message(error_data),
             )
+            ttl = self.get_config("result_cache_ttl_seconds", 600)
             self.result_cache.set(
-                task_id, error_data.model_dump(exclude_none=True), ttl=600
+                task_id, error_data.model_dump(exclude_none=True), ttl=ttl
             )

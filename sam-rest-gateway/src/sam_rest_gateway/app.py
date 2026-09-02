@@ -56,6 +56,20 @@ class RestGatewayApp(BaseGatewayApp):
             "description": "Timeout in seconds for synchronous v1 API calls.",
         },
         {
+            "name": "persist_results_after_poll",
+            "required": False,
+            "type": "boolean",
+            "default": False,
+            "description": "If true, results remain cached after polling (allows multiple polls).",
+        },
+        {
+            "name": "result_cache_ttl_seconds",
+            "required": False,
+            "type": "integer",
+            "default": 600,
+            "description": "How long results remain in cache (in seconds).",
+        },
+        {
             "name": "enforce_authentication",
             "required": False,
             "type": "boolean",
