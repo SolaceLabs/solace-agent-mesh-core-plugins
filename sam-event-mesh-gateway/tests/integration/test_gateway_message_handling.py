@@ -138,7 +138,7 @@ class TestExtractInitialClaims:
         handler_config = {
             "name": "test_handler",
             "user_identity_expression": "input.user_properties:user_id",
-            "default_user_identity": "anonymous_user",
+            "default_user_identity": "sam_dev_user",
         }
 
         external_event_data = {
@@ -149,7 +149,7 @@ class TestExtractInitialClaims:
         result = await event_mesh_gateway_component._extract_initial_claims(external_event_data)
 
         assert result is not None
-        assert result["id"] == "anonymous_user"
+        assert result["id"] == "sam_dev_user"
         assert result["source"] == "configured_default"
 
 

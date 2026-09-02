@@ -159,7 +159,7 @@ class TestExtractInitialClaims:
 
         handler_config = {
             "name": "test_handler",
-            "default_user_identity": "anonymous_user",
+            "default_user_identity": "sam_dev_user",
             # No user_identity_expression
         }
 
@@ -171,7 +171,7 @@ class TestExtractInitialClaims:
         result = await mock_gateway_component._extract_initial_claims(external_event_data)
 
         assert result is not None
-        assert result["id"] == "anonymous_user"
+        assert result["id"] == "sam_dev_user"
         assert result["source"] == "configured_default"
 
     @pytest.mark.asyncio
