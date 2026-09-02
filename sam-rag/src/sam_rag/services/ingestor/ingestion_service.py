@@ -155,13 +155,14 @@ class IngestionService(IngestionBase):
                 "message": f"Successfully ingested {len(document_ids)} points into vector database",
                 "document_ids": document_ids,
             }
-        except Exception:
-            error_msg = "Error storing embeddings in vector database."
+        except Exception as e:
+            error_msg = f"Error storing embeddings in vector database: {str(e)}"
             logger.error(error_msg)
             return {
-                "success": False,
-                "message": error_msg,
-                "document_ids": [],
+            "success": False,
+            "message": error_msg,
+            "document_ids": [],
+            "exception": str(e),
             }
 
     def delete_documents(self, ids: List[str]) -> None:
