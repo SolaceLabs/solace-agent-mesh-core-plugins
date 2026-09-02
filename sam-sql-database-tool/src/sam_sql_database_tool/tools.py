@@ -3,8 +3,10 @@ from pydantic import BaseModel, Field, model_validator, field_validator, SecretS
 from google.genai import types as adk_types
 from solace_agent_mesh.agent.tools.dynamic_tool import DynamicTool
 from solace_agent_mesh.agent.sac.component import SamAgentComponent
+from solace_ai_connector.common.observability import MonitorLatency
 from .services.database_service import DatabaseService
 from .services.connection_validator import validate_connection_string
+from .observability import SqlRemoteMonitor
 
 import logging
 log = logging.getLogger(__name__)
@@ -264,7 +266,8 @@ class SqlDatabaseTool(DynamicTool):
 
         log.info("%s Executing query on '%s': %s", log_identifier, self.tool_name, query)
         try:
-            results = self.db_service.execute_query(query)
+            with MonitorLatency(SqlRemoteMonitor.execute_query()):
+                results = self.db_service.execute_query(query)
 
             if not self._connection_healthy:
                 self._connection_healthy = True
