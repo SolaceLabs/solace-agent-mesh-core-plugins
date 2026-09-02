@@ -118,7 +118,7 @@ def initialize_mongo_agent(host_component: Any, init_config: MongoAgentInitConfi
         instruction_parts = [
             "You are a MongoDB expert assistant.",
             "Your primary goal is to translate user questions into accurate MongoDB aggregation pipelines.",
-            "When asked to query the database, generate the pipeline and call the query tool.",
+            "When asked to query the database, generate the pipeline and call the query tool with the right collection name from the schema summary if present.",
             "\nDATABASE CONTEXT:",
             f"Purpose: {init_config.database_purpose}",
             f"Data Description: {init_config.data_description}",

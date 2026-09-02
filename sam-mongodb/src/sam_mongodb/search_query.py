@@ -26,6 +26,7 @@ MAX_QUERY_LEN_IN_DESCRIPTION = 1000
 
 async def mongo_query(
     pipeline_str: str,
+    collection: Optional[str] = None,
     response_format: Literal["yaml", "json", "csv", "markdown"] = "json",
     result_description: Optional[str] = None,
     tool_context: Optional[ToolContext] = None,
@@ -37,22 +38,28 @@ async def mongo_query(
 
     Args:
         pipeline_str (str): The aggregation pipeline as a JSON string.
+        collection (Optional[str]): The collection name to query. If not provided and not set in tool_config,
+                                   the tool returns an error.
         response_format (Literal["yaml", "json", "csv", "markdown"]): The format in which to return the results.
         result_description (Optional[str]): A description of the results to be saved as metadata.
     """
-    if not tool_context or not tool_config:
-        return {"status": "error", "error_message": "Tool context or config missing."}
+
+    if not tool_context:
+        return {"status": "error", "message": "Tool context missing."}
 
     log_identifier = f"[{tool_context._invocation_context.agent.name}:mongo_query]"
 
-    collection = tool_config.get("collection")
-    if not collection:
+    # Priority: tool_config collection over LLM-provided collection
+    tool_config_collection = (tool_config or {}).get("collection")
+    target_collection = collection if not tool_config_collection else tool_config_collection
+    
+    if not target_collection:
         return {
             "status": "error",
-            "error_message": "Missing 'collection' in tool_config.",
+            "message": "Collection name must be provided either as a parameter or in tool_config.",
         }
 
-    log.info("%s Executing aggregation on collection '%s'.", log_identifier, collection)
+    log.info("%s Executing aggregation on collection '%s'.", log_identifier, target_collection)
 
     try:
         pipeline = json.loads(pipeline_str)
@@ -61,27 +68,27 @@ async def mongo_query(
         log.error("%s Invalid JSON in pipeline_str: %s", log_identifier, e)
         return {
             "status": "error",
-            "error_message": f"Invalid pipeline format. Expected a valid JSON string. Error: {e}",
+            "message": f"Invalid pipeline format. Expected a valid JSON string. Error: {e}",
         }
 
     host_component = getattr(
         tool_context._invocation_context.agent, "host_component", None
     )
     if not host_component:
-        return {"status": "error", "error_message": "Host component not found."}
+        return {"status": "error", "message": "Host component not found."}
 
     db_handler: Optional[MongoDatabaseService] = (
         host_component.get_agent_specific_state("db_handler")
     )
     if not db_handler:
-        return {"status": "error", "error_message": "Database handler not initialized."}
+        return {"status": "error", "message": "Database handler not initialized."}
 
     max_inline_results: int = host_component.get_agent_specific_state(
         "max_inline_results", 10
     )
 
     try:
-        results = db_handler.execute_query(collection, pipeline)
+        results = db_handler.execute_query(target_collection, pipeline)
         log.info(
             "%s Query executed successfully. Rows returned: %d",
             log_identifier,
@@ -125,7 +132,7 @@ async def mongo_query(
         )
 
         description = result_description or f"Results of MongoDB aggregation. "
-        description += f"Collection: {collection}, Pipeline: {pipeline_str[:MAX_QUERY_LEN_IN_DESCRIPTION]}{'...' if len(pipeline_str) > MAX_QUERY_LEN_IN_DESCRIPTION else pipeline_str}"
+        description += f"Collection: {target_collection}, Pipeline: {pipeline_str[:MAX_QUERY_LEN_IN_DESCRIPTION]}{'...' if len(pipeline_str) > MAX_QUERY_LEN_IN_DESCRIPTION else pipeline_str}"
         save_metadata = {
             "description": description,
             "row_count": len(results),
@@ -170,4 +177,4 @@ async def mongo_query(
 
     except Exception as e:
         log.exception("%s Error executing aggregation: %s", log_identifier, e)
-        return {"status": "error", "error_message": str(e)}
+        return {"status": "error", "message": str(e)}
