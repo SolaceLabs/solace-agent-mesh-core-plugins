@@ -29,7 +29,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
 dependencies = [
-    "pymongo==4.15.1",
+    "pymongo==4.18.3",
     "pydantic==2.12.5",
     "PyYAML==6.0.2"
 ]
